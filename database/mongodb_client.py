@@ -1,116 +1,134 @@
 import os
 import logging
-from datetime import datetime
-from typing import List, Dict, Optional
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
 from pymongo import MongoClient, ASCENDING, DESCENDING
-from pymongo.errors import ConnectionError, OperationFailure
+from pymongo.errors import PyMongoError, OperationFailure
+import pymongo
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 class MongoDBClient:
     def __init__(self):
-        """Initialize MongoDB client with connection to grant database."""
+        """Initialize MongoDB client with connection to the grant database."""
         mongodb_uri = os.getenv("MONGODB_URI")
         if not mongodb_uri:
             raise ValueError("MongoDB URI not found in environment variables")
         
-        try:
-            self.client = MongoClient(mongodb_uri)
-            self.db = self.client.grant_finder
-            self.grants = self.db.grants
-            self.priorities = self.db.priorities
-            self._create_indexes()
-            logging.info("Successfully connected to MongoDB")
-        except ConnectionError as e:
-            logging.error(f"Failed to connect to MongoDB: {e}")
-            raise
-
+        # Connect to MongoDB
+        self.client = pymongo.MongoClient(mongodb_uri)
+        self.db = self.client[os.getenv("MONGODB_DATABASE", "grant_finder")]
+        
+        # Collections
+        self.grants = self.db["grants"]
+        self.priorities = self.db["priorities"]
+        self.search_history = self.db["search_history"]
+        self.saved_grants = self.db["saved_grants"]
+        
+        # Create indexes for faster queries
+        self._create_indexes()
+        
+        logging.info("MongoDB client initialized")
+    
     def _create_indexes(self):
-        """Create necessary indexes for efficient querying."""
-        try:
-            self.grants.create_index([("score", DESCENDING)])
-            self.grants.create_index([("deadline", ASCENDING)])
-            self.grants.create_index([("category", ASCENDING)])
-            logging.info("Successfully created MongoDB indexes")
-        except OperationFailure as e:
-            logging.error(f"Failed to create indexes: {e}")
-            raise
-
-    def store_grant(self, grant_data: Dict) -> bool:
-        """Store a single grant in the database.
-
-        Args:
-            grant_data (Dict): Grant information including title, description,
-                              amount, deadline, source, and relevance score.
-
-        Returns:
-            bool: True if successful, False otherwise.
-        """
-        try:
-            grant_data["created_at"] = datetime.utcnow()
-            grant_data["updated_at"] = datetime.utcnow()
+        """Create database indexes for optimized queries."""
+        # Grants collection indexes
+        self.grants.create_index([("relevance_score", pymongo.DESCENDING)])
+        self.grants.create_index([("deadline", pymongo.ASCENDING)])
+        self.grants.create_index([("category", pymongo.ASCENDING)])
+        self.grants.create_index([("source_url", pymongo.ASCENDING)], unique=True)
+        
+        # Search history indexes
+        self.search_history.create_index([("timestamp", pymongo.DESCENDING)])
+        self.search_history.create_index([("category", pymongo.ASCENDING)])
+        
+        # Saved grants indexes
+        self.saved_grants.create_index([("user_id", pymongo.ASCENDING)])
+        self.saved_grants.create_index([("grant_id", pymongo.ASCENDING)])
+    
+    def store_grant(self, grant_data: Dict[str, Any]) -> str:
+        """Store a single grant in the database."""
+        # Add timestamps
+        grant_data["first_found_at"] = datetime.utcnow()
+        grant_data["last_updated"] = datetime.utcnow()
+        
+        # Check if grant already exists (using URL as unique identifier)
+        existing_grant = self.grants.find_one({"source_url": grant_data["source_url"]})
+        
+        if existing_grant:
+            # Update existing grant
+            grant_data["first_found_at"] = existing_grant["first_found_at"]
+            grant_data["last_updated"] = datetime.utcnow()
             
-            # Upsert based on unique identifiers to avoid duplicates
-            result = self.grants.update_one(
-                {
-                    "title": grant_data["title"],
-                    "source": grant_data["source"]
-                },
-                {"$set": grant_data},
-                upsert=True
+            # Update document
+            self.grants.update_one(
+                {"_id": existing_grant["_id"]},
+                {"$set": grant_data}
             )
-            return bool(result.acknowledged)
-        except Exception as e:
-            logging.error(f"Error storing grant: {e}")
-            return False
-
-    def store_grants(self, grants_list: List[Dict]) -> int:
-        """Store multiple grants in the database.
-
-        Args:
-            grants_list (List[Dict]): List of grant dictionaries.
-
-        Returns:
-            int: Number of successfully stored grants.
-        """
-        successful_stores = 0
-        for grant in grants_list:
-            if self.store_grant(grant):
-                successful_stores += 1
-        return successful_stores
-
-    def get_grants(self, min_score: Optional[float] = None,
-                  days_to_deadline: Optional[int] = None,
+            return str(existing_grant["_id"])
+        else:
+            # Insert new grant
+            result = self.grants.insert_one(grant_data)
+            return str(result.inserted_id)
+    
+    def get_grants(self, 
+                  min_score: Optional[float] = None, 
+                  days_to_deadline: Optional[int] = None, 
                   category: Optional[str] = None,
-                  limit: int = 100) -> List[Dict]:
-        """Retrieve grants based on filters.
-
-        Args:
-            min_score (float, optional): Minimum relevance score.
-            days_to_deadline (int, optional): Maximum days until deadline.
-            category (str, optional): Grant category to filter by.
-            limit (int): Maximum number of grants to return.
-
-        Returns:
-            List[Dict]: List of matching grants.
-        """
+                  search_text: Optional[str] = None,
+                  limit: int = 100) -> List[Dict[str, Any]]:
+        """Retrieve grants based on filtering criteria."""
         query = {}
         
+        # Apply filters if provided
         if min_score is not None:
-            query["score"] = {"$gte": min_score}
+            query["relevance_score"] = {"$gte": min_score}
             
         if days_to_deadline is not None:
-            deadline_date = datetime.utcnow()
-            query["deadline"] = {"$gte": deadline_date}
+            deadline_threshold = datetime.utcnow() + timedelta(days=days_to_deadline)
+            query["deadline"] = {"$lte": deadline_threshold}
             
-        if category:
+        if category and category != "All":
             query["category"] = category
-
+            
+        if search_text:
+            query["$or"] = [
+                {"title": {"$regex": search_text, "$options": "i"}},
+                {"description": {"$regex": search_text, "$options": "i"}}
+            ]
+        
+        # Execute query
+        cursor = self.grants.find(query).sort("relevance_score", pymongo.DESCENDING).limit(limit)
+        
+        # Convert cursor to list
+        grants = list(cursor)
+        
+        return grants
+    
+    def save_grant_for_user(self, grant_id: str, user_id: str = "default") -> bool:
+        """Save a grant for a specific user."""
         try:
-            return list(self.grants.find(query)
-                       .sort("score", DESCENDING)
-                       .limit(limit))
+            self.saved_grants.insert_one({
+                "user_id": user_id,
+                "grant_id": grant_id,
+                "saved_at": datetime.utcnow()
+            })
+            return True
         except Exception as e:
-            logging.error(f"Error retrieving grants: {e}")
+            logging.error(f"Error saving grant: {str(e)}")
+            return False
+    
+    def get_saved_grants(self, user_id: str = "default") -> List[Dict[str, Any]]:
+        """Get all saved grants for a user."""
+        saved = self.saved_grants.find({"user_id": user_id})
+        grant_ids = [s["grant_id"] for s in saved]
+        
+        if not grant_ids:
             return []
+            
+        return list(self.grants.find({"_id": {"$in": grant_ids}}))
 
     def store_priorities(self, priorities_data: Dict) -> bool:
         """Store or update priority settings.

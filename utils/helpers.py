@@ -16,6 +16,23 @@ def format_currency(amount):
     """
     return f'${amount:,.2f}'
 
+def calculate_days_remaining(deadline):
+    """
+    Calculate days remaining until deadline.
+    
+    Args:
+        deadline (datetime): Grant deadline
+        
+    Returns:
+        int: Number of days remaining (negative if expired)
+    """
+    if not deadline:
+        return None
+    
+    now = datetime.now()
+    delta = deadline - now
+    return delta.days
+
 def calculate_deadline_status(deadline):
     """
     Calculate status based on deadline.

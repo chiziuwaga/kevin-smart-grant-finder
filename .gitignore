@@ -1,3 +1,7 @@
+# Environment variables
+.env
+.env.*
+
 # Python
 __pycache__/
 *.py[cod]
@@ -22,13 +26,8 @@ wheels/
 
 # Virtual Environment
 venv/
-ENV/
 env/
-
-# Environment Variables
-.env
-.env.*
-!.env.example
+ENV/
 
 # IDE
 .idea/
@@ -36,10 +35,23 @@ env/
 *.swp
 *.swo
 
+# OS
+.DS_Store
+Thumbs.db
+
 # Logs
 *.log
 logs/
 
 # Local development
-.DS_Store
-Thumbs.db
+*.sqlite3
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Streamlit
+.streamlit/
+
+# Distribution
+dist/
+build/

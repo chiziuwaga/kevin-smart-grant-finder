@@ -1,41 +1,49 @@
 {
-  "name": "kevin-smart-grant-finder",
-  "description": "Smart grant finding system using AI and multiple data sources",
-  "repository": "https://github.com/chiziuwaga/kevin-smart-grant-finder",
-  "keywords": ["python", "grants", "ai", "streamlit"],
+  "name": "Kevin's Smart Grant Finder",
+  "description": "A smart grant finder application for telecommunications and women-owned nonprofits",
+  "repository": "https://github.com/yourusername/kevin-smart-grant-finder",
+  "keywords": ["grants", "streamlit", "python", "AI"],
   "addons": [
-    "crontogo:basic"
+    "cron:standard",
+    "papertrail:choklad"
   ],
   "env": {
-    "MONGODB_URI": {
-      "description": "MongoDB connection string"
+    "PERPLEXITY_API_KEY": {
+      "description": "Perplexity API key"
     },
     "PINECONE_API_KEY": {
       "description": "Pinecone API key"
     },
     "PINECONE_ENVIRONMENT": {
-      "description": "Pinecone environment"
+      "description": "Pinecone environment",
+      "value": "us-west4-gcp"
+    },
+    "MONGODB_URI": {
+      "description": "MongoDB connection URI"
     },
     "OPENAI_API_KEY": {
       "description": "OpenAI API key"
     },
-    "PERPLEXITY_API_KEY": {
-      "description": "Perplexity API key"
+    "AGENTQL_API_KEY": {
+      "description": "AgentQL API key"
     },
-    "TWILIO_ACCOUNT_SID": {
-      "description": "Twilio account SID"
+    "RELEVANCE_THRESHOLD": {
+      "description": "Minimum relevance score for grants",
+      "value": "85"
     },
-    "TWILIO_AUTH_TOKEN": {
-      "description": "Twilio auth token"
-    },
-    "TELEGRAM_BOT_TOKEN": {
-      "description": "Telegram bot token"
+    "DEADLINE_THRESHOLD": {
+      "description": "Days remaining to deadline threshold",
+      "value": "30"
     }
   },
   "formation": {
     "web": {
       "quantity": 1,
-      "size": "basic"
+      "size": "standard-1x"
+    },
+    "worker": {
+      "quantity": 1,
+      "size": "standard-1x"
     }
   },
   "buildpacks": [
