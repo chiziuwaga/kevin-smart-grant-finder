@@ -1,0 +1,46 @@
+{
+  "name": "kevin-smart-grant-finder",
+  "description": "Smart grant finding system using AI and multiple data sources",
+  "repository": "https://github.com/chiziuwaga/kevin-smart-grant-finder",
+  "keywords": ["python", "grants", "ai", "streamlit"],
+  "addons": [
+    "crontogo:basic"
+  ],
+  "env": {
+    "MONGODB_URI": {
+      "description": "MongoDB connection string"
+    },
+    "PINECONE_API_KEY": {
+      "description": "Pinecone API key"
+    },
+    "PINECONE_ENVIRONMENT": {
+      "description": "Pinecone environment"
+    },
+    "OPENAI_API_KEY": {
+      "description": "OpenAI API key"
+    },
+    "PERPLEXITY_API_KEY": {
+      "description": "Perplexity API key"
+    },
+    "TWILIO_ACCOUNT_SID": {
+      "description": "Twilio account SID"
+    },
+    "TWILIO_AUTH_TOKEN": {
+      "description": "Twilio auth token"
+    },
+    "TELEGRAM_BOT_TOKEN": {
+      "description": "Telegram bot token"
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+}
