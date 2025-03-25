@@ -210,7 +210,7 @@ class LouisianaGrantScraper:
         for section in grant_sections:
             try:
                 # Extract title
-                title_elem = section.select_one('h2, h3, h4, .card-title, .title')
+                title_elem = section.select_one('h2, h3, h4, .title, .card-title')
                 if not title_elem:
                     continue
                 

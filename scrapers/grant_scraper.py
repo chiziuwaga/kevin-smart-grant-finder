@@ -1,19 +1,176 @@
-import requests
-from bs4 import BeautifulSoup
+import os
+import aiohttp
 import logging
-from datetime import datetime
+import asyncio
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 import re
 from dateutil import parser
+from api.perplexity_client import PerplexityClient
+from database.mongodb_client import MongoDBClient
+from database.pinecone_client import PineconeClient
 
 class GrantScraper:
     def __init__(self):
-        """Initialize the grant scraper with common headers and configurations."""
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        """Initialize grant scraper with necessary clients."""
+        self.perplexity = PerplexityClient()
+        self.mongodb = MongoDBClient()
+        self.pinecone = PineconeClient()
+        
+        # API keys for various grant sources
+        self.grants_gov_key = os.getenv("GRANTS_GOV_API_KEY")
+        self.usda_key = os.getenv("USDA_API_KEY")
+        self.ntia_key = os.getenv("NTIA_API_KEY")
+        self.fcc_key = os.getenv("FCC_API_KEY")
+        
+        self.session = None
+    
+    async def __aenter__(self):
+        """Async context manager entry."""
+        self.session = aiohttp.ClientSession()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        if self.session:
+            await self.session.close()
+    
+    async def scrape_all_sources(self, query: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
+        """Scrape grants from all configured sources.
+        
+        Args:
+            query (str): Search query
+            filters (Optional[Dict]): Search filters
+            
+        Returns:
+            Dict[str, Any]: Combined results from all sources
+        """
+        tasks = [
+            self.scrape_grants_gov(query, filters),
+            self.scrape_usda_grants(query, filters),
+            self.scrape_ntia_grants(query, filters),
+            self.scrape_fcc_grants(query, filters),
+            self.search_perplexity(query, filters)
+        ]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Combine and deduplicate results
+        combined_grants = []
+        seen_urls = set()
+        
+        for source_results in results:
+            if isinstance(source_results, Exception):
+                logging.error(f"Error scraping source: {str(source_results)}")
+                continue
+                
+            for grant in source_results.get("grants", []):
+                if grant["url"] not in seen_urls:
+                    seen_urls.add(grant["url"])
+                    combined_grants.append(grant)
+        
+        return {
+            "grants": combined_grants,
+            "total_found": len(combined_grants),
+            "source_breakdown": self._calculate_source_breakdown(combined_grants)
         }
-        self.session = requests.Session()
-        self.session.headers.update(self.headers)
+    
+    async def scrape_grants_gov(self, query: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
+        """Scrape grants from Grants.gov API.
+        
+        Args:
+            query (str): Search query
+            filters (Optional[Dict]): Search filters
+            
+        Returns:
+            Dict[str, Any]: Scraped grants and metadata
+        """
+        if not self.grants_gov_key:
+            return {"grants": [], "error": "Grants.gov API key not configured"}
+        
+        headers = {"X-API-KEY": self.grants_gov_key}
+        params = {
+            "keywords": query,
+            "grant_status": "posted",
+        }
+        
+        if filters:
+            params.update(filters)
+        
+        try:
+            async with self.session.get(
+                "https://www.grants.gov/grantsws/rest/opportunities/search",
+                headers=headers,
+                params=params
+            ) as response:
+                data = await response.json()
+                return self._process_grants_gov_response(data)
+        except Exception as e:
+            logging.error(f"Error scraping Grants.gov: {str(e)}")
+            return {"grants": [], "error": str(e)}
+    
+    async def scrape_usda_grants(self, query: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
+        """Scrape grants from USDA API."""
+        if not self.usda_key:
+            return {"grants": [], "error": "USDA API key not configured"}
+        
+        # TODO: Implement USDA API integration
+        return {"grants": [], "error": "USDA scraping not implemented"}
+    
+    async def scrape_ntia_grants(self, query: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
+        """Scrape grants from NTIA BroadbandUSA."""
+        if not self.ntia_key:
+            return {"grants": [], "error": "NTIA API key not configured"}
+        
+        # TODO: Implement NTIA API integration
+        return {"grants": [], "error": "NTIA scraping not implemented"}
+    
+    async def scrape_fcc_grants(self, query: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
+        """Scrape grants from FCC Funding API."""
+        if not self.fcc_key:
+            return {"grants": [], "error": "FCC API key not configured"}
+        
+        # TODO: Implement FCC API integration
+        return {"grants": [], "error": "FCC scraping not implemented"}
+    
+    async def search_perplexity(self, query: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
+        """Search for grants using Perplexity API."""
+        return await self.perplexity.search_grants(query, filters)
+    
+    def _process_grants_gov_response(self, data: Dict) -> Dict[str, Any]:
+        """Process Grants.gov API response."""
+        processed = {
+            "grants": [],
+            "total_found": 0
+        }
+        
+        if "opportunities" in data:
+            for opp in data["opportunities"]:
+                grant = {
+                    "title": opp.get("title", ""),
+                    "description": opp.get("description", ""),
+                    "url": f"https://www.grants.gov/view-opportunity.html?oppId={opp.get('id')}",
+                    "source": "grants.gov",
+                    "deadline": opp.get("closeDate"),
+                    "amount": opp.get("awardCeiling"),
+                    "category": opp.get("category", "other"),
+                    "agency": opp.get("agency", {}).get("name", "")
+                }
+                
+                processed["grants"].append(grant)
+            
+            processed["total_found"] = len(processed["grants"])
+        
+        return processed
+    
+    def _calculate_source_breakdown(self, grants: List[Dict]) -> Dict[str, int]:
+        """Calculate breakdown of grants by source."""
+        breakdown = {}
+        for grant in grants:
+            source = grant.get("source", "other")
+            breakdown[source] = breakdown.get(source, 0) + 1
+        return breakdown
     
     def _is_relevant_to_region(self, text: str) -> bool:
         """Check if the grant is relevant to Louisiana region (LA-08)."""

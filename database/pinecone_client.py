@@ -3,6 +3,10 @@ import logging
 import time
 from dotenv import load_dotenv
 import openai
+import pinecone
+import numpy as np
+from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 class PineconeClient:
     def __init__(self, use_mock=True):
@@ -135,3 +139,125 @@ class PineconeClient:
             input=text
         )
         return response.data[0].embedding
+
+    async def store_grant_embedding(self, 
+                                  grant_id: str, 
+                                  embedding: List[float], 
+                                  metadata: Dict[str, Any]) -> bool:
+        """Store grant embedding and metadata in Pinecone.
+        
+        Args:
+            grant_id (str): Unique identifier for the grant
+            embedding (List[float]): Vector embedding of grant content
+            metadata (Dict[str, Any]): Additional grant metadata
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Ensure embedding is normalized
+            embedding_np = np.array(embedding)
+            normalized_embedding = embedding_np / np.linalg.norm(embedding_np)
+            
+            # Add timestamp to metadata
+            metadata["stored_at"] = datetime.utcnow().isoformat()
+            
+            # Upsert the vector
+            self.index.upsert(
+                vectors=[(grant_id, normalized_embedding.tolist(), metadata)]
+            )
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error storing grant embedding: {str(e)}")
+            return False
+    
+    async def find_similar_grants(self, 
+                                query_embedding: List[float], 
+                                top_k: int = 10, 
+                                filter: Optional[Dict] = None) -> List[Dict]:
+        """Find similar grants using vector similarity search.
+        
+        Args:
+            query_embedding (List[float]): Query vector
+            top_k (int): Number of results to return
+            filter (Optional[Dict]): Metadata filters
+            
+        Returns:
+            List[Dict]: Similar grants with scores and metadata
+        """
+        try:
+            # Normalize query embedding
+            query_np = np.array(query_embedding)
+            normalized_query = query_np / np.linalg.norm(query_np)
+            
+            # Query the index
+            results = self.index.query(
+                vector=normalized_query.tolist(),
+                top_k=top_k,
+                include_metadata=True,
+                filter=filter
+            )
+            
+            # Process results
+            similar_grants = []
+            for match in results.matches:
+                similar_grants.append({
+                    "grant_id": match.id,
+                    "similarity_score": match.score,
+                    "metadata": match.metadata
+                })
+            
+            return similar_grants
+            
+        except Exception as e:
+            logging.error(f"Error searching similar grants: {str(e)}")
+            return []
+    
+    async def update_grant_metadata(self, grant_id: str, metadata: Dict[str, Any]) -> bool:
+        """Update metadata for a stored grant.
+        
+        Args:
+            grant_id (str): Grant identifier
+            metadata (Dict[str, Any]): Updated metadata
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Get existing vector
+            vector_data = self.index.fetch([grant_id])
+            
+            if not vector_data.vectors:
+                return False
+            
+            # Update with new metadata
+            existing_vector = vector_data.vectors[grant_id]
+            self.index.upsert(
+                vectors=[(
+                    grant_id,
+                    existing_vector.values,
+                    {**existing_vector.metadata, **metadata}
+                )]
+            )
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error updating grant metadata: {str(e)}")
+            return False
+    
+    async def delete_grant(self, grant_id: str) -> bool:
+        """Delete a grant from the vector database.
+        
+        Args:
+            grant_id (str): Grant identifier
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            self.index.delete(ids=[grant_id])
+            return True
+        except Exception as e:
+            logging.error(f"Error deleting grant: {str(e)}")
+            return False

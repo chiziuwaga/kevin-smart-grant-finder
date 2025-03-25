@@ -1,54 +1,104 @@
 {
   "name": "Kevin's Smart Grant Finder",
-  "description": "A smart grant finder application for telecommunications and women-owned nonprofits",
+  "description": "AI-powered grant search and notification system for telecommunications and women-owned nonprofit sectors",
   "repository": "https://github.com/yourusername/kevin-smart-grant-finder",
-  "keywords": ["grants", "streamlit", "python", "AI"],
-  "addons": [
-    "cron:standard",
-    "papertrail:choklad"
-  ],
+  "keywords": ["python", "streamlit", "grants", "AI", "mongodb", "pinecone"],
   "env": {
     "PERPLEXITY_API_KEY": {
-      "description": "Perplexity API key"
+      "description": "Perplexity API key for deep search capabilities",
+      "required": true
     },
     "PINECONE_API_KEY": {
-      "description": "Pinecone API key"
+      "description": "Pinecone API key for vector database",
+      "required": true
     },
     "PINECONE_ENVIRONMENT": {
-      "description": "Pinecone environment",
-      "value": "us-west4-gcp"
+      "description": "Pinecone environment (e.g., us-west1)",
+      "required": true
     },
     "MONGODB_URI": {
-      "description": "MongoDB connection URI"
+      "description": "MongoDB connection string (Atlas)",
+      "required": true
     },
     "OPENAI_API_KEY": {
-      "description": "OpenAI API key"
+      "description": "OpenAI API key for embeddings and summaries",
+      "required": true
     },
     "AGENTQL_API_KEY": {
-      "description": "AgentQL API key"
+      "description": "AgentQL API key for specialized search agents",
+      "required": true
+    },
+    "TWILIO_ACCOUNT_SID": {
+      "description": "Twilio Account SID for SMS notifications",
+      "required": false
+    },
+    "TWILIO_AUTH_TOKEN": {
+      "description": "Twilio Auth Token for SMS notifications",
+      "required": false
+    },
+    "TWILIO_PHONE_NUMBER": {
+      "description": "Twilio Phone Number for sending SMS",
+      "required": false
+    },
+    "TELEGRAM_BOT_TOKEN": {
+      "description": "Telegram Bot Token for notifications",
+      "required": false
+    },
+    "TELEGRAM_CHAT_ID": {
+      "description": "Telegram Chat ID for notifications",
+      "required": false
     },
     "RELEVANCE_THRESHOLD": {
-      "description": "Minimum relevance score for grants",
+      "description": "Minimum relevance score (0-100) for high-priority grants",
       "value": "85"
     },
     "DEADLINE_THRESHOLD": {
-      "description": "Days remaining to deadline threshold",
+      "description": "Days to deadline for filtering grants",
       "value": "30"
-    }
-  },
-  "formation": {
-    "web": {
-      "quantity": 1,
-      "size": "standard-1x"
     },
-    "worker": {
-      "quantity": 1,
-      "size": "standard-1x"
+    "SCHEDULE_DAYS": {
+      "description": "Comma-separated list of days to run searches",
+      "value": "monday,thursday"
+    },
+    "SCHEDULE_TIME": {
+      "description": "Time to run searches (HH:MM)",
+      "value": "10:00"
+    },
+    "TIMEZONE": {
+      "description": "Timezone for scheduling",
+      "value": "America/New_York"
+    },
+    "MONGODB_DATABASE": {
+      "description": "MongoDB database name",
+      "value": "grant_finder"
+    },
+    "PINECONE_INDEX_NAME": {
+      "description": "Pinecone index name",
+      "value": "grant_priorities"
+    },
+    "PINECONE_NAMESPACE": {
+      "description": "Pinecone namespace",
+      "value": "grant_finder"
     }
   },
   "buildpacks": [
     {
       "url": "heroku/python"
     }
-  ]
+  ],
+  "addons": [
+    {
+      "plan": "crontogo:hobby",
+      "as": "CRONTOGO"
+    }
+  ],
+  "scripts": {
+    "postdeploy": "python setup.py"
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  }
 }
