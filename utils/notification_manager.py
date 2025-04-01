@@ -10,25 +10,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class NotificationManager:
-    def __init__(self):
+    def __init__(self, use_mock: bool = True):
         """Initialize notification clients for SMS and Telegram."""
-        # Twilio setup
-        self.twilio_client = None
-        self.twilio_phone = os.getenv("TWILIO_PHONE_NUMBER")
+        self.use_mock = use_mock
         
-        twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
-        twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
-        
-        if twilio_sid and twilio_token:
-            self.twilio_client = Client(twilio_sid, twilio_token)
-        
-        # Telegram setup
-        self.telegram_bot = None
-        self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
-        
-        telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
-        if telegram_token:
-            self.telegram_bot = telegram.Bot(token=telegram_token)
+        if not use_mock:
+            # Twilio setup
+            self.twilio_client = None
+            self.twilio_phone = os.getenv("TWILIO_PHONE_NUMBER")
+            
+            twilio_sid = os.getenv("TWILIO_ACCOUNT_SID")
+            twilio_token = os.getenv("TWILIO_AUTH_TOKEN")
+            
+            if twilio_sid and twilio_token:
+                self.twilio_client = Client(twilio_sid, twilio_token)
+            
+            # Telegram setup
+            self.telegram_bot = None
+            self.telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+            
+            telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
+            if telegram_token:
+                self.telegram_bot = telegram.Bot(token=telegram_token)
+        else:
+            logging.info("Using mock notification manager")
+            self.mock_notifications = []
     
     def format_grant_message(self, grant: Dict[str, Any]) -> str:
         """Format a grant notification message."""
@@ -50,6 +56,15 @@ Source: {grant['source_name']}
     
     def send_sms(self, message: str, to_number: str) -> bool:
         """Send an SMS notification."""
+        if self.use_mock:
+            self.mock_notifications.append({
+                "type": "sms",
+                "message": message,
+                "to": to_number,
+                "timestamp": datetime.now()
+            })
+            return True
+            
         if not self.twilio_client or not self.twilio_phone:
             logging.warning("Twilio not configured. SMS notification skipped.")
             return False
@@ -67,6 +82,14 @@ Source: {grant['source_name']}
     
     def send_telegram(self, message: str) -> bool:
         """Send a Telegram notification."""
+        if self.use_mock:
+            self.mock_notifications.append({
+                "type": "telegram",
+                "message": message,
+                "timestamp": datetime.now()
+            })
+            return True
+            
         if not self.telegram_bot or not self.telegram_chat_id:
             logging.warning("Telegram not configured. Notification skipped.")
             return False

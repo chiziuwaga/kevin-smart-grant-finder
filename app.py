@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from typing import Dict, List, Optional
 from pathlib import Path
 
@@ -25,6 +25,7 @@ from config.logging_config import setup_logging
 from utils.helpers import format_currency, calculate_days_remaining
 from scrapers.grant_scraper import GrantScraper
 from utils.notification_manager import NotificationManager
+from utils.heroku_manager import update_heroku_schedule, generate_cron_expression
 
 # Set up logging
 setup_logging()
@@ -35,19 +36,17 @@ load_dotenv()
 
 # Initialize clients with proper error handling
 try:
-    # Use mock clients for development
-    USE_MOCK = True
-    mongodb_client = MongoDBClient(use_mock=USE_MOCK)
-    pinecone_client = PineconeClient(use_mock=USE_MOCK)
-    logger.info("Database clients initialized successfully")
+    # Force mock clients for development
+    USE_MOCK = True  # Always use mock data for development
+    mongo_client = MongoDBClient(use_mock=True)  # Force mock data
+    pinecone_client = PineconeClient(use_mock=True)  # Force mock data
+    grant_scraper = GrantScraper(use_mock=True)
+    notifier = NotificationManager(use_mock=True)
+    logger.info("All clients initialized with mock data")
 except Exception as e:
-    logger.error(f"Failed to initialize database clients: {str(e)}")
-    st.error("Failed to connect to databases. Please check your configuration.")
-
-# Initialize components
-mongo_client = MongoDBClient()
-grant_scraper = GrantScraper()
-notifier = NotificationManager()
+    logger.error(f"Failed to initialize clients: {str(e)}")
+    st.error("Failed to initialize application components. Please check your configuration.")
+    raise e
 
 # Custom CSS for enhanced UI
 st.markdown("""
@@ -175,34 +174,65 @@ if 'last_search' not in st.session_state:
 def get_metric_data():
     """Get real-time metric data from MongoDB."""
     try:
-        high_priority_count = len(mongo_client.get_grants(min_score=85))
-        
-        # Calculate grants closing in next 7 days
-        upcoming_deadline = len(mongo_client.get_grants(days_to_deadline=7))
-        
-        # Calculate total potential funding
-        all_grants = mongo_client.get_grants(limit=500)
-        total_funding = sum(grant.get('amount', 0) for grant in all_grants if isinstance(grant.get('amount'), (int, float)))
-        
+        now = datetime.utcnow()
+        today_start = datetime(now.year, now.month, now.day)
+        one_week_ago = now - timedelta(days=7)
+
+        # Count high-priority grants (score >= 85)
+        high_priority_count = mongo_client.grants_collection.count_documents({
+            "relevance_score": {"$gte": 85}
+        })
+
+        # Count grants closing within 7 days
+        upcoming_deadline_count = mongo_client.grants_collection.count_documents({
+            "deadline": {"$lte": now + timedelta(days=7), "$gte": now}
+        })
+
+        # Count grants found today
+        new_today_count = mongo_client.grants_collection.count_documents({
+            "first_found_at": {"$gte": today_start}
+        })
+
+        # Count high-priority grants found in the last week
+        new_high_priority_last_week = mongo_client.grants_collection.count_documents({
+            "relevance_score": {"$gte": 85},
+            "first_found_at": {"$gte": one_week_ago}
+        })
+
+        # Calculate total potential funding (example - needs refinement based on amount format)
+        # This uses an aggregation pipeline for better performance
+        pipeline = [
+            {"$match": {"amount": {"$type": "number"}}}, # Filter for numeric amounts
+            {"$group": {"_id": None, "totalFunding": {"$sum": "$amount"}}}
+        ]
+        funding_result = list(mongo_client.grants_collection.aggregate(pipeline))
+        total_funding = funding_result[0]["totalFunding"] if funding_result else 0
+
         # Get grants by category
-        telecom_grants = len(mongo_client.get_grants(category="telecom"))
-        nonprofit_grants = len(mongo_client.get_grants(category="nonprofit"))
-        
+        telecom_grants = mongo_client.grants_collection.count_documents({"category": "telecom"})
+        nonprofit_grants = mongo_client.grants_collection.count_documents({"category": "nonprofit"})
+
+        # Prepare delta values (example logic)
+        # In a real app, you'd fetch the previous state or calculate based on timestamps
+        high_priority_delta = new_high_priority_last_week # Example: delta is just new grants last week
+        new_today_display = f"+{new_today_count} Today"
+
         return {
             "high_priority": high_priority_count,
-            "upcoming_deadline": upcoming_deadline,
+            "high_priority_delta": high_priority_delta,
+            "upcoming_deadline": upcoming_deadline_count,
             "total_funding": total_funding,
             "telecom_grants": telecom_grants,
-            "nonprofit_grants": nonprofit_grants
+            "nonprofit_grants": nonprofit_grants,
+            "new_today_display": new_today_display
         }
     except Exception as e:
         logger.error(f"Error fetching metric data: {str(e)}")
         return {
-            "high_priority": 0,
-            "upcoming_deadline": 0,
-            "total_funding": 0,
-            "telecom_grants": 0,
-            "nonprofit_grants": 0
+            "high_priority": 0, "high_priority_delta": 0,
+            "upcoming_deadline": 0, "total_funding": 0,
+            "telecom_grants": 0, "nonprofit_grants": 0,
+            "new_today_display": "+0 Today"
         }
 
 def render_grant_card(grant):
@@ -288,54 +318,40 @@ def render_dashboard():
     """Render the dashboard page with metrics and high-priority grants."""
     st.markdown('<h1 class="main-header">📋 Grant Intelligence Dashboard</h1>', unsafe_allow_html=True)
     
-    # Get metrics
+    # Get metrics (now includes delta values)
     metrics = get_metric_data()
     
     # Display metric tiles
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <h2>{metrics['high_priority']}</h2>
-                <p>High Priority Grants</p>
-            </div>
-            """, 
-            unsafe_allow_html=True
+        st.metric(
+            label="High Priority Grants",
+            value=metrics['high_priority'],
+            delta=f"+{metrics['high_priority_delta']} This Week", # Display delta
+            delta_color="normal" # or "inverse" or "off"
         )
     
     with col2:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <h2>{metrics['upcoming_deadline']}</h2>
-                <p>Closing This Week</p>
-            </div>
-            """, 
-            unsafe_allow_html=True
+        st.metric(
+            label="Closing This Week",
+            value=metrics['upcoming_deadline']
         )
     
     with col3:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <h2>${metrics['total_funding']:,.0f}</h2>
-                <p>Available Funding</p>
-            </div>
-            """, 
-            unsafe_allow_html=True
+         # Format currency properly
+        formatted_funding = f"${metrics['total_funding']:,.0f}" if metrics['total_funding'] > 0 else "$0"
+        st.metric(
+            label="Available Funding",
+            value=formatted_funding
+            # Add delta for funding if tracked
         )
     
     with col4:
-        st.markdown(
-            f"""
-            <div class="metric-card">
-                <h2>{metrics['telecom_grants'] + metrics['nonprofit_grants']}</h2>
-                <p>Total Grants</p>
-            </div>
-            """, 
-            unsafe_allow_html=True
+        st.metric(
+            label="New Today",
+            value=metrics['new_today_display'].split(' ')[0].replace('+', ''), # Extract count
+            #delta=metrics['new_today_display'] # Or display delta text here
         )
     
     # Live filters section
@@ -459,35 +475,26 @@ def render_search():
                 default=["501(c)(3)", "Women-Owned Business"]
             )
         
-        # Source selection
+        # Source selection - Dynamic
         st.subheader("Search Sources")
-        
-        source_cols = st.columns(4)
-        
-        with source_cols[0]:
-            st.markdown("**Federal Sources**")
-            grants_gov = st.checkbox("Grants.gov", value=True)
-            sba_gov = st.checkbox("SBA.gov", value=True)
-            usda = st.checkbox("USDA", value=True)
-        
-        with source_cols[1]:
-            st.markdown("**Telecom Sources**")
-            fcc = st.checkbox("FCC", value=True)
-            ntia = st.checkbox("NTIA BroadbandUSA", value=True)
-            rural_health = st.checkbox("Rural Health Info Hub", value=True)
-        
-        with source_cols[2]:
-            st.markdown("**Women-Focused**")
-            ifund_women = st.checkbox("IFundWomen", value=True)
-            amber_grant = st.checkbox("Amber Grant Foundation", value=True)
-            wfn = st.checkbox("Women Founders Network", value=True)
-        
-        with source_cols[3]:
-            st.markdown("**State & Local**")
-            louisiana = st.checkbox("Louisiana State", value=True)
-            local_govt = st.checkbox("Local Government", value=True)
-            private = st.checkbox("Private Foundations", value=True)
-        
+
+        # Fetch sources from DB
+        all_sources = mongo_client.get_sources_by_domain() # Fetch all sources
+        source_names = sorted([s['name'] for s in all_sources if 'name' in s])
+
+        # Use columns for better layout
+        num_columns = 4
+        source_cols = st.columns(num_columns)
+        selected_sources = {}
+
+        # Distribute sources into columns and create checkboxes
+        sources_per_col = (len(source_names) + num_columns - 1) // num_columns
+        for i, source_name in enumerate(source_names):
+            col_index = i // sources_per_col
+            with source_cols[col_index]:
+                # Use source name as key and label, default to True for now
+                selected_sources[source_name] = st.checkbox(source_name, value=True, key=f"source_{source_name}")
+
         # Advanced options
         with st.expander("Advanced Options"):
             search_method = st.radio(
@@ -509,26 +516,8 @@ def render_search():
             telecom_terms = [term.strip() for term in telecom_keywords.split("\n") if term.strip()]
             nonprofit_terms = [term.strip() for term in nonprofit_keywords.split("\n") if term.strip()]
             
-            # Collect sources
-            sources = []
-            if grants_gov:
-                sources.append("Grants.gov")
-            if sba_gov:
-                sources.append("SBA.gov")
-            if usda:
-                sources.append("USDA")
-            if fcc:
-                sources.append("FCC")
-            if ntia:
-                sources.append("NTIA BroadbandUSA")
-            if rural_health:
-                sources.append("Rural Health Info Hub")
-            if ifund_women:
-                sources.append("IFundWomen")
-            if amber_grant:
-                sources.append("Amber Grant Foundation")
-            if wfn:
-                sources.append("Women Founders Network")
+            # Collect SELECTED sources from the dynamic checkboxes
+            final_selected_sources = [name for name, is_selected in selected_sources.items() if is_selected]
             
             # Determine search category
             if telecom_terms and not nonprofit_terms:
@@ -546,7 +535,7 @@ def render_search():
                 "category": category,
                 "search_terms": search_terms,
                 "funding_type": funding_types,
-                "sources": sources,
+                "sources": final_selected_sources, # Use dynamically selected sources
                 "max_results": max_results,
                 "include_closed": include_closed
             }
@@ -809,123 +798,141 @@ def render_analytics():
 def render_settings():
     """Render the settings page."""
     st.markdown('<h1 class="main-header">⚙️ Settings</h1>', unsafe_allow_html=True)
-    
-    # Get current user settings
-    current_settings = mongo_client.get_user_settings() or {}
-    
+
+    user_id = "default_user" # Assuming single user for now
+    current_settings = mongo_client.get_user_settings(user_id)
+
+    # Default values if settings are not found or incomplete
+    notifications_settings = current_settings.get("notifications", {})
+    default_schedule_freq = current_settings.get("schedule_frequency", "Twice Weekly")
+    default_schedule_days = current_settings.get("schedule_days", ["Monday", "Thursday"])
+    # Handle time - could be stored as string or time object
+    default_schedule_time_str = current_settings.get("schedule_time", "10:00")
+    try:
+        default_schedule_time_obj = datetime.strptime(default_schedule_time_str, "%H:%M").time()
+    except (ValueError, TypeError):
+        logger.warning(f"Invalid stored time '{default_schedule_time_str}', defaulting to 10:00")
+        default_schedule_time_obj = time(10, 0)
+
     with st.form("settings_form"):
-        # Notification Preferences
         st.subheader("Notification Preferences")
-        
         col1, col2 = st.columns(2)
-        
         with col1:
-            notifications = {}
-            notifications["sms_enabled"] = st.checkbox(
-                "SMS Notifications",
-                value=current_settings.get("notifications", {}).get("sms_enabled", True)
-            )
-            
-            if notifications["sms_enabled"]:
-                notifications["sms_number"] = st.text_input(
-                    "Phone Number",
-                    value=current_settings.get("notifications", {}).get("sms_number", "")
-                )
-        
+            sms_enabled = st.checkbox("SMS Notifications", value=notifications_settings.get("sms_enabled", False))
+            sms_number = st.text_input("Phone Number (for SMS)", value=notifications_settings.get("sms_number", ""), disabled=not sms_enabled)
         with col2:
-            notifications["telegram_enabled"] = st.checkbox(
-                "Telegram Notifications",
-                value=current_settings.get("notifications", {}).get("telegram_enabled", True)
-            )
-            
-            if notifications["telegram_enabled"]:
-                notifications["telegram_username"] = st.text_input(
-                    "Telegram Username",
-                    value=current_settings.get("notifications", {}).get("telegram_username", "")
-                )
-        
-        # Alert Thresholds
-        st.subheader("Alert Thresholds")
-        
-        relevance_threshold = st.slider(
-            "Minimum Relevance Score for Alerts",
-            min_value=0,
-            max_value=100,
-            value=current_settings.get("relevance_threshold", 85),
-            step=5
-        )
-        
-        deadline_threshold = st.slider(
-            "Days to Deadline Threshold",
-            min_value=7,
-            max_value=90,
-            value=current_settings.get("deadline_threshold", 30),
-            step=1
-        )
-        
-        # Search Scheduling
+            telegram_enabled = st.checkbox("Telegram Notifications", value=notifications_settings.get("telegram_enabled", False))
+            telegram_username = st.text_input("Telegram Username/ID", value=notifications_settings.get("telegram_username", ""), disabled=not telegram_enabled)
+
+        st.subheader("Grant Filtering Thresholds")
+        relevance_threshold = st.slider("Minimum Relevance Score", 50, 100, current_settings.get("relevance_threshold", 85), 5)
+        deadline_threshold = st.slider("Maximum Days to Deadline", 7, 180, current_settings.get("deadline_threshold", 30), 7)
+
+        # --- Search Scheduling (Interactive) ---
         st.subheader("Search Scheduling")
-        
+        schedule_frequency_options = ["Daily", "Weekly", "Twice Weekly"]
+        try:
+             schedule_freq_index = schedule_frequency_options.index(default_schedule_freq)
+        except ValueError:
+             schedule_freq_index = 2 # Default to Twice Weekly if stored value is invalid
+
         schedule_frequency = st.radio(
             "Search Frequency",
-            options=["Twice Weekly", "Weekly", "Daily"],
-            index=0 if current_settings.get("schedule_frequency") == "Twice Weekly" else 
-                  1 if current_settings.get("schedule_frequency") == "Weekly" else
-                  2 if current_settings.get("schedule_frequency") == "Daily" else 0
+            options=schedule_frequency_options,
+            index=schedule_freq_index,
+            horizontal=True
         )
-        
-        if schedule_frequency == "Twice Weekly":
-            schedule_days = st.multiselect(
-                "Search Days",
-                options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-                default=current_settings.get("schedule_days", ["Monday", "Thursday"])
-            )
+
+        weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        # Ensure default days are valid before passing to multiselect
+        valid_default_days = [day for day in default_schedule_days if day in weekdays]
+
+        if schedule_frequency == "Daily":
+            # Display info, days selection not needed
+            st.caption("Search will run every day at the specified time.")
+            selected_schedule_days = weekdays # Internally, daily means all days for cron
         elif schedule_frequency == "Weekly":
-            schedule_day = st.selectbox(
-                "Search Day",
-                options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
-                index=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].index(
-                    current_settings.get("schedule_days", ["Monday"])[0]
-                ) if current_settings.get("schedule_days") else 0
+             selected_schedule_days = [st.selectbox(
+                 "Search Day",
+                 options=weekdays,
+                 index=weekdays.index(valid_default_days[0]) if valid_default_days else 0 # Default to Monday if invalid/empty
+             )]
+        else: # Twice Weekly (or more if options expanded)
+            selected_schedule_days = st.multiselect(
+                "Search Days",
+                options=weekdays,
+                default=valid_default_days,
+                help="Select the days the search should run."
             )
-            schedule_days = [schedule_day]
-        else:
-            schedule_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-        
-        schedule_time = st.time_input(
-            "Search Time",
-            value=datetime.strptime(
-                current_settings.get("schedule_time", "10:00"), 
-                "%H:%M"
-            ).time() if isinstance(current_settings.get("schedule_time"), str) else datetime.strptime("10:00", "%H:%M").time()
+
+        schedule_time_obj = st.time_input(
+            "Search Time (UTC)",
+            value=default_schedule_time_obj,
+            help="Select the time (in UTC) the search should run."
         )
-        
-        # Apply settings
-        if st.form_submit_button("Save Settings"):
-            # Compile settings
-            settings = {
-                "notifications": notifications,
+
+        # Display the generated cron expression for user confirmation
+        if schedule_frequency and selected_schedule_days and schedule_time_obj:
+            display_cron = generate_cron_expression(schedule_frequency, selected_schedule_days, schedule_time_obj)
+            if display_cron:
+                st.write(f"**Equivalent Cron Schedule:** `{display_cron}`")
+            else:
+                st.warning("Could not generate a preview for the selected schedule.")
+
+        # --- Save Button --- 
+        submitted = st.form_submit_button("💾 Save All Settings & Update Schedule")
+        if submitted:
+            # 1. Compile all settings
+            settings_to_save = {
+                "user_id": user_id,
+                "notifications": {
+                    "sms_enabled": sms_enabled,
+                    "sms_number": sms_number,
+                    "telegram_enabled": telegram_enabled,
+                    "telegram_username": telegram_username,
+                },
                 "relevance_threshold": relevance_threshold,
                 "deadline_threshold": deadline_threshold,
                 "schedule_frequency": schedule_frequency,
-                "schedule_days": schedule_days,
-                "schedule_time": schedule_time.strftime("%H:%M"),
-                "updated_at": datetime.now()
+                "schedule_days": selected_schedule_days,
+                "schedule_time": schedule_time_obj.strftime("%H:%M"), # Store time as string
             }
-            
-            # Save to database
-            success = mongo_client.save_user_settings(settings)
-            
-            if success:
-                st.success("Settings saved successfully!")
+
+            # 2. Save settings to MongoDB
+            mongo_save_success = mongo_client.save_user_settings(settings_to_save, user_id)
+
+            if mongo_save_success:
+                st.success("Settings saved to database successfully!")
+                # Clear cache if needed
+                st.cache_data.clear()
+
+                # 3. Attempt to update Heroku schedule
+                # Prepare settings specifically for Heroku function (needs time object)
+                heroku_schedule_settings = {
+                    "schedule_frequency": schedule_frequency,
+                    "schedule_days": selected_schedule_days,
+                    "schedule_time": schedule_time_obj # Pass the time object
+                }
+                # IMPORTANT: Verify this command matches your Heroku Scheduler job
+                heroku_command = "python run_scrapers.py"
+                logger.info(f"Calling update_heroku_schedule with settings: {heroku_schedule_settings} for command: {heroku_command}")
+                heroku_update_success = update_heroku_schedule(heroku_schedule_settings, scheduler_command=heroku_command)
+
+                if heroku_update_success:
+                    st.success("Heroku schedule update simulated successfully! (Check logs for details)")
+                else:
+                    # Error messages are now handled within update_heroku_schedule
+                    st.error("Failed to update Heroku schedule. Check application logs and Heroku configuration.")
             else:
-                st.error("Failed to save settings. Please try again.")
+                st.error("Failed to save settings to database. Please try again.")
 
 def main():
     """Main application entry point."""
     # Sidebar navigation
     with st.sidebar:
-        st.image("logo.png", width=200)  # Add a logo image if available
+        logo_path = "assets/logo.png"
+        if Path(logo_path).exists():
+            st.image(logo_path, width=200)  # Add a logo image if available
         
         st.title("Navigation")
         

@@ -12,19 +12,58 @@ from database.mongodb_client import MongoDBClient
 from database.pinecone_client import PineconeClient
 
 class GrantScraper:
-    def __init__(self):
+    def __init__(self, use_mock: bool = True):
         """Initialize grant scraper with necessary clients."""
-        self.perplexity = PerplexityClient()
-        self.mongodb = MongoDBClient()
-        self.pinecone = PineconeClient()
-        
-        # API keys for various grant sources
-        self.grants_gov_key = os.getenv("GRANTS_GOV_API_KEY")
-        self.usda_key = os.getenv("USDA_API_KEY")
-        self.ntia_key = os.getenv("NTIA_API_KEY")
-        self.fcc_key = os.getenv("FCC_API_KEY")
-        
-        self.session = None
+        self.use_mock = use_mock
+        if not use_mock:
+            self.perplexity = PerplexityClient()
+            self.mongodb = MongoDBClient()
+            self.pinecone = PineconeClient()
+            
+            # API keys for various grant sources
+            self.grants_gov_key = os.getenv("GRANTS_GOV_API_KEY")
+            self.usda_key = os.getenv("USDA_API_KEY")
+            self.ntia_key = os.getenv("NTIA_API_KEY")
+            self.fcc_key = os.getenv("FCC_API_KEY")
+            
+            self.session = None
+        else:
+            self._setup_mock_data()
+    
+    def _setup_mock_data(self):
+        """Set up mock data for development."""
+        self.mock_grants = [
+            {
+                "title": "Rural Broadband Infrastructure Grant",
+                "description": "Funding for rural broadband deployment in underserved areas",
+                "url": "https://example.com/grants/1",
+                "source": "grants.gov",
+                "deadline": datetime.now() + timedelta(days=30),
+                "amount": 500000,
+                "category": "telecom",
+                "agency": "FCC"
+            },
+            {
+                "title": "Digital Literacy Program Grant",
+                "description": "Support for nonprofit organizations providing digital literacy training",
+                "url": "https://example.com/grants/2",
+                "source": "usda.gov",
+                "deadline": datetime.now() + timedelta(days=45),
+                "amount": 250000,
+                "category": "nonprofit",
+                "agency": "USDA"
+            },
+            {
+                "title": "Community Internet Access Initiative",
+                "description": "Funding for community-based internet access points",
+                "url": "https://example.com/grants/3",
+                "source": "ntia.gov",
+                "deadline": datetime.now() + timedelta(days=60),
+                "amount": 750000,
+                "category": "telecom",
+                "agency": "NTIA"
+            }
+        ]
     
     async def __aenter__(self):
         """Async context manager entry."""
@@ -37,44 +76,60 @@ class GrantScraper:
             await self.session.close()
     
     async def scrape_all_sources(self, query: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
-        """Scrape grants from all configured sources.
-        
-        Args:
-            query (str): Search query
-            filters (Optional[Dict]): Search filters
+        """Scrape grants from all configured sources."""
+        if self.use_mock:
+            filtered_grants = self.mock_grants.copy()
             
-        Returns:
-            Dict[str, Any]: Combined results from all sources
-        """
-        tasks = [
-            self.scrape_grants_gov(query, filters),
-            self.scrape_usda_grants(query, filters),
-            self.scrape_ntia_grants(query, filters),
-            self.scrape_fcc_grants(query, filters),
-            self.search_perplexity(query, filters)
-        ]
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Combine and deduplicate results
-        combined_grants = []
-        seen_urls = set()
-        
-        for source_results in results:
-            if isinstance(source_results, Exception):
-                logging.error(f"Error scraping source: {str(source_results)}")
-                continue
-                
-            for grant in source_results.get("grants", []):
-                if grant["url"] not in seen_urls:
-                    seen_urls.add(grant["url"])
-                    combined_grants.append(grant)
-        
-        return {
-            "grants": combined_grants,
-            "total_found": len(combined_grants),
-            "source_breakdown": self._calculate_source_breakdown(combined_grants)
-        }
+            # Apply text search if provided
+            if query:
+                filtered_grants = [
+                    g for g in filtered_grants 
+                    if query.lower() in g["title"].lower() 
+                    or query.lower() in g["description"].lower()
+                ]
+            
+            # Apply category filter if provided
+            if filters and "category" in filters and filters["category"] != "All":
+                filtered_grants = [
+                    g for g in filtered_grants 
+                    if g["category"] == filters["category"]
+                ]
+            
+            return {
+                "grants": filtered_grants,
+                "total_found": len(filtered_grants),
+                "source_breakdown": self._calculate_source_breakdown(filtered_grants)
+            }
+        else:
+            tasks = [
+                self.scrape_grants_gov(query, filters),
+                self.scrape_usda_grants(query, filters),
+                self.scrape_ntia_grants(query, filters),
+                self.scrape_fcc_grants(query, filters),
+                self.search_perplexity(query, filters)
+            ]
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Combine and deduplicate results
+            combined_grants = []
+            seen_urls = set()
+            
+            for source_results in results:
+                if isinstance(source_results, Exception):
+                    logging.error(f"Error scraping source: {str(source_results)}")
+                    continue
+                    
+                for grant in source_results.get("grants", []):
+                    if grant["url"] not in seen_urls:
+                        seen_urls.add(grant["url"])
+                        combined_grants.append(grant)
+            
+            return {
+                "grants": combined_grants,
+                "total_found": len(combined_grants),
+                "source_breakdown": self._calculate_source_breakdown(combined_grants)
+            }
     
     async def scrape_grants_gov(self, query: str, filters: Optional[Dict] = None) -> Dict[str, Any]:
         """Scrape grants from Grants.gov API.

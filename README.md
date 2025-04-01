@@ -1,116 +1,138 @@
 # Kevin's Smart Grant Finder
 
-A specialized grant search system that automatically finds and tracks relevant grants for telecommunications and women-owned nonprofits, with a focus on the LA-08 region.
+This project implements an automated system to find, rank, and manage grant opportunities relevant to specific domains (initially Telecommunications and Women-Owned Nonprofits), tailored for Kevin Carter.
 
 ## Features
 
-- 🔍 Automated grant searching twice weekly (Monday and Thursday)
-- 📊 Smart relevance scoring using Pinecone vector similarity
-- 🔔 Notifications via SMS and Telegram
-- 📱 Modern Streamlit dashboard interface
-- 🤖 Direct scraping of government grant sources
-- 💾 Persistent storage with MongoDB Atlas
+*   **Automated Grant Scraping:** Periodically searches various sources for new grant opportunities. (Currently focuses on Louisiana grants).
+*   **Relevance Ranking:** Uses Pinecone vector embeddings to score grants based on user-defined priorities.
+*   **MongoDB Storage:** Stores grant details, user settings, priorities, and alert history.
+*   **Streamlit Dashboard:** Provides an interactive interface to view grants, manage settings, and potentially trigger searches.
+*   **Automated Alerts:** Sends notifications (SMS/Telegram) for new, high-priority grants meeting user criteria (prevents duplicate alerts within a set period).
+*   **Configurable Settings:** Allows users to define relevance thresholds, deadline filters, notification preferences, and search schedules via the dashboard.
+*   **Heroku Integration (Partially Simulated):** Designed for deployment on Heroku, with scheduled job execution managed via Heroku Scheduler (or Cron To Go). *Note: The automatic updating of the Heroku schedule based on user settings is currently simulated.*
+*   **Mock Mode:** Supports running in mock mode for development and testing without live API calls or database connections.
+
+## Tech Stack
+
+*   **Backend:** Python
+*   **Frontend:** Streamlit
+*   **Database:** MongoDB Atlas
+*   **Vector Database:** Pinecone
+*   **Notifications:** Twilio (SMS), python-telegram-bot (Telegram)
+*   **Scheduling:** Heroku Scheduler / Cron To Go (Recommended)
+*   **Deployment:** Heroku
+*   **Libraries:** `pymongo`, `pinecone-client`, `streamlit`, `python-dotenv`, `requests`, `beautifulsoup4`, `twilio`, `python-telegram-bot`, `heroku3` (for schedule management), `asyncio`
 
 ## Setup Instructions
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/yourusername/kevin-smart-grant-finder.git
-   cd kevin-smart-grant-finder
-   ```
+1.  **Clone the Repository:**
+    ```bash
+    git clone <repository-url>
+    cd kevin-smart-grant-finder
+    ```
 
-2. **Create Virtual Environment**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+2.  **Create a Virtual Environment:**
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # Linux/macOS
+    # or
+    venv\\Scripts\\activate  # Windows
+    ```
 
-3. **Install Dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+3.  **Install Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-4. **Configure Environment Variables**
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` and add your API keys and configuration:
-   - Perplexity API key
-   - Pinecone API key and environment
-   - OpenAI API key
-   - MongoDB connection string
-   - Twilio credentials (optional)
-   - Telegram bot token (optional)
+4.  **Configure Environment Variables:**
+    *   Create a file named `.env` in the project root directory.
+    *   Copy the contents of `.env.example` (if provided) or add the following variables, replacing placeholder values with your actual API keys and configuration:
 
-5. **Initialize MongoDB Collections**
-   The system will automatically create these collections on first run:
-   - `grants`: Stores grant information
-   - `priorities`: Stores search priorities
-   - `search_history`: Tracks search operations
-   - `saved_grants`: User-saved grants
+    ```dotenv
+    # --- API Keys ---
+    # Pinecone
+    PINECONE_API_KEY="YOUR_PINECONE_API_KEY_HERE"
+    PINECONE_ENVIRONMENT="YOUR_PINECONE_ENVIRONMENT_HERE" # e.g., us-west1-gcp
 
-6. **Run the Application**
-   ```bash
-   streamlit run app.py
-   ```
+    # MongoDB
+    MONGODB_URI="YOUR_MONGODB_CONNECTION_STRING_HERE" # e.g., mongodb+srv://...
 
-## Project Structure
+    # OpenAI (for Pinecone embeddings)
+    OPENAI_API_KEY="YOUR_OPENAI_API_KEY_HERE"
 
-```
-kevin-smart-grant-finder/
-├── app.py                  # Main Streamlit application
-├── requirements.txt        # Python dependencies
-├── .env                   # Environment variables
-├── agents/                # Agent implementations
-├── database/             # Database connectors
-│   ├── mongodb_client.py
-│   └── pinecone_client.py
-├── scrapers/             # Web scrapers
-│   └── grant_scraper.py
-├── utils/                # Utility functions
-│   ├── notification_manager.py
-│   └── scheduler.py
-└── tests/               # Test suite
-```
+    # Twilio (for SMS alerts)
+    TWILIO_ACCOUNT_SID="YOUR_TWILIO_ACCOUNT_SID_HERE"
+    TWILIO_AUTH_TOKEN="YOUR_TWILIO_AUTH_TOKEN_HERE"
+    TWILIO_PHONE_NUMBER="YOUR_TWILIO_PHONE_NUMBER_HERE" # Must be Twilio number
+    NOTIFY_PHONE_NUMBER="RECIPIENT_PHONE_NUMBER_HERE" # e.g., Kevin's phone number
 
-## Usage
+    # Telegram (for Telegram alerts)
+    TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN_HERE"
+    TELEGRAM_CHAT_ID="YOUR_TELEGRAM_CHAT_ID_HERE" # Can be user ID or group ID
 
-1. **Dashboard**
-   - View high-priority grants
-   - Track approaching deadlines
-   - Monitor total available funding
+    # Heroku (for simulated schedule updates)
+    HEROKU_API_KEY="YOUR_HEROKU_API_KEY_HERE"
+    HEROKU_APP_NAME="YOUR_HEROKU_APP_NAME_HERE" # Your Heroku app name
 
-2. **Search Grants**
-   - Filter by category (Telecommunications/Women-Owned Nonprofit)
-   - Set funding type and eligibility criteria
-   - Save interesting grants
+    # --- Database Config ---
+    MONGODB_DATABASE="grant_finder" # Or your preferred DB name
+    PINECONE_INDEX_NAME="grant-finder-index" # Or your preferred index name
 
-3. **Analytics**
-   - View grant distribution by category
-   - Track funding trends
-   - Monitor search performance
+    # --- Application Config ---
+    # Set to "true" to use mock data and disable external API calls
+    MOCK_MODE="False"
+    # Set to "true" to run the scheduled job script with mock data
+    SCHEDULED_JOB_MOCK_MODE="False"
 
-4. **Settings**
-   - Configure notification preferences
-   - Set search schedule
-   - Adjust relevance thresholds
+    # --- Logging ---
+    LOG_LEVEL="INFO" # e.g., DEBUG, INFO, WARNING, ERROR
+    ```
 
-## Automated Searches
+## Running the Application
 
-The system performs automated searches twice weekly:
-- Every Monday and Thursday at 10:00 AM (configurable)
-- Searches government sources directly (Grants.gov, USDA, etc.)
-- Calculates relevance scores using Pinecone
-- Sends notifications for high-priority matches
+1.  **Start the Streamlit Dashboard:**
+    ```bash
+    streamlit run app.py
+    ```
+    Access the dashboard in your browser (usually at `http://localhost:8501`).
 
-## Contributing
+2.  **Run the Scheduled Grant Search Manually:**
+    To test the grant scraping, processing, and alerting job:
+    ```bash
+    python utils/run_grant_search.py
+    ```
+    *Note: Ensure `SCHEDULED_JOB_MOCK_MODE` is set appropriately in `.env`.*
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+## Deployment & Scheduling (Heroku)
 
-## License
+1.  **Deploy:** Deploy the application to Heroku using standard methods (e.g., Git push, Heroku CLI).
+2.  **Configure Add-ons:**
+    *   Add a MongoDB add-on (like MongoDB Atlas) or configure `MONGODB_URI` in Heroku config vars.
+    *   Add a scheduler add-on like **Cron To Go** (Recommended) or **Heroku Scheduler**.
+3.  **Schedule the Job:**
+    Configure the scheduler add-on to run the grant search script periodically. Using Cron To Go:
+    ```bash
+    # Example: Run Mon & Thu at 10:00 AM America/New_York time
+    heroku cron:jobs:create \
+      --command "python utils/run_grant_search.py" \
+      --schedule "0 14 * * 1,4" \
+      --timezone "America/New_York" \
+      --app YOUR_HEROKU_APP_NAME_HERE
+    ```
+    *(Adjust the schedule and command as needed)*
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+## Known Limitations
+
+*   **Simulated Heroku Schedule Updates:** The feature allowing users to change the search schedule via the Streamlit settings page currently *simulates* the update to Heroku. It logs the intended action but does not make the actual API call to modify the Heroku Scheduler job. Implementing the real API call requires handling the Heroku Platform API directly (e.g., using `requests`).
+*   **Basic Duplicate Alert Prevention:** The system prevents sending alerts for the exact same grant within a 7-day window. More sophisticated logic might be needed depending on how grants are updated or re-listed.
+*   **Scraper Scope:** The current implementation primarily focuses on the Louisiana grant scraper. Expanding to other sources configured via AgentQL or Perplexity requires further development in `run_grant_search.py` or dedicated agent scripts.
+
+## Future Enhancements
+
+*   Implement real Heroku API calls for dynamic schedule updates.
+*   Refine duplicate alert logic.
+*   Expand scraper coverage and integrate AgentQL/Perplexity searches into the scheduled job.
+*   Add user authentication for multi-user support.
+*   Develop more sophisticated analytics and reporting.
+*   Add comprehensive unit and integration tests. 

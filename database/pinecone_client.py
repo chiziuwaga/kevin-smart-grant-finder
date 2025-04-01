@@ -3,14 +3,16 @@ import logging
 import time
 from dotenv import load_dotenv
 import openai
-import pinecone
+from pinecone import Pinecone, ServerlessSpec
 import numpy as np
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class PineconeClient:
     def __init__(self, use_mock=True):
         """Initialize Pinecone client for vector storage and similarity search."""
+        self.use_mock = use_mock
+        
         if use_mock:
             self._setup_mock_vectors()
             logging.info("Using mock Pinecone for development")
@@ -31,8 +33,7 @@ class PineconeClient:
             
             self.openai_client = openai.OpenAI(api_key=openai_api_key)
             
-            # Initialize Pinecone with new API format
-            from pinecone import Pinecone, ServerlessSpec
+            # Initialize Pinecone
             self.pc = Pinecone(api_key=pinecone_api_key)
             
             # Check if index exists, create if it doesn't
@@ -44,7 +45,8 @@ class PineconeClient:
             logging.info(f"Connected to Pinecone index: {self.index_name}")
         except Exception as e:
             logging.error(f"Failed to initialize Pinecone: {str(e)}")
-            raise
+            self._setup_mock_vectors()
+            logging.info("Falling back to mock Pinecone data")
     
     def _setup_mock_vectors(self):
         """Set up mock vector data for development."""
@@ -55,7 +57,11 @@ class PineconeClient:
                     "metadata": {
                         "category": "telecom",
                         "description": "Rural broadband deployment",
-                        "weight": 1.0
+                        "weight": 1.0,
+                        "title": "Rural Telecommunications Infrastructure Grant",
+                        "amount": 500000,
+                        "deadline": datetime.utcnow() + timedelta(days=30),
+                        "source_url": "https://example.com/grant1"
                     },
                     "score": 0.92
                 },
@@ -64,7 +70,11 @@ class PineconeClient:
                     "metadata": {
                         "category": "nonprofit",
                         "description": "Women-owned business support",
-                        "weight": 1.0
+                        "weight": 1.0,
+                        "title": "Nonprofit Digital Transformation Grant",
+                        "amount": 250000,
+                        "deadline": datetime.utcnow() + timedelta(days=15),
+                        "source_url": "https://example.com/grant2"
                     },
                     "score": 0.88
                 }
@@ -74,7 +84,6 @@ class PineconeClient:
     def _create_index(self):
         """Create Pinecone index if it doesn't exist."""
         try:
-            from pinecone import ServerlessSpec
             self.pc.create_index(
                 name=self.index_name,
                 dimension=1536,  # Dimension for OpenAI text-embedding-3-small model
@@ -261,3 +270,23 @@ class PineconeClient:
         except Exception as e:
             logging.error(f"Error deleting grant: {str(e)}")
             return False
+
+    def query(self, vector=None, top_k=5, include_metadata=True, filter=None):
+        """Mock query implementation for development."""
+        if hasattr(self, 'mock_vectors'):
+            # Return mock results
+            results = []
+            for v in self.mock_vectors["vectors"]:
+                if filter:
+                    # Apply filters if provided
+                    if "category" in filter and v["metadata"]["category"] != filter["category"]:
+                        continue
+                results.append({
+                    "id": v["id"],
+                    "score": v["score"],
+                    "metadata": v["metadata"] if include_metadata else None
+                })
+            # Sort by score and limit to top_k
+            results.sort(key=lambda x: x["score"], reverse=True)
+            return results[:top_k]
+        return []
