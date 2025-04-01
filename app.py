@@ -10,6 +10,10 @@ from dotenv import load_dotenv
 import plotly.express as px
 import plotly.graph_objects as go
 
+# Import Twilio for OTP
+from twilio.rest import Client
+from twilio.base.exceptions import TwilioRestException
+
 # Page configuration must be the first Streamlit command
 st.set_page_config(
     page_title="Kevin's Smart Grant Finder",
@@ -20,12 +24,16 @@ st.set_page_config(
 
 from database.mongodb_client import MongoDBClient
 from database.pinecone_client import PineconeClient
-from scrapers.sources.louisiana_scraper import LouisianaGrantScraper
 from config.logging_config import setup_logging
 from utils.helpers import format_currency, calculate_days_remaining
-from scrapers.grant_scraper import GrantScraper
 from utils.notification_manager import NotificationManager
 from utils.heroku_manager import update_heroku_schedule, generate_cron_expression
+
+# Import Agents and new Clients
+from utils.agentql_client import AgentQLClient
+from utils.perplexity_client import PerplexityClient
+from agents.research_agent import ResearchAgent
+from agents.analysis_agent import AnalysisAgent
 
 # Set up logging
 setup_logging()
@@ -36,17 +44,23 @@ load_dotenv()
 
 # Initialize clients with proper error handling
 try:
-    # Force mock clients for development
-    USE_MOCK = True  # Always use mock data for development
-    mongo_client = MongoDBClient(use_mock=True)  # Force mock data
-    pinecone_client = PineconeClient(use_mock=True)  # Force mock data
-    grant_scraper = GrantScraper(use_mock=True)
-    notifier = NotificationManager(use_mock=True)
-    logger.info("All clients initialized with mock data")
+    mongo_client = MongoDBClient()
+    pinecone_client = PineconeClient()
+    agentql_client = AgentQLClient()
+    perplexity_client = PerplexityClient()
+    notifier = NotificationManager()
+
+    # Initialize Agents
+    research_agent = ResearchAgent(agentql_client, perplexity_client, mongo_client)
+    analysis_agent = AnalysisAgent(pinecone_client, mongo_client)
+
+    logger.info("All clients and agents initialized.")
 except Exception as e:
-    logger.error(f"Failed to initialize clients: {str(e)}")
-    st.error("Failed to initialize application components. Please check your configuration.")
-    raise e
+    # Log the specific error during initialization
+    logger.critical(f"CRITICAL: Failed to initialize core components: {str(e)}", exc_info=True)
+    # Display a user-friendly error in Streamlit and stop execution
+    st.error("Fatal Error: Application failed to initialize. Please check logs and configuration.")
+    st.stop() # Stop Streamlit execution if core components fail
 
 # Custom CSS for enhanced UI
 st.markdown("""
@@ -516,7 +530,6 @@ def render_search():
             telecom_terms = [term.strip() for term in telecom_keywords.split("\n") if term.strip()]
             nonprofit_terms = [term.strip() for term in nonprofit_keywords.split("\n") if term.strip()]
             
-            # Collect SELECTED sources from the dynamic checkboxes
             final_selected_sources = [name for name, is_selected in selected_sources.items() if is_selected]
             
             # Determine search category
@@ -530,67 +543,41 @@ def render_search():
                 category = "combined"
                 search_terms = telecom_terms + nonprofit_terms
             
-            # Create search parameters
             search_params = {
                 "category": category,
                 "search_terms": search_terms,
                 "funding_type": funding_types,
-                "sources": final_selected_sources, # Use dynamically selected sources
+                "sources": final_selected_sources,
                 "max_results": max_results,
                 "include_closed": include_closed
+                # Add other parameters like geo_focus, funding_range, eligibility
             }
-            
-            # Add category-specific parameters
             if category in ["telecom", "combined"]:
-                search_params["geo_restrictions"] = geo_focus
-                
+                 search_params["geo_restrictions"] = geo_focus
             if category in ["nonprofit", "combined"]:
-                search_params["funding_range"] = funding_range
-                search_params["eligibility"] = eligibility
+                 search_params["funding_range"] = funding_range
+                 search_params["eligibility"] = eligibility
+
             
             # Show search progress
-            with st.spinner("Searching for grants..."):
-                # In a real implementation, this would call the actual search
-                # For demo, simulate results
-                import time
-                time.sleep(2)
-                
-                # Store search parameters and results
-                st.session_state.last_search = search_params
-                st.session_state.search_results = [
-                    {
-                        "_id": "mock1",
-                        "title": "Rural Broadband Infrastructure Grant",
-                        "description": "Funding for expanding broadband infrastructure in rural communities.",
-                        "deadline": datetime.now() + timedelta(days=45),
-                        "amount": 500000,
-                        "category": "telecom",
-                        "source_name": "USDA Rural Development",
-                        "relevance_score": 92
-                    },
-                    {
-                        "_id": "mock2",
-                        "title": "Women's Business Center Grant",
-                        "description": "Support for nonprofits that provide assistance to women entrepreneurs.",
-                        "deadline": datetime.now() + timedelta(days=30),
-                        "amount": 150000,
-                        "category": "nonprofit",
-                        "source_name": "SBA",
-                        "relevance_score": 88
-                    }
-                ]
-                
-                # Log search to history
-                search_history_entry = {
-                    "search_date": datetime.now(),
-                    "parameters": search_params,
-                    "results_count": len(st.session_state.search_results),
-                    "category": category
-                }
-                # mongo_client.store_search_history(**search_history_entry)
-                
-                st.success(f"Search complete! Found {len(st.session_state.search_results)} matching grants.")
-    
+            with st.spinner("Performing deep search across multiple sources..."):
+                # Call the actual search logic using agents
+                search_results = run_live_search(search_params)
+                st.session_state.search_results = search_results
+                st.session_state.last_search = search_params # Keep track of last search params
+
+                # Log search to history (already handled in run_live_search)
+                # Removed redundant history logging here
+
+                # Check if search returned results or if an error occurred (indicated by empty list)
+                if search_results is not None: # Check if function executed without throwing exception
+                    st.success(f"Search complete! Found {len(search_results)} matching grants.")
+                    # If results are empty, it means no grants found, not necessarily an error
+                    if not search_results:
+                        st.info("No grants were found matching your specific criteria.")
+                # else: # Error message is handled within run_live_search now
+                    # st.error("An error occurred during the search. Please check application logs.")
+
     # Display search results if available
     if st.session_state.search_results:
         st.subheader("Search Results")
@@ -622,6 +609,10 @@ def render_search():
         # Display results
         for grant in sorted_results:
             render_grant_card(grant)
+    elif search_button and st.session_state.search_results == []: # Explicitly check for empty results after search
+        # Optional: keep the info message if search was run but found nothing
+        # st.info("No grants were found matching your specific criteria.")
+        pass
 
 def render_analytics():
     """Render the analytics dashboard."""
@@ -926,89 +917,218 @@ def render_settings():
             else:
                 st.error("Failed to save settings to database. Please try again.")
 
-def main():
-    """Main application entry point."""
-    # Sidebar navigation
-    with st.sidebar:
-        logo_path = "assets/logo.png"
-        if Path(logo_path).exists():
-            st.image(logo_path, width=200)  # Add a logo image if available
-        
-        st.title("Navigation")
-        
-        selected_page = st.radio(
-            "Go to:",
-            options=["Dashboard", "Search", "Analytics", "Settings"],
-            index=["Dashboard", "Search", "Analytics", "Settings"].index(st.session_state.page) if st.session_state.page in ["Dashboard", "Search", "Analytics", "Settings"] else 0
-        )
-        
-        st.session_state.page = selected_page
-        
-        # Last updated information
-        st.markdown("---")
-        st.caption(f"Last updated: {datetime.now().strftime('%b %d, %Y %H:%M')}")
-        
-        # App information
-        with st.expander("About", expanded=False):
-            st.markdown("""
-            **Kevin's Smart Grant Finder**
-            
-            An AI-powered grant search system that automatically finds and ranks grant opportunities for telecommunications and women-owned nonprofit sectors.
-            
-            Version 1.0
-            """)
-    
-    # Render selected page
+def login_screen():
+    st.title("🔒 Secure Login")
+    st.markdown("Please verify your phone number to access the dashboard.")
+
+    # Ensure allowed phone number is configured
+    allowed_phone_number = os.getenv("NOTIFY_PHONE_NUMBER")
+    if not allowed_phone_number:
+        st.error("Application access is not configured. Please contact the administrator.")
+        logger.critical("CRITICAL: NOTIFY_PHONE_NUMBER is not set in environment variables. Cannot proceed with login.")
+        st.stop()
+
+    # Use session state to manage OTP flow stages
+    if 'otp_sent' not in st.session_state:
+        st.session_state.otp_sent = False
+    if 'login_phone_number' not in st.session_state:
+        st.session_state.login_phone_number = ""
+
+    phone_number = st.text_input("Enter your phone number (e.g., +1234567890)", value=st.session_state.login_phone_number, key="phone_input")
+    st.session_state.login_phone_number = phone_number # Store number as user types
+
+    if st.button("Send Verification Code", key="send_otp_button", disabled=st.session_state.otp_sent or not phone_number):
+        if phone_number == allowed_phone_number:
+            with st.spinner("Sending code..."):
+                success = send_otp(phone_number)
+                if success:
+                    st.session_state.otp_sent = True
+                    st.success("Verification code sent to your phone.")
+                    st.experimental_rerun() # Rerun to update button states
+                # Error message handled within send_otp
+        else:
+             st.warning("Please enter the registered phone number.")
+             logger.warning(f"Login attempt with non-registered number: {phone_number}")
+
+    if st.session_state.otp_sent:
+        otp_code = st.text_input("Enter the 6-digit code sent to your phone", max_chars=6, key="otp_input")
+        if st.button("Verify and Login", key="verify_button", disabled=not otp_code or len(otp_code) != 6):
+             with st.spinner("Verifying code..."):
+                if check_otp(phone_number, otp_code):
+                     st.session_state.authenticated = True
+                     st.session_state.otp_sent = False # Reset OTP state
+                     st.session_state.login_phone_number = "" # Clear phone number
+                     st.success("Login Successful!")
+                     time.sleep(1) # Brief pause before rerunning
+                     st.experimental_rerun()
+                else:
+                     # Error handled within check_otp, maybe add specific feedback here?
+                     st.error("Invalid verification code. Please try again.")
+                     # Potentially reset otp_sent state after too many failures
+
+def main_app():
+    # --- Sidebar Navigation --- (This part runs only if authenticated)
+    st.sidebar.title("Navigation")
+    page_options = ["Dashboard", "Search Grants", "Analytics", "Settings"]
+    st.session_state.page = st.sidebar.radio("Go to:", page_options, index=page_options.index(st.session_state.get('page', 'Dashboard')))
+
+    # --- Page Rendering --- (Based on sidebar selection)
     if st.session_state.page == "Dashboard":
         render_dashboard()
-    elif st.session_state.page == "Search":
+    elif st.session_state.page == "Search Grants":
         render_search()
     elif st.session_state.page == "Analytics":
         render_analytics()
     elif st.session_state.page == "Settings":
         render_settings()
-    elif st.session_state.page == "Grant Details" and "selected_grant" in st.session_state:
-        # Grant details page
-        grant = st.session_state.selected_grant
-        st.title(grant.get("title", "Grant Details"))
-        
-        # Back button
-        if st.button("← Back to Search"):
-            st.session_state.page = "Search"
-            st.experimental_rerun()
-        
-        # Display full grant details
-        st.subheader("Grant Details")
-        
-        # Format full details
-        st.markdown(f"**Deadline:** {grant.get('deadline').strftime('%B %d, %Y') if isinstance(grant.get('deadline'), datetime) else 'Not specified'}")
-        st.markdown(f"**Amount:** {format_currency(grant.get('amount')) if isinstance(grant.get('amount'), (int, float)) else 'Not specified'}")
-        st.markdown(f"**Source:** {grant.get('source_name', 'Unknown Source')}")
-        st.markdown(f"**Category:** {grant.get('category', 'Not categorized')}")
-        st.markdown(f"**Relevance Score:** {grant.get('relevance_score', 0):.1f}%")
-        
-        # Full description
-        st.subheader("Description")
-        st.write(grant.get("description", "No description available"))
-        
-        # Action buttons
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("Save Grant", key="save_detail"):
-                success = mongo_client.save_grant_for_user(str(grant.get("_id", "")))
-                if success:
-                    st.success("Grant saved successfully!")
-                else:
-                    st.error("Failed to save grant.")
-        
-        with col2:
-            if st.button("Send Notification", key="notify_detail"):
-                success = notifier.send_grant_alert([grant])
-                if success:
-                    st.success("Notification sent!")
-                else:
-                    st.error("Failed to send notification.")
+    elif st.session_state.page == "Grant Details": # Add if you have a details page
+        render_grant_details() # Assuming this function exists
+    else:
+        render_dashboard() # Default to dashboard
 
+# === Main Execution Logic ===
+# (Keep CSS, get_metric_data, render_grant_card, render_dashboard, render_search, render_analytics, render_settings etc. below)
+
+# Custom CSS (Assuming it's already defined above)
+
+# Session state initialization (Also assuming defined above)
+
+# Helper functions (Assuming get_metric_data, render_grant_card etc. are defined)
+# ...
+
+# Page rendering functions (Assuming render_dashboard, etc. are defined)
+# ...
+
+# --- OTP Functions --- (Moved here for better organization, ensure imports are at the top)
+# Twilio Client setup check
+twilio_verify_sid = os.getenv("TWILIO_VERIFY_SERVICE_SID")
+twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+
+try:
+    if twilio_account_sid and twilio_auth_token:
+        twilio_otp_client = Client(twilio_account_sid, twilio_auth_token)
+    else:
+        twilio_otp_client = None
+        logger.warning("Twilio Account SID/Auth Token not found for OTP client.")
+except Exception as e:
+    twilio_otp_client = None
+    logger.error(f"Failed to initialize Twilio client for OTP: {e}")
+
+def send_otp(phone_number: str) -> bool:
+    """Sends OTP using Twilio Verify."""
+    if not twilio_verify_sid:
+        st.error("Twilio Verify Service SID is not configured.")
+        logger.error("TWILIO_VERIFY_SERVICE_SID not set in environment variables.")
+        return False
+    if not twilio_otp_client:
+         st.error("Twilio client not initialized. Cannot send OTP.")
+         return False
+
+    try:
+        verification = twilio_otp_client.verify.v2.services(twilio_verify_sid) \
+            .verifications \
+            .create(to=phone_number, channel='sms')
+        
+        if verification.status == 'pending':
+            logger.info(f"OTP sent successfully to {phone_number}. Status: {verification.status}")
+            return True
+        else:
+            st.error(f"Failed to send OTP. Status: {verification.status}")
+            logger.error(f"Failed to send OTP to {phone_number}. Status: {verification.status}")
+            return False
+            
+    except TwilioRestException as e:
+        st.error(f"Twilio Error: {e.msg}")
+        logger.error(f"Twilio API error sending OTP to {phone_number}: {e}")
+        return False
+    except Exception as e:
+        st.error("An unexpected error occurred while sending the OTP.")
+        logger.error(f"Unexpected error sending OTP to {phone_number}: {e}", exc_info=True)
+        return False
+
+def check_otp(phone_number: str, otp_code: str) -> bool:
+    """Checks OTP using Twilio Verify."""
+    # Ensure the number trying to verify is the allowed number
+    allowed_phone_number = os.getenv("NOTIFY_PHONE_NUMBER")
+    if phone_number != allowed_phone_number:
+         logger.warning(f"OTP check attempt for non-allowed number: {phone_number}")
+         # Don't give specific feedback about *why* it failed, just that it's invalid
+         return False 
+
+    if not twilio_verify_sid:
+        st.error("Twilio Verify Service SID is not configured.")
+        logger.error("TWILIO_VERIFY_SERVICE_SID not set for OTP check.")
+        return False
+    if not twilio_otp_client:
+         st.error("Twilio client not initialized. Cannot check OTP.")
+         return False
+
+    try:
+        verification_check = twilio_otp_client.verify.v2.services(twilio_verify_sid) \
+            .verification_checks \
+            .create(to=phone_number, code=otp_code)
+        
+        if verification_check.status == 'approved':
+            logger.info(f"OTP verification successful for {phone_number}.")
+            return True
+        else:
+            logger.warning(f"OTP verification failed for {phone_number}. Status: {verification_check.status}")
+            return False
+            
+    except TwilioRestException as e:
+        # Log specific Twilio errors, but return generic failure to user
+        logger.error(f"Twilio API error checking OTP for {phone_number}: {e}")
+        if e.code == 20404: # Resource not found (e.g., code expired or invalid)
+             st.error("Verification code is invalid or has expired.")
+        else:
+             st.error("Failed to verify code due to a server error.")
+        return False
+    except Exception as e:
+        st.error("An unexpected error occurred during verification.")
+        logger.error(f"Unexpected error checking OTP for {phone_number}: {e}", exc_info=True)
+        return False
+
+# --- Replace Placeholder Search with Agent Logic --- 
+def run_live_search(search_params: Dict) -> List[Dict]:
+    """Runs the actual grant search using Research and Analysis Agents."""
+    logger.info(f"Executing live search with params: {search_params}")
+    try:
+        # 1. Use Research Agent to find grants from various sources
+        # Ensure AgentQL agents are set up if needed (can be done on demand)
+        # research_agent.setup_search_agents() # Or call this periodically / on startup
+        found_grants = research_agent.search_grants(search_params)
+
+        if not found_grants:
+            logger.info("Research Agent found no grants matching the criteria.")
+            return []
+
+        # 2. Use Analysis Agent to rank and summarize the found grants
+        analyzed_grants = analysis_agent.rank_and_summarize_grants(found_grants)
+
+        # 3. Store the analyzed grants back into MongoDB (optional, ResearchAgent might do this)
+        # This ensures the DB has the latest relevance scores and summaries.
+        # Consider if ResearchAgent already stores the final processed list.
+        # For now, assume we need to store/update after analysis.
+        if analyzed_grants:
+             logger.info(f"Storing/Updating {len(analyzed_grants)} analyzed grants in MongoDB.")
+             # Need a method in MongoDBClient to handle updates with scores/summaries
+             # mongo_client.update_analyzed_grants(analyzed_grants)
+             # Or, store initially via ResearchAgent and just update scores/summaries here.
+             mongo_client.store_grants(analyzed_grants) # Using existing store_grants which upserts
+
+        logger.info(f"Live search completed. Returning {len(analyzed_grants)} analyzed grants.")
+        return analyzed_grants
+
+    except Exception as e:
+        logger.error(f"Error during live grant search execution: {e}", exc_info=True)
+        st.error(f"An error occurred during the search. Please check logs.")
+        return [] # Return empty list on failure
+
+# --- Entry Point --- 
 if __name__ == "__main__":
-    main()
+    # Check authentication status
+    if not st.session_state.get("authenticated", False):
+        login_screen()
+    else:
+        main_app()

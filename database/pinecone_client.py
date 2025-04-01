@@ -9,15 +9,8 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
 class PineconeClient:
-    def __init__(self, use_mock=True):
+    def __init__(self):
         """Initialize Pinecone client for vector storage and similarity search."""
-        self.use_mock = use_mock
-        
-        if use_mock:
-            self._setup_mock_vectors()
-            logging.info("Using mock Pinecone for development")
-            return
-            
         try:
             # Get API keys and config from environment variables
             pinecone_api_key = os.getenv("PINECONE_API_KEY")
@@ -45,41 +38,7 @@ class PineconeClient:
             logging.info(f"Connected to Pinecone index: {self.index_name}")
         except Exception as e:
             logging.error(f"Failed to initialize Pinecone: {str(e)}")
-            self._setup_mock_vectors()
-            logging.info("Falling back to mock Pinecone data")
-    
-    def _setup_mock_vectors(self):
-        """Set up mock vector data for development."""
-        self.mock_vectors = {
-            "vectors": [
-                {
-                    "id": "telecom_0",
-                    "metadata": {
-                        "category": "telecom",
-                        "description": "Rural broadband deployment",
-                        "weight": 1.0,
-                        "title": "Rural Telecommunications Infrastructure Grant",
-                        "amount": 500000,
-                        "deadline": datetime.utcnow() + timedelta(days=30),
-                        "source_url": "https://example.com/grant1"
-                    },
-                    "score": 0.92
-                },
-                {
-                    "id": "nonprofit_0",
-                    "metadata": {
-                        "category": "nonprofit",
-                        "description": "Women-owned business support",
-                        "weight": 1.0,
-                        "title": "Nonprofit Digital Transformation Grant",
-                        "amount": 250000,
-                        "deadline": datetime.utcnow() + timedelta(days=15),
-                        "source_url": "https://example.com/grant2"
-                    },
-                    "score": 0.88
-                }
-            ]
-        }
+            raise
     
     def _create_index(self):
         """Create Pinecone index if it doesn't exist."""
@@ -97,13 +56,7 @@ class PineconeClient:
     
     def calculate_relevance(self, grant_description, grant_title=None):
         """Calculate relevance score for a grant."""
-        if hasattr(self, 'mock_vectors'):
-            # Return mock relevance scores for development
-            import random
-            return random.uniform(0.85, 0.98)
-            
         try:
-            # Actual implementation for production
             combined_text = grant_description
             if grant_title:
                 combined_text = f"Title: {grant_title}\n\n{combined_text}"
@@ -131,15 +84,17 @@ class PineconeClient:
             
             # Normalize score to 0-1 range
             if total_weight > 0:
-                normalized_score = total_score / total_weight
+                # Convert cosine similarity (0 to 1) to relevance (0 to 100)
+                # Assuming higher cosine score means more relevant
+                normalized_score = (total_score / total_weight) * 100.0
             else:
-                normalized_score = 0
+                normalized_score = 0.0
             
-            return normalized_score
+            return round(normalized_score, 2) # Return score 0-100
             
         except Exception as e:
             logging.error(f"Error calculating relevance score: {str(e)}")
-            return 0.5  # Default fallback score
+            return 0.0  # Default fallback score 0
     
     def _generate_embedding(self, text):
         """Generate vector embedding for text using OpenAI."""
@@ -270,23 +225,3 @@ class PineconeClient:
         except Exception as e:
             logging.error(f"Error deleting grant: {str(e)}")
             return False
-
-    def query(self, vector=None, top_k=5, include_metadata=True, filter=None):
-        """Mock query implementation for development."""
-        if hasattr(self, 'mock_vectors'):
-            # Return mock results
-            results = []
-            for v in self.mock_vectors["vectors"]:
-                if filter:
-                    # Apply filters if provided
-                    if "category" in filter and v["metadata"]["category"] != filter["category"]:
-                        continue
-                results.append({
-                    "id": v["id"],
-                    "score": v["score"],
-                    "metadata": v["metadata"] if include_metadata else None
-                })
-            # Sort by score and limit to top_k
-            results.sort(key=lambda x: x["score"], reverse=True)
-            return results[:top_k]
-        return []
