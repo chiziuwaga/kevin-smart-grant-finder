@@ -1,1127 +1,428 @@
-import os
-import logging
-from datetime import datetime, timedelta, time
-from typing import Dict, List, Optional
-from pathlib import Path
-
 import streamlit as st
-import pandas as pd
-from dotenv import load_dotenv
-import plotly.express as px
-import plotly.graph_objects as go
-
-# Import Twilio for OTP
+import time
+from datetime import datetime, timedelta
+from database.mongodb_client import MongoDBClient
+from utils.helpers import display_grant_field
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
+import os
+import logging
 
-# Page configuration must be the first Streamlit command
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Page config
 st.set_page_config(
     page_title="Kevin's Smart Grant Finder",
-    page_icon="📋",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_icon="🎯",
+    layout="wide"
 )
 
-from database.mongodb_client import MongoDBClient
-from database.pinecone_client import PineconeClient
-from scrapers.sources.louisiana_scraper import LouisianaGrantScraper
-from config.logging_config import setup_logging
-from utils.helpers import format_currency, calculate_days_remaining
-from scrapers.grant_scraper import GrantScraper
-from utils.notification_manager import NotificationManager
-from utils.heroku_manager import update_heroku_schedule, generate_cron_expression
+# Initialize clients
+mongo_client = MongoDBClient()
+twilio_client = Client(
+    os.getenv('TWILIO_ACCOUNT_SID'),
+    os.getenv('TWILIO_AUTH_TOKEN')
+)
 
-# Set up logging
-setup_logging()
-logger = logging.getLogger("grant_finder")
-
-# Load environment variables
-load_dotenv()
-
-# Initialize clients with proper error handling
-try:
-    # # Force mock clients for development # Commented Out
-    # USE_MOCK = True  # Always use mock data for development # Commented Out
-    mongo_client = MongoDBClient() # Removed use_mock=True
-    pinecone_client = PineconeClient() # Removed use_mock=True
-    grant_scraper = GrantScraper() # Removed use_mock=True
-    notifier = NotificationManager() # Removed use_mock=True
-    logger.info("All clients initialized.") # Updated log message
-except Exception as e:
-    logger.error(f"Failed to initialize clients: {str(e)}")
-    st.error("Failed to initialize application components. Please check your configuration.")
-    # Consider adding st.stop() here if initialization is critical
-    # st.stop()
-    # For now, re-raise to halt execution if fundamental clients fail
-    raise e
-
-# Custom CSS for enhanced UI
-st.markdown("""
-<style>
-    /* Card styling */
-    .grant-card {
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 20px;
-        border-left: 5px solid #2e6dd9;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .grant-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
-    }
-    
-    /* Tag styling */
-    .tag {
-        display: inline-block;
-        padding: 3px 8px;
-        margin-right: 5px;
-        border-radius: 15px;
-        font-size: 12px;
-        font-weight: 500;
-    }
-    .tag-telecom {
-        background-color: #e6f3ff;
-        color: #0366d6;
-    }
-    .tag-nonprofit {
-        background-color: #f1e7fd;
-        color: #6f42c1;
-    }
-    .tag-high {
-        background-color: #fff3cd;
-        color: #856404;
-    }
-    
-    /* Responsive layout */
-    @media (max-width: 768px) {
-        .grant-card {
-            padding: 15px;
-        }
-    }
-    
-    /* Header styling */
-    .main-header {
-        color: #2e6dd9;
-        font-size: 2.2em;
-        font-weight: 700;
-        margin-bottom: 0.5em;
-    }
-    
-    /* Search section styling */
-    .search-box {
-        background-color: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-    }
-    
-    /* Button styling */
-    .stButton>button {
-        border-radius: 20px;
-        font-weight: 500;
-        border: none;
-    }
-    
-    /* Expander styling */
-    .streamlit-expanderHeader {
-        font-weight: 600;
-        color: #495057;
-    }
-    
-    /* Metric styling */
-    .metric-card {
-        background-color: #f8f9fa;
-        padding: 15px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        text-align: center;
-    }
-    
-    /* Timeline styling */
-    .timeline-item {
-        display: flex;
-        margin-bottom: 10px;
-    }
-    .timeline-date {
-        width: 100px;
-        font-weight: 500;
-        color: #495057;
-    }
-    .timeline-content {
-        flex-grow: 1;
-        border-left: 2px solid #dee2e6;
-        padding-left: 15px;
-        padding-bottom: 10px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Session state initialization
+# Initialize session state
 if 'page' not in st.session_state:
-    st.session_state.page = "Dashboard"
-    
+    st.session_state.page = 'dashboard'
 if 'filters' not in st.session_state:
-    st.session_state.filters = {
-        'min_score': 85,
-        'days_to_deadline': 30,
-        'categories': ['All'],
-        'search_text': '',
-        'sort_by': 'relevance_score'
-    }
-    
+    st.session_state.filters = {}
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
-    
-if 'last_search' not in st.session_state:
-    st.session_state.last_search = None
+if 'selected_grant' not in st.session_state:
+    st.session_state.selected_grant = None
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'phone_verified' not in st.session_state:
+    st.session_state.phone_verified = False
 
-def get_metric_data():
-    """Get real-time metric data from MongoDB."""
+def send_otp(phone_number):
     try:
-        now = datetime.utcnow()
-        today_start = datetime(now.year, now.month, now.day)
-        one_week_ago = now - timedelta(days=7)
+        if not os.getenv('TWILIO_VERIFY_SID'):
+            st.error('Twilio Verify SID not configured')
+            return False
+            
+        verification = twilio_client.verify.v2.services(
+            os.getenv('TWILIO_VERIFY_SID')
+        ).verifications.create(to=phone_number, channel='sms')
+        
+        return verification.status == 'pending'
+    except TwilioRestException as e:
+        st.error(f'Failed to send OTP: {str(e)}')
+        return False
 
-        # Count high-priority grants (score >= 85)
-        high_priority_count = mongo_client.grants_collection.count_documents({
-            "relevance_score": {"$gte": 85}
-        })
+def check_otp(phone_number, code):
+    try:
+        if phone_number != os.getenv('NOTIFY_PHONE_NUMBER'):
+            st.error('Unauthorized phone number')
+            return False
+            
+        verification_check = twilio_client.verify.v2.services(
+            os.getenv('TWILIO_VERIFY_SID')
+        ).verification_checks.create(to=phone_number, code=code)
+        
+        return verification_check.status == 'approved'
+    except TwilioRestException as e:
+        st.error(f'Failed to verify OTP: {str(e)}')
+        return False
 
-        # Count grants closing within 7 days
-        upcoming_deadline_count = mongo_client.grants_collection.count_documents({
-            "deadline": {"$lte": now + timedelta(days=7), "$gte": now}
-        })
-
-        # Count grants found today
-        new_today_count = mongo_client.grants_collection.count_documents({
-            "first_found_at": {"$gte": today_start}
-        })
-
-        # Count high-priority grants found in the last week
-        new_high_priority_last_week = mongo_client.grants_collection.count_documents({
-            "relevance_score": {"$gte": 85},
-            "first_found_at": {"$gte": one_week_ago}
-        })
-
-        # Calculate total potential funding (example - needs refinement based on amount format)
-        # This uses an aggregation pipeline for better performance
-        pipeline = [
-            {"$match": {"amount": {"$type": "number"}}}, # Filter for numeric amounts
-            {"$group": {"_id": None, "totalFunding": {"$sum": "$amount"}}}
-        ]
-        funding_result = list(mongo_client.grants_collection.aggregate(pipeline))
-        total_funding = funding_result[0]["totalFunding"] if funding_result else 0
-
-        # Get grants by category
-        telecom_grants = mongo_client.grants_collection.count_documents({"category": "telecom"})
-        nonprofit_grants = mongo_client.grants_collection.count_documents({"category": "nonprofit"})
-
-        # Prepare delta values (example logic)
-        # In a real app, you'd fetch the previous state or calculate based on timestamps
-        high_priority_delta = new_high_priority_last_week # Example: delta is just new grants last week
-        new_today_display = f"+{new_today_count} Today"
-
-        return {
-            "high_priority": high_priority_count,
-            "high_priority_delta": high_priority_delta,
-            "upcoming_deadline": upcoming_deadline_count,
-            "total_funding": total_funding,
-            "telecom_grants": telecom_grants,
-            "nonprofit_grants": nonprofit_grants,
-            "new_today_display": new_today_display
-        }
-    except Exception as e:
-        logger.error(f"Error fetching metric data: {str(e)}")
-        return {
-            "high_priority": 0, "high_priority_delta": 0,
-            "upcoming_deadline": 0, "total_funding": 0,
-            "telecom_grants": 0, "nonprofit_grants": 0,
-            "new_today_display": "+0 Today"
-        }
-
-def render_grant_card(grant):
-    """Render an individual grant card with interactive elements."""
-    grant_id = str(grant.get('_id', ''))
-    title = grant.get('title', 'Untitled Grant')
-    description = grant.get('description', 'No description available')
-    source = grant.get('source_name', 'Unknown Source')
+def login_screen():
+    st.title("🔐 Login Required")
+    st.write("Please verify your phone number to continue")
     
-    # Format date
-    deadline = grant.get('deadline')
-    if isinstance(deadline, datetime):
-        deadline_str = deadline.strftime('%B %d, %Y')
-        days_remaining = calculate_days_remaining(deadline)
-        deadline_display = f"{deadline_str} ({days_remaining} days remaining)"
-    else:
-        deadline_display = "No deadline specified"
+    col1, col2 = st.columns(2)
     
-    # Format amount
-    amount = grant.get('amount')
-    if isinstance(amount, (int, float)):
-        amount_display = format_currency(amount)
-    else:
-        amount_display = "Amount not specified"
-    
-    # Category tag
-    category = grant.get('category', 'other')
-    if category == 'telecom':
-        category_tag = '<span class="tag tag-telecom">Telecom</span>'
-    elif category == 'nonprofit':
-        category_tag = '<span class="tag tag-nonprofit">Nonprofit</span>'
-    else:
-        category_tag = f'<span class="tag">{category.capitalize()}</span>'
-    
-    # Relevance tag
-    relevance = grant.get('relevance_score', 0)
-    if relevance >= 85:
-        relevance_tag = f'<span class="tag tag-high">{relevance:.1f}% Match</span>'
-    else:
-        relevance_tag = f'<span class="tag">{relevance:.1f}% Match</span>'
-    
-    # Truncate description
-    short_desc = description[:200] + "..." if len(description) > 200 else description
-    
-    # Render card
-    html = f"""
-    <div class="grant-card" id="grant-{grant_id}">
-        <h3>{title}</h3>
-        <p>{category_tag} {relevance_tag}</p>
-        <p><strong>Deadline:</strong> {deadline_display}</p>
-        <p><strong>Amount:</strong> {amount_display}</p>
-        <p><strong>Source:</strong> {source}</p>
-        <p>{short_desc}</p>
-    </div>
-    """
-    
-    st.markdown(html, unsafe_allow_html=True)
-    
-    # Action buttons
-    col1, col2, col3 = st.columns([1, 1, 1])
     with col1:
-        if st.button("View Details", key=f"view_{grant_id}"):
-            st.session_state.selected_grant = grant
-            st.session_state.page = "Grant Details"
+        phone_number = st.text_input(
+            "Phone Number",
+            placeholder="+1234567890",
+            key="phone_input"
+        )
+        
+        if st.button("Send OTP"):
+            if send_otp(phone_number):
+                st.session_state.phone_verified = True
+                st.success("OTP sent successfully!")
+            else:
+                st.error("Failed to send OTP")
     
     with col2:
-        if st.button("Save Grant", key=f"save_{grant_id}"):
-            success = mongo_client.save_grant_for_user(grant_id)
-            if success:
-                st.success("Grant saved successfully!")
+        if st.session_state.phone_verified:
+            otp_code = st.text_input(
+                "Enter OTP",
+                type="password",
+                key="otp_input"
+            )
+            
+            if st.button("Verify"):
+                if check_otp(phone_number, otp_code):
+                    st.session_state.authenticated = True
+                    st.success("Authentication successful!")
+                    time.sleep(1)
+                    st.experimental_rerun()
+                else:
+                    st.error("Invalid OTP")
+
+def render_grant_card(grant, current_page):
+    with st.container():
+        col1, col2, col3 = st.columns([2,1,1])
+        
+        with col1:
+            st.markdown(f"### {grant['title']}")
+            st.write(f"**Source:** {grant['source']}")
+            
+            if len(grant.get('description', '')) > 200:
+                st.write(f"{grant['description'][:200]}...")
             else:
-                st.error("Failed to save grant.")
-    
-    with col3:
-        if st.button("Alert Me", key=f"alert_{grant_id}"):
-            success = notifier.send_grant_alert([grant])
-            if success:
-                st.success("Alert sent!")
-            else:
-                st.error("Failed to send alert.")
+                st.write(grant.get('description', 'No description available'))
+        
+        with col2:
+            display_grant_field("Amount", grant.get('amount', 'Not specified'))
+            display_grant_field("Deadline", grant.get('deadline', 'Not specified'))
+            display_grant_field("Category", grant.get('category', 'Not specified'))
+        
+        with col3:
+            if st.button("View Details", key=f"view_{grant['_id']}"):
+                st.session_state.selected_grant = grant
+                st.session_state.previous_page = current_page
+                st.session_state.page = 'grant_details'
+                st.experimental_rerun()
+            
+            if st.button("Save Grant", key=f"save_{grant['_id']}"):
+                if mongo_client.save_grant_for_user('default_user', str(grant['_id'])):
+                    st.success("Grant saved successfully!")
+                else:
+                    st.error("Failed to save grant")
+            
+            if st.button("Send Alert", key=f"alert_{grant['_id']}"):
+                if not mongo_client.check_alert_sent('default_user', grant['_id']):
+                    if mongo_client.record_alert_sent('default_user', grant['_id'], 'app'):
+                        st.success("Alert sent!")
+                    else:
+                        st.error("Failed to send alert")
+                else:
+                    st.info("Alert already sent for this grant")
+        
+        st.markdown("---")
 
 def render_dashboard():
-    """Render the dashboard page with metrics and high-priority grants."""
-    st.markdown('<h1 class="main-header">📋 Grant Intelligence Dashboard</h1>', unsafe_allow_html=True)
+    st.title("📊 Grant Dashboard")
     
-    # Get metrics (now includes delta values)
-    metrics = get_metric_data()
-    
-    # Display metric tiles
+    # Metrics
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric(
-            label="High Priority Grants",
-            value=metrics['high_priority'],
-            delta=f"+{metrics['high_priority_delta']} This Week", # Display delta
-            delta_color="normal" # or "inverse" or "off"
-        )
+        total_grants = len(mongo_client.get_grants())
+        st.metric("Total Grants", total_grants)
     
     with col2:
-        st.metric(
-            label="Closing This Week",
-            value=metrics['upcoming_deadline']
-        )
+        recent_grants = len(mongo_client.get_grants(
+            filters={'created_at': {'$gte': datetime.utcnow() - timedelta(days=7)}}
+        ))
+        st.metric("New This Week", recent_grants)
     
     with col3:
-         # Format currency properly
-        formatted_funding = f"${metrics['total_funding']:,.0f}" if metrics['total_funding'] > 0 else "$0"
-        st.metric(
-            label="Available Funding",
-            value=formatted_funding
-            # Add delta for funding if tracked
-        )
+        saved_grants = len(mongo_client.get_saved_grants('default_user'))
+        st.metric("Saved Grants", saved_grants)
     
     with col4:
-        st.metric(
-            label="New Today",
-            value=metrics['new_today_display'].split(' ')[0].replace('+', ''), # Extract count
-            #delta=metrics['new_today_display'] # Or display delta text here
-        )
+        alerts_sent = len(mongo_client.get_alert_history_for_user('default_user'))
+        st.metric("Alerts Sent", alerts_sent)
     
-    # Live filters section
-    with st.expander("🔍 Active Filters", expanded=True):
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.session_state.filters['min_score'] = st.slider(
-                "Minimum Relevance Score", 
-                min_value=0, 
-                max_value=100, 
-                value=st.session_state.filters['min_score'],
-                step=5
-            )
-            
-        with col2:
-            st.session_state.filters['days_to_deadline'] = st.slider(
-                "Days to Deadline", 
-                min_value=7, 
-                max_value=90, 
-                value=st.session_state.filters['days_to_deadline'],
-                step=7
-            )
-            
-        with col3:
-            st.session_state.filters['categories'] = st.multiselect(
-                "Categories",
-                options=['All', 'telecom', 'nonprofit', 'state'],
-                default=st.session_state.filters['categories']
-            )
-    
-    # High-priority grants section
-    st.subheader("Priority Grant Opportunities")
-    
-    # Fetch grants based on filters
-    category = None if 'All' in st.session_state.filters['categories'] else st.session_state.filters['categories']
-    grants = mongo_client.get_grants(
-        min_score=st.session_state.filters['min_score'],
-        days_to_deadline=st.session_state.filters['days_to_deadline'],
-        category=category,
-        limit=10  # Limit to 10 grants for dashboard
+    # Recent Grants
+    st.subheader("📥 Recent Grants")
+    recent_grants = mongo_client.get_grants(
+        sort_by=[('created_at', -1)],
+        limit=5
     )
     
-    if not grants:
-        st.info("No grants match your current filter criteria. Try adjusting your filters.")
-    else:
-        for grant in grants:
-            render_grant_card(grant)
-    
-    # Recent searches section
-    st.subheader("Recent Search Activity")
-    
-    search_history = mongo_client.get_search_history(limit=5)
-    if not search_history:
-        st.info("No recent search activity.")
-    else:
-        for entry in search_history:
-            search_date = entry.get('search_date', datetime.now()).strftime('%b %d, %H:%M')
-            params = entry.get('parameters', {})
-            category = params.get('category', 'general')
-            results = entry.get('results_count', 0)
-            
-            st.markdown(
-                f"""
-                <div class="timeline-item">
-                    <div class="timeline-date">{search_date}</div>
-                    <div class="timeline-content">
-                        <strong>{category.capitalize()} search</strong> yielded {results} results
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+    for grant in recent_grants:
+        render_grant_card(grant, 'dashboard')
 
 def render_search():
-    """Render the advanced search page."""
-    st.markdown('<h1 class="main-header">🔎 Advanced Grant Search</h1>', unsafe_allow_html=True)
+    st.title("🔍 Search Grants")
     
-    # Search interface
-    with st.form(key="search_form", clear_on_submit=False):
-        st.markdown('<div class="search-box">', unsafe_allow_html=True)
-        
+    with st.form("search_form"):
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("Telecom Grant Filters")
-            telecom_keywords = st.text_area(
-                "Keywords (one per line)",
-                value="broadband deployment\nrural connectivity\ntelecommunications\nfiber optic",
-                height=100
-            )
-            
-            funding_types = st.multiselect(
-                "Funding Types",
-                options=["Grant", "Cooperative Agreement", "Contract", "Loan"],
-                default=["Grant", "Cooperative Agreement"]
-            )
-            
-            geo_focus = st.text_input("Geographic Focus", value="LA-08")
+            keyword = st.text_input("Keywords", key="search_keyword")
+            min_amount = st.number_input("Minimum Amount", min_value=0)
+            max_amount = st.number_input("Maximum Amount", min_value=0)
         
         with col2:
-            st.subheader("Nonprofit Grant Filters")
-            nonprofit_keywords = st.text_area(
-                "Keywords (one per line)",
-                value="women-owned\nwomen-led\nnonprofit\nminority-owned",
-                height=100
+            category = st.selectbox(
+                "Category",
+                ["All", "Research", "Technology", "Education", "Healthcare"]
             )
             
-            funding_range = st.slider(
-                "Funding Range",
-                min_value=5000,
-                max_value=500000,
-                value=(10000, 250000),
-                step=5000,
-                format="$%d"
-            )
-            
-            eligibility = st.multiselect(
-                "Eligibility",
-                options=["501(c)(3)", "Small Business", "Women-Owned Business", "Minority-Owned Business"],
-                default=["501(c)(3)", "Women-Owned Business"]
+            deadline_range = st.selectbox(
+                "Deadline",
+                ["All", "This Week", "This Month", "Next 3 Months", "No Deadline"]
             )
         
-        # Source selection - Dynamic
-        st.subheader("Search Sources")
-
-        # Fetch sources from DB
-        all_sources = mongo_client.get_sources_by_domain() # Fetch all sources
-        source_names = sorted([s['name'] for s in all_sources if 'name' in s])
-
-        # Use columns for better layout
-        num_columns = 4
-        source_cols = st.columns(num_columns)
-        selected_sources = {}
-
-        # Distribute sources into columns and create checkboxes
-        sources_per_col = (len(source_names) + num_columns - 1) // num_columns
-        for i, source_name in enumerate(source_names):
-            col_index = i // sources_per_col
-            with source_cols[col_index]:
-                # Use source name as key and label, default to True for now
-                selected_sources[source_name] = st.checkbox(source_name, value=True, key=f"source_{source_name}")
-
-        # Advanced options
-        with st.expander("Advanced Options"):
-            search_method = st.radio(
-                "Search Method",
-                options=["Deep Search (Slower, More Comprehensive)", "Fast Search (Quicker Results)"],
-                index=0
-            )
-            
-            max_results = st.slider("Maximum Results", min_value=10, max_value=100, value=50)
-            
-            include_closed = st.checkbox("Include Closed Grants", value=False)
+        st.subheader("Sources")
+        sources = mongo_client.get_sources_by_domain()
         
-        # Search button
-        search_button = st.form_submit_button("🚀 Launch Search", use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        col1, col2, col3, col4 = st.columns(4)
+        selected_sources = []
         
-        if search_button:
-            # Process search parameters
-            telecom_terms = [term.strip() for term in telecom_keywords.split("\n") if term.strip()]
-            nonprofit_terms = [term.strip() for term in nonprofit_keywords.split("\n") if term.strip()]
+        for i, source in enumerate(sources):
+            with [col1, col2, col3, col4][i % 4]:
+                if st.checkbox(source['name'], key=f"source_{source['_id']}"):
+                    selected_sources.append(source['name'])
+        
+        submitted = st.form_submit_button("Search")
+        
+        if submitted:
+            filters = {}
             
-            final_selected_sources = [name for name, is_selected in selected_sources.items() if is_selected]
+            if keyword:
+                filters['$text'] = {'$search': keyword}
             
-            # Determine search category
-            if telecom_terms and not nonprofit_terms:
-                category = "telecom"
-                search_terms = telecom_terms
-            elif nonprofit_terms and not telecom_terms:
-                category = "nonprofit"
-                search_terms = nonprofit_terms
-            else:
-                category = "combined"
-                search_terms = telecom_terms + nonprofit_terms
+            if min_amount > 0:
+                filters['amount'] = {'$gte': min_amount}
             
-            search_params = {
-                "category": category,
-                "search_terms": search_terms,
-                "funding_type": funding_types,
-                "sources": final_selected_sources,
-                "max_results": max_results,
-                "include_closed": include_closed
-                # Add other parameters like geo_focus, funding_range, eligibility
-            }
-            if category in ["telecom", "combined"]:
-                 search_params["geo_restrictions"] = geo_focus
-            if category in ["nonprofit", "combined"]:
-                 search_params["funding_range"] = funding_range
-                 search_params["eligibility"] = eligibility
-
+            if max_amount > 0:
+                if 'amount' in filters:
+                    filters['amount']['$lte'] = max_amount
+                else:
+                    filters['amount'] = {'$lte': max_amount}
             
-            # Show search progress
-            with st.spinner("Searching for grants..."):
-                # --- Removed mock simulation --- 
-                # import time 
-                # time.sleep(2)
-                
-                # --- Call the actual search logic --- 
-                st.session_state.search_results = run_live_search(search_params)
-                st.session_state.last_search = search_params # Keep track of last search params
-                
-                # --- Log search to history (uncommented) --- 
-                search_history_entry = {
-                    "search_date": datetime.utcnow(), # Use UTC
-                    "parameters": search_params,
-                    "results_count": len(st.session_state.search_results),
-                    "category": category,
-                    "user_id": "default_user" # Assuming single user for now
-                }
-                try:
-                     mongo_client.search_history_collection.insert_one(search_history_entry)
-                     logger.info("Search activity logged to history.")
-                except Exception as e:
-                     logger.error(f"Failed to log search history: {e}")
-                
-                st.success(f"Search complete! Found {len(st.session_state.search_results)} matching grants.")
+            if category != "All":
+                filters['category'] = category
+            
+            if selected_sources:
+                filters['source'] = {'$in': selected_sources}
+            
+            if deadline_range != "All":
+                now = datetime.utcnow()
+                if deadline_range == "This Week":
+                    filters['deadline'] = {'$lte': now + timedelta(days=7)}
+                elif deadline_range == "This Month":
+                    filters['deadline'] = {'$lte': now + timedelta(days=30)}
+                elif deadline_range == "Next 3 Months":
+                    filters['deadline'] = {'$lte': now + timedelta(days=90)}
+                elif deadline_range == "No Deadline":
+                    filters['deadline'] = None
+            
+            st.session_state.search_results = mongo_client.get_grants(filters=filters)
     
-    # Display search results if available
     if st.session_state.search_results:
-        st.subheader("Search Results")
-        
-        # Sorting options
-        sort_options = {
-            "relevance_score": "Relevance Score (High to Low)",
-            "deadline": "Application Deadline (Soonest First)",
-            "amount": "Grant Amount (Highest First)"
-        }
-        
-        sort_by = st.selectbox(
-            "Sort By",
-            options=list(sort_options.keys()),
-            format_func=lambda x: sort_options[x],
-            index=0
-        )
-        
-        # Sort results
-        if sort_by == "relevance_score":
-            sorted_results = sorted(st.session_state.search_results, key=lambda x: x.get('relevance_score', 0), reverse=True)
-        elif sort_by == "deadline":
-            sorted_results = sorted(st.session_state.search_results, key=lambda x: x.get('deadline', datetime.max))
-        elif sort_by == "amount":
-            sorted_results = sorted(st.session_state.search_results, key=lambda x: x.get('amount', 0), reverse=True)
-        else:
-            sorted_results = st.session_state.search_results
-        
-        # Display results
-        for grant in sorted_results:
-            render_grant_card(grant)
+        st.subheader(f"Found {len(st.session_state.search_results)} grants")
+        for grant in st.session_state.search_results:
+            render_grant_card(grant, 'search')
+    elif submitted:
+        st.info("No grants found matching your criteria")
 
-def render_analytics():
-    """Render the analytics dashboard."""
-    st.markdown('<h1 class="main-header">📊 Grant Analytics Dashboard</h1>', unsafe_allow_html=True)
-    
-    # Get grant data for visualization
-    grants = mongo_client.get_grants(limit=500)
-    
-    if not grants:
-        st.info("No grant data available for analysis.")
+def render_grant_details():
+    if not st.session_state.selected_grant:
+        st.error("No grant selected")
         return
     
-    # Create DataFrame
-    grants_df = pd.DataFrame(grants)
+    grant = st.session_state.selected_grant
     
-    # Fix date columns
-    for date_col in ['deadline', 'first_found_at']:
-        if date_col in grants_df.columns:
-            grants_df[date_col] = pd.to_datetime(grants_df[date_col])
+    st.title(grant['title'])
     
-    # Add calculated columns
-    if 'deadline' in grants_df.columns:
-        grants_df['days_to_deadline'] = (grants_df['deadline'] - datetime.now()).dt.days
+    col1, col2 = st.columns([2,1])
     
-    # Create tabs for different visualizations
-    tab1, tab2, tab3 = st.tabs(["Distribution Analysis", "Timeline View", "Source Analysis"])
-    
-    with tab1:
-        st.subheader("Grant Distribution by Category & Relevance")
+    with col1:
+        st.markdown("### Description")
+        st.write(grant.get('description', 'No description available'))
         
-        if 'category' in grants_df.columns and 'relevance_score' in grants_df.columns:
-            # Category distribution chart
-            category_counts = grants_df['category'].value_counts().reset_index()
-            category_counts.columns = ['category', 'count']
-            
-            fig = px.pie(
-                category_counts, 
-                values='count', 
-                names='category',
-                title="Grant Distribution by Category",
-                color_discrete_sequence=px.colors.qualitative.Set3,
-                hole=0.4
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Relevance score distribution by category
-            col1, col2 = st.columns(2)
+        st.markdown("### Eligibility")
+        st.write(grant.get('eligibility', 'No eligibility information available'))
+        
+        st.markdown("### How to Apply")
+        st.write(grant.get('application_process', 'No application process information available'))
+        
+        if grant.get('url'):
+            st.markdown(f"[Apply Now]({grant['url']})")
+    
+    with col2:
+        st.markdown("### Grant Details")
+        display_grant_field("Source", grant['source'])
+        display_grant_field("Amount", grant.get('amount', 'Not specified'))
+        display_grant_field("Deadline", grant.get('deadline', 'Not specified'))
+        display_grant_field("Category", grant.get('category', 'Not specified'))
+        display_grant_field("Location", grant.get('location', 'Not specified'))
+        
+        if st.button("Save Grant"):
+            if mongo_client.save_grant_for_user('default_user', str(grant['_id'])):
+                st.success("Grant saved successfully!")
+            else:
+                st.error("Failed to save grant")
+        
+        if st.button("Send Alert"):
+            if not mongo_client.check_alert_sent('default_user', grant['_id']):
+                if mongo_client.record_alert_sent('default_user', grant['_id'], 'app'):
+                    st.success("Alert sent!")
+                else:
+                    st.error("Failed to send alert")
+            else:
+                st.info("Alert already sent for this grant")
+    
+    if st.button("Back"):
+        st.session_state.page = st.session_state.previous_page
+        st.session_state.selected_grant = None
+        st.experimental_rerun()
+
+def render_saved_grants():
+    st.title("📌 Saved Grants")
+    
+    saved_grants = mongo_client.get_saved_grants('default_user')
+    
+    if not saved_grants:
+        st.info("You haven't saved any grants yet")
+        return
+    
+    for saved_grant in saved_grants:
+        grant = saved_grant['grant_details']
+        
+        with st.container():
+            col1, col2, col3 = st.columns([2,1,1])
             
             with col1:
-                fig = px.box(
-                    grants_df,
-                    x='category',
-                    y='relevance_score',
-                    color='category',
-                    title="Relevance Score Distribution by Category",
-                    color_discrete_sequence=px.colors.qualitative.Set3
-                )
-                st.plotly_chart(fig, use_container_width=True)
+                st.markdown(f"### {grant['title']}")
+                st.write(f"**Source:** {grant['source']}")
+                st.write(f"**Saved on:** {saved_grant['saved_at'].strftime('%Y-%m-%d %H:%M')}")
             
             with col2:
-                # Calculate average relevance by category
-                avg_relevance = grants_df.groupby('category')['relevance_score'].mean().reset_index()
+                display_grant_field("Amount", grant.get('amount', 'Not specified'))
+                display_grant_field("Deadline", grant.get('deadline', 'Not specified'))
+            
+            with col3:
+                if st.button("View Details", key=f"view_{grant['_id']}"):
+                    st.session_state.selected_grant = grant
+                    st.session_state.previous_page = 'saved_grants'
+                    st.session_state.page = 'grant_details'
+                    st.experimental_rerun()
                 
-                fig = px.bar(
-                    avg_relevance,
-                    x='category',
-                    y='relevance_score',
-                    title="Average Relevance Score by Category",
-                    color='category',
-                    color_discrete_sequence=px.colors.qualitative.Set3
-                )
-                fig.update_layout(yaxis_title="Average Relevance Score")
-                
-                st.plotly_chart(fig, use_container_width=True)
+                if st.button("Remove", key=f"remove_{grant['_id']}"):
+                    if mongo_client.remove_saved_grant('default_user', str(grant['_id'])):
+                        st.success("Grant removed from saved list")
+                        time.sleep(1)
+                        st.experimental_rerun()
+                    else:
+                        st.error("Failed to remove grant")
+            
+            st.markdown("---")
+
+def render_alert_history():
+    st.title("🔔 Alert History")
     
-    with tab2:
-        st.subheader("Grant Deadlines Timeline")
-        
-        if 'deadline' in grants_df.columns:
-            # Filter out grants with no deadline
-            timeline_df = grants_df[grants_df['deadline'].notna()].copy()
-            
-            if not timeline_df.empty:
-                # Sort by deadline
-                timeline_df = timeline_df.sort_values('deadline')
-                
-                # Create timeline visualization
-                fig = px.timeline(
-                    timeline_df,
-                    x_start='first_found_at',
-                    x_end='deadline',
-                    y='title',
-                    color='category',
-                    title="Grant Opportunity Timeline",
-                    color_discrete_sequence=px.colors.qualitative.Set3
-                )
-                
-                fig.update_layout(
-                    xaxis_title="Date",
-                    yaxis_title="Grant Title",
-                    yaxis_autorange="reversed"
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # Deadline distribution by month
-                if len(timeline_df) > 0:
-                    timeline_df['deadline_month'] = timeline_df['deadline'].dt.strftime('%B %Y')
-                    deadline_counts = timeline_df['deadline_month'].value_counts().reset_index()
-                    deadline_counts.columns = ['month', 'count']
-                    deadline_counts = deadline_counts.sort_values('month')
-                    
-                    fig = px.bar(
-                        deadline_counts,
-                        x='month',
-                        y='count',
-                        title="Grant Deadlines by Month",
-                        color_discrete_sequence=['#3366CC']
-                    )
-                    
-                    fig.update_layout(
-                        xaxis_title="Month",
-                        yaxis_title="Number of Grants",
-                        xaxis={'categoryorder':'category ascending'}
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.info("No grants with deadline information available.")
-        else:
-            st.info("No deadline information available in the data.")
+    alerts = mongo_client.get_alert_history_for_user('default_user')
     
-    with tab3:
-        st.subheader("Grant Source Analysis")
+    if not alerts:
+        st.info("No alerts have been sent yet")
+        return
+    
+    for alert in alerts:
+        grant = alert['grant_details']
         
-        if 'source_name' in grants_df.columns:
-            # Source distribution chart
-            source_counts = grants_df['source_name'].value_counts().reset_index()
-            source_counts.columns = ['source', 'count']
+        with st.container():
+            col1, col2 = st.columns([3,1])
             
-            fig = px.bar(
-                source_counts.head(10),  # Top 10 sources
-                x='count',
-                y='source',
-                title="Top 10 Grant Sources",
-                orientation='h',
-                color='count',
-                color_continuous_scale=px.colors.sequential.Blues
-            )
+            with col1:
+                st.markdown(f"### {grant['title']}")
+                st.write(f"**Source:** {grant['source']}")
+                st.write(f"**Sent via:** {alert['channel']}")
+                st.write(f"**Sent on:** {alert['timestamp'].strftime('%Y-%m-%d %H:%M')}")
             
-            fig.update_layout(
-                xaxis_title="Number of Grants",
-                yaxis_title="Source",
-                yaxis={'categoryorder':'total ascending'}
-            )
+            with col2:
+                if st.button("View Grant", key=f"view_{grant['_id']}"):
+                    st.session_state.selected_grant = grant
+                    st.session_state.previous_page = 'alert_history'
+                    st.session_state.page = 'grant_details'
+                    st.experimental_rerun()
             
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Source & Category Sunburst chart
-            if 'category' in grants_df.columns:
-                fig = px.sunburst(
-                    grants_df,
-                    path=['category', 'source_name'],
-                    values='relevance_score',
-                    title="Grant Sources by Category",
-                    color_discrete_sequence=px.colors.qualitative.Set3
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("No source information available in the data.")
-
-def render_settings():
-    """Render the settings page."""
-    st.markdown('<h1 class="main-header">⚙️ Settings</h1>', unsafe_allow_html=True)
-
-    user_id = "default_user" # Assuming single user for now
-    current_settings = mongo_client.get_user_settings(user_id)
-
-    # Default values if settings are not found or incomplete
-    notifications_settings = current_settings.get("notifications", {})
-    default_schedule_freq = current_settings.get("schedule_frequency", "Twice Weekly")
-    default_schedule_days = current_settings.get("schedule_days", ["Monday", "Thursday"])
-    # Handle time - could be stored as string or time object
-    default_schedule_time_str = current_settings.get("schedule_time", "10:00")
-    try:
-        default_schedule_time_obj = datetime.strptime(default_schedule_time_str, "%H:%M").time()
-    except (ValueError, TypeError):
-        logger.warning(f"Invalid stored time '{default_schedule_time_str}', defaulting to 10:00")
-        default_schedule_time_obj = time(10, 0)
-
-    with st.form("settings_form"):
-        st.subheader("Notification Preferences")
-        col1, col2 = st.columns(2)
-        with col1:
-            sms_enabled = st.checkbox("SMS Notifications", value=notifications_settings.get("sms_enabled", False))
-            sms_number = st.text_input("Phone Number (for SMS)", value=notifications_settings.get("sms_number", ""), disabled=not sms_enabled)
-        with col2:
-            telegram_enabled = st.checkbox("Telegram Notifications", value=notifications_settings.get("telegram_enabled", False))
-            telegram_username = st.text_input("Telegram Username/ID", value=notifications_settings.get("telegram_username", ""), disabled=not telegram_enabled)
-
-        st.subheader("Grant Filtering Thresholds")
-        relevance_threshold = st.slider("Minimum Relevance Score", 50, 100, current_settings.get("relevance_threshold", 85), 5)
-        deadline_threshold = st.slider("Maximum Days to Deadline", 7, 180, current_settings.get("deadline_threshold", 30), 7)
-
-        # --- Search Scheduling (Interactive) ---
-        st.subheader("Search Scheduling")
-        schedule_frequency_options = ["Daily", "Weekly", "Twice Weekly"]
-        try:
-             schedule_freq_index = schedule_frequency_options.index(default_schedule_freq)
-        except ValueError:
-             schedule_freq_index = 2 # Default to Twice Weekly if stored value is invalid
-
-        schedule_frequency = st.radio(
-            "Search Frequency",
-            options=schedule_frequency_options,
-            index=schedule_freq_index,
-            horizontal=True
-        )
-
-        weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        # Ensure default days are valid before passing to multiselect
-        valid_default_days = [day for day in default_schedule_days if day in weekdays]
-
-        if schedule_frequency == "Daily":
-            # Display info, days selection not needed
-            st.caption("Search will run every day at the specified time.")
-            selected_schedule_days = weekdays # Internally, daily means all days for cron
-        elif schedule_frequency == "Weekly":
-             selected_schedule_days = [st.selectbox(
-                 "Search Day",
-                 options=weekdays,
-                 index=weekdays.index(valid_default_days[0]) if valid_default_days else 0 # Default to Monday if invalid/empty
-             )]
-        else: # Twice Weekly (or more if options expanded)
-            selected_schedule_days = st.multiselect(
-                "Search Days",
-                options=weekdays,
-                default=valid_default_days,
-                help="Select the days the search should run."
-            )
-
-        schedule_time_obj = st.time_input(
-            "Search Time (UTC)",
-            value=default_schedule_time_obj,
-            help="Select the time (in UTC) the search should run."
-        )
-
-        # Display the generated cron expression for user confirmation
-        if schedule_frequency and selected_schedule_days and schedule_time_obj:
-            display_cron = generate_cron_expression(schedule_frequency, selected_schedule_days, schedule_time_obj)
-            if display_cron:
-                st.write(f"**Equivalent Cron Schedule:** `{display_cron}`")
-            else:
-                st.warning("Could not generate a preview for the selected schedule.")
-
-        # --- Save Button --- 
-        submitted = st.form_submit_button("💾 Save All Settings & Update Schedule")
-        if submitted:
-            # 1. Compile all settings
-            settings_to_save = {
-                "user_id": user_id,
-                "notifications": {
-                    "sms_enabled": sms_enabled,
-                    "sms_number": sms_number,
-                    "telegram_enabled": telegram_enabled,
-                    "telegram_username": telegram_username,
-                },
-                "relevance_threshold": relevance_threshold,
-                "deadline_threshold": deadline_threshold,
-                "schedule_frequency": schedule_frequency,
-                "schedule_days": selected_schedule_days,
-                "schedule_time": schedule_time_obj.strftime("%H:%M"), # Store time as string
-            }
-
-            # 2. Save settings to MongoDB
-            mongo_save_success = mongo_client.save_user_settings(settings_to_save, user_id)
-
-            if mongo_save_success:
-                st.success("Settings saved to database successfully!")
-                # Clear cache if needed
-                st.cache_data.clear()
-
-                # 3. Attempt to update Heroku schedule
-                # Prepare settings specifically for Heroku function (needs time object)
-                heroku_schedule_settings = {
-                    "schedule_frequency": schedule_frequency,
-                    "schedule_days": selected_schedule_days,
-                    "schedule_time": schedule_time_obj # Pass the time object
-                }
-                # IMPORTANT: Verify this command matches your Heroku Scheduler job
-                heroku_command = "python run_scrapers.py"
-                logger.info(f"Calling update_heroku_schedule with settings: {heroku_schedule_settings} for command: {heroku_command}")
-                heroku_update_success = update_heroku_schedule(heroku_schedule_settings, scheduler_command=heroku_command)
-
-                if heroku_update_success:
-                    st.success("Heroku schedule update simulated successfully! (Check logs for details)")
-                else:
-                    # Error messages are now handled within update_heroku_schedule
-                    st.error("Failed to update Heroku schedule. Check application logs and Heroku configuration.")
-            else:
-                st.error("Failed to save settings to database. Please try again.")
-
-def login_screen():
-    st.title("🔒 Secure Login")
-    st.markdown("Please verify your phone number to access the dashboard.")
-
-    # Ensure allowed phone number is configured
-    allowed_phone_number = os.getenv("NOTIFY_PHONE_NUMBER")
-    if not allowed_phone_number:
-        st.error("Application access is not configured. Please contact the administrator.")
-        logger.critical("CRITICAL: NOTIFY_PHONE_NUMBER is not set in environment variables. Cannot proceed with login.")
-        st.stop()
-
-    # Use session state to manage OTP flow stages
-    if 'otp_sent' not in st.session_state:
-        st.session_state.otp_sent = False
-    if 'login_phone_number' not in st.session_state:
-        st.session_state.login_phone_number = ""
-
-    phone_number = st.text_input("Enter your phone number (e.g., +1234567890)", value=st.session_state.login_phone_number, key="phone_input")
-    st.session_state.login_phone_number = phone_number # Store number as user types
-
-    if st.button("Send Verification Code", key="send_otp_button", disabled=st.session_state.otp_sent or not phone_number):
-        if phone_number == allowed_phone_number:
-            with st.spinner("Sending code..."):
-                success = send_otp(phone_number)
-                if success:
-                    st.session_state.otp_sent = True
-                    st.success("Verification code sent to your phone.")
-                    st.experimental_rerun() # Rerun to update button states
-                # Error message handled within send_otp
-        else:
-             st.warning("Please enter the registered phone number.")
-             logger.warning(f"Login attempt with non-registered number: {phone_number}")
-
-    if st.session_state.otp_sent:
-        otp_code = st.text_input("Enter the 6-digit code sent to your phone", max_chars=6, key="otp_input")
-        if st.button("Verify and Login", key="verify_button", disabled=not otp_code or len(otp_code) != 6):
-             with st.spinner("Verifying code..."):
-                if check_otp(phone_number, otp_code):
-                     st.session_state.authenticated = True
-                     st.session_state.otp_sent = False # Reset OTP state
-                     st.session_state.login_phone_number = "" # Clear phone number
-                     st.success("Login Successful!")
-                     time.sleep(1) # Brief pause before rerunning
-                     st.experimental_rerun()
-                else:
-                     # Error handled within check_otp, maybe add specific feedback here?
-                     st.error("Invalid verification code. Please try again.")
-                     # Potentially reset otp_sent state after too many failures
+            st.markdown("---")
 
 def main_app():
-    # --- Sidebar Navigation --- (This part runs only if authenticated)
-    st.sidebar.title("Navigation")
-    page_options = ["Dashboard", "Search Grants", "Analytics", "Settings"]
-    st.session_state.page = st.sidebar.radio("Go to:", page_options, index=page_options.index(st.session_state.get('page', 'Dashboard')))
-
-    # --- Page Rendering --- (Based on sidebar selection)
-    if st.session_state.page == "Dashboard":
+    # Sidebar navigation
+    with st.sidebar:
+        st.title("Navigation")
+        
+        if st.button("📊 Dashboard"):
+            st.session_state.page = 'dashboard'
+            st.experimental_rerun()
+        
+        if st.button("🔍 Search"):
+            st.session_state.page = 'search'
+            st.experimental_rerun()
+        
+        if st.button("📌 Saved Grants"):
+            st.session_state.page = 'saved_grants'
+            st.experimental_rerun()
+        
+        if st.button("🔔 Alert History"):
+            st.session_state.page = 'alert_history'
+            st.experimental_rerun()
+        
+        st.markdown("---")
+        
+        if st.button("🚪 Logout"):
+            for key in st.session_state.keys():
+                del st.session_state[key]
+            st.experimental_rerun()
+    
+    # Main content
+    if st.session_state.page == 'dashboard':
         render_dashboard()
-    elif st.session_state.page == "Search Grants":
+    elif st.session_state.page == 'search':
         render_search()
-    elif st.session_state.page == "Analytics":
-        render_analytics()
-    elif st.session_state.page == "Settings":
-        render_settings()
-    elif st.session_state.page == "Grant Details": # Add if you have a details page
-        render_grant_details() # Assuming this function exists
-    else:
-        render_dashboard() # Default to dashboard
+    elif st.session_state.page == 'grant_details':
+        render_grant_details()
+    elif st.session_state.page == 'saved_grants':
+        render_saved_grants()
+    elif st.session_state.page == 'alert_history':
+        render_alert_history()
 
-# === Main Execution Logic ===
-# (Keep CSS, get_metric_data, render_grant_card, render_dashboard, render_search, render_analytics, render_settings etc. below)
-
-# Custom CSS (Assuming it's already defined above)
-
-# Session state initialization (Also assuming defined above)
-
-# Helper functions (Assuming get_metric_data, render_grant_card etc. are defined)
-# ...
-
-# Page rendering functions (Assuming render_dashboard, etc. are defined)
-# ...
-
-# --- OTP Functions --- (Moved here for better organization, ensure imports are at the top)
-# Twilio Client setup check
-twilio_verify_sid = os.getenv("TWILIO_VERIFY_SERVICE_SID")
-twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-
-try:
-    if twilio_account_sid and twilio_auth_token:
-        twilio_otp_client = Client(twilio_account_sid, twilio_auth_token)
-    else:
-        twilio_otp_client = None
-        logger.warning("Twilio Account SID/Auth Token not found for OTP client.")
-except Exception as e:
-    twilio_otp_client = None
-    logger.error(f"Failed to initialize Twilio client for OTP: {e}")
-
-def send_otp(phone_number: str) -> bool:
-    """Sends OTP using Twilio Verify."""
-    if not twilio_verify_sid:
-        st.error("Twilio Verify Service SID is not configured.")
-        logger.error("TWILIO_VERIFY_SERVICE_SID not set in environment variables.")
-        return False
-    if not twilio_otp_client:
-         st.error("Twilio client not initialized. Cannot send OTP.")
-         return False
-
-    try:
-        verification = twilio_otp_client.verify.v2.services(twilio_verify_sid) \
-            .verifications \
-            .create(to=phone_number, channel='sms')
-        
-        if verification.status == 'pending':
-            logger.info(f"OTP sent successfully to {phone_number}. Status: {verification.status}")
-            return True
-        else:
-            st.error(f"Failed to send OTP. Status: {verification.status}")
-            logger.error(f"Failed to send OTP to {phone_number}. Status: {verification.status}")
-            return False
-            
-    except TwilioRestException as e:
-        st.error(f"Twilio Error: {e.msg}")
-        logger.error(f"Twilio API error sending OTP to {phone_number}: {e}")
-        return False
-    except Exception as e:
-        st.error("An unexpected error occurred while sending the OTP.")
-        logger.error(f"Unexpected error sending OTP to {phone_number}: {e}", exc_info=True)
-        return False
-
-def check_otp(phone_number: str, otp_code: str) -> bool:
-    """Checks OTP using Twilio Verify."""
-    # Ensure the number trying to verify is the allowed number
-    allowed_phone_number = os.getenv("NOTIFY_PHONE_NUMBER")
-    if phone_number != allowed_phone_number:
-         logger.warning(f"OTP check attempt for non-allowed number: {phone_number}")
-         # Don't give specific feedback about *why* it failed, just that it's invalid
-         return False 
-
-    if not twilio_verify_sid:
-        st.error("Twilio Verify Service SID is not configured.")
-        logger.error("TWILIO_VERIFY_SERVICE_SID not set for OTP check.")
-        return False
-    if not twilio_otp_client:
-         st.error("Twilio client not initialized. Cannot check OTP.")
-         return False
-
-    try:
-        verification_check = twilio_otp_client.verify.v2.services(twilio_verify_sid) \
-            .verification_checks \
-            .create(to=phone_number, code=otp_code)
-        
-        if verification_check.status == 'approved':
-            logger.info(f"OTP verification successful for {phone_number}.")
-            return True
-        else:
-            logger.warning(f"OTP verification failed for {phone_number}. Status: {verification_check.status}")
-            return False
-            
-    except TwilioRestException as e:
-        # Log specific Twilio errors, but return generic failure to user
-        logger.error(f"Twilio API error checking OTP for {phone_number}: {e}")
-        if e.code == 20404: # Resource not found (e.g., code expired or invalid)
-             st.error("Verification code is invalid or has expired.")
-        else:
-             st.error("Failed to verify code due to a server error.")
-        return False
-    except Exception as e:
-        st.error("An unexpected error occurred during verification.")
-        logger.error(f"Unexpected error checking OTP for {phone_number}: {e}", exc_info=True)
-        return False
-
-# Placeholder for actual search execution logic
-def run_live_search(search_params: Dict) -> List[Dict]:
-    """Placeholder function to run the actual grant search.
-    This function should:
-    1. Trigger the appropriate scrapers based on selected sources.
-    2. Aggregate results.
-    3. Apply filtering based on search_params.
-    4. Calculate relevance scores (potentially using pinecone_client).
-    5. Store results in MongoDB.
-    6. Return the filtered and scored list of grants.
-    """
-    logger.info(f"Executing placeholder search with params: {search_params}")
-    # --- Replace this section with actual backend logic --- 
-    # Example: Call a method on grant_scraper or a dedicated search module
-    # results = grant_scraper.execute_search(search_params)
-    # For now, return empty list to show the connection
-    mock_results_placeholder = [
-        {
-            "_id": "real_grant_id_1", 
-            "title": "Placeholder Telecom Grant", 
-            "description": "This is a placeholder result from the live search function.",
-            "deadline": datetime.now() + timedelta(days=60),
-            "amount": 750000, 
-            "category": "telecom", 
-            "source_name": "Placeholder Source",
-            "relevance_score": 90.5
-        }
-    ]
-    logger.warning("run_live_search is using placeholder data. Implement actual search logic.")
-    # return results # Return actual results when implemented
-    return mock_results_placeholder 
-    # -----------------------------------------------------
-
-# --- Entry Point --- 
-if __name__ == "__main__":
-    # Check authentication status
-    if not st.session_state.get("authenticated", False):
-        login_screen()
-    else:
-        main_app()
+# Main app flow
+if not st.session_state.authenticated:
+    login_screen()
+else:
+    main_app()
