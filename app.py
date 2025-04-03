@@ -1040,94 +1040,29 @@ def main_app():
 # ...
 
 # --- OTP Functions --- (Moved here for better organization, ensure imports are at the top)
-# Twilio Client setup check
-twilio_verify_sid = os.getenv("TWILIO_VERIFY_SERVICE_SID")
-twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+# REMOVED Twilio Client setup check
+# twilio_verify_sid = os.getenv("TWILIO_VERIFY_SERVICE_SID")
+# twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+# twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+# try:
+#     if twilio_account_sid and twilio_auth_token:
+#         twilio_otp_client = Client(twilio_account_sid, twilio_auth_token)
+#     else:
+#         twilio_otp_client = None
+#         logger.warning("Twilio Account SID/Auth Token not found for OTP client.")
+# except Exception as e:
+#     twilio_otp_client = None
+#     logger.error(f"Failed to initialize Twilio client for OTP: {e}")
 
-try:
-    if twilio_account_sid and twilio_auth_token:
-        twilio_otp_client = Client(twilio_account_sid, twilio_auth_token)
-    else:
-        twilio_otp_client = None
-        logger.warning("Twilio Account SID/Auth Token not found for OTP client.")
-except Exception as e:
-    twilio_otp_client = None
-    logger.error(f"Failed to initialize Twilio client for OTP: {e}")
+# REMOVED send_otp function entirely
+# def send_otp(phone_number: str) -> bool:
+#     """Sends OTP using Twilio Verify."""
+#     ...
 
-def send_otp(phone_number: str) -> bool:
-    """Sends OTP using Twilio Verify."""
-    if not twilio_verify_sid:
-        st.error("Twilio Verify Service SID is not configured.")
-        logger.error("TWILIO_VERIFY_SERVICE_SID not set in environment variables.")
-        return False
-    if not twilio_otp_client:
-         st.error("Twilio client not initialized. Cannot send OTP.")
-         return False
-
-    try:
-        verification = twilio_otp_client.verify.v2.services(twilio_verify_sid) \
-            .verifications \
-            .create(to=phone_number, channel='sms')
-        
-        if verification.status == 'pending':
-            logger.info(f"OTP sent successfully to {phone_number}. Status: {verification.status}")
-            return True
-        else:
-            st.error(f"Failed to send OTP. Status: {verification.status}")
-            logger.error(f"Failed to send OTP to {phone_number}. Status: {verification.status}")
-            return False
-            
-    except TwilioRestException as e:
-        st.error(f"Twilio Error: {e.msg}")
-        logger.error(f"Twilio API error sending OTP to {phone_number}: {e}")
-        return False
-    except Exception as e:
-        st.error("An unexpected error occurred while sending the OTP.")
-        logger.error(f"Unexpected error sending OTP to {phone_number}: {e}", exc_info=True)
-        return False
-
-def check_otp(phone_number: str, otp_code: str) -> bool:
-    """Checks OTP using Twilio Verify."""
-    # Ensure the number trying to verify is the allowed number
-    allowed_phone_number = os.getenv("NOTIFY_PHONE_NUMBER")
-    if phone_number != allowed_phone_number:
-         logger.warning(f"OTP check attempt for non-allowed number: {phone_number}")
-         # Don't give specific feedback about *why* it failed, just that it's invalid
-         return False 
-
-    if not twilio_verify_sid:
-        st.error("Twilio Verify Service SID is not configured.")
-        logger.error("TWILIO_VERIFY_SERVICE_SID not set for OTP check.")
-        return False
-    if not twilio_otp_client:
-         st.error("Twilio client not initialized. Cannot check OTP.")
-         return False
-
-    try:
-        verification_check = twilio_otp_client.verify.v2.services(twilio_verify_sid) \
-            .verification_checks \
-            .create(to=phone_number, code=otp_code)
-        
-        if verification_check.status == 'approved':
-            logger.info(f"OTP verification successful for {phone_number}.")
-            return True
-        else:
-            logger.warning(f"OTP verification failed for {phone_number}. Status: {verification_check.status}")
-            return False
-            
-    except TwilioRestException as e:
-        # Log specific Twilio errors, but return generic failure to user
-        logger.error(f"Twilio API error checking OTP for {phone_number}: {e}")
-        if e.code == 20404: # Resource not found (e.g., code expired or invalid)
-             st.error("Verification code is invalid or has expired.")
-        else:
-             st.error("Failed to verify code due to a server error.")
-        return False
-    except Exception as e:
-        st.error("An unexpected error occurred during verification.")
-        logger.error(f"Unexpected error checking OTP for {phone_number}: {e}", exc_info=True)
-        return False
+# REMOVED check_otp function entirely
+# def check_otp(phone_number: str, otp_code: str) -> bool:
+#     """Checks OTP using Twilio Verify."""
+#     ...
 
 # --- Replace Placeholder Search with Agent Logic --- 
 def run_live_search(search_params: Dict) -> List[Dict]:
