@@ -27,7 +27,7 @@ st.set_page_config(
 from database.mongodb_client import MongoDBClient
 from database.pinecone_client import PineconeClient
 from config.logging_config import setup_logging
-from utils.helpers import format_currency, calculate_days_remaining, display_grant_field
+from utils.helpers import format_currency, calculate_days_remaining
 from utils.notification_manager import NotificationManager
 from utils.heroku_manager import update_heroku_schedule, generate_cron_expression
 
