@@ -1,8 +1,10 @@
 import os
 import logging
+import time # Needed for logout delay and OTP expiry
 from datetime import datetime, timedelta, time
 from typing import Dict, List, Optional
 from pathlib import Path
+import secrets # For OTP generation
 
 import streamlit as st
 import pandas as pd
@@ -10,9 +12,9 @@ from dotenv import load_dotenv
 import plotly.express as px
 import plotly.graph_objects as go
 
-# Import Twilio for OTP
-from twilio.rest import Client
-from twilio.base.exceptions import TwilioRestException
+# Add Telegram imports
+import telegram
+from telegram.ext import Application
 
 # Page configuration must be the first Streamlit command
 st.set_page_config(
@@ -25,7 +27,7 @@ st.set_page_config(
 from database.mongodb_client import MongoDBClient
 from database.pinecone_client import PineconeClient
 from config.logging_config import setup_logging
-from utils.helpers import format_currency, calculate_days_remaining
+from utils.helpers import format_currency, calculate_days_remaining, display_grant_field
 from utils.notification_manager import NotificationManager
 from utils.heroku_manager import update_heroku_schedule, generate_cron_expression
 
@@ -33,7 +35,7 @@ from utils.heroku_manager import update_heroku_schedule, generate_cron_expressio
 from utils.agentql_client import AgentQLClient
 from utils.perplexity_client import PerplexityClient
 from agents.research_agent import ResearchAgent
-from agents.analysis_agent import AnalysisAgent
+from agents.analysis_agent import GrantAnalysisAgent
 
 # Set up logging
 setup_logging()
@@ -50,9 +52,18 @@ try:
     perplexity_client = PerplexityClient()
     notifier = NotificationManager()
 
+    # Initialize Telegram Bot Application
+    telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not telegram_token:
+        logger.warning("TELEGRAM_BOT_TOKEN not found. Telegram features disabled.")
+        telegram_app = None
+    else:
+        telegram_app = Application.builder().token(telegram_token).build()
+        logger.info("Telegram Bot Application initialized.")
+
     # Initialize Agents
     research_agent = ResearchAgent(agentql_client, perplexity_client, mongo_client)
-    analysis_agent = AnalysisAgent(pinecone_client, mongo_client)
+    analysis_agent = GrantAnalysisAgent(pinecone_client, mongo_client)
 
     logger.info("All clients and agents initialized.")
 except Exception as e:
@@ -185,6 +196,23 @@ if 'search_results' not in st.session_state:
 if 'last_search' not in st.session_state:
     st.session_state.last_search = None
 
+if 'selected_grant' not in st.session_state:
+    st.session_state.selected_grant = None
+
+if 'previous_page' not in st.session_state: # For Back button logic
+    st.session_state.previous_page = "Dashboard"
+
+if 'authenticated' not in st.session_state:
+     st.session_state.authenticated = False
+
+# Add Telegram OTP state
+if 'otp_code' not in st.session_state:
+    st.session_state.otp_code = None
+if 'otp_expiry' not in st.session_state:
+    st.session_state.otp_expiry = None
+if 'otp_sent' not in st.session_state: # Keep this to manage UI flow
+    st.session_state.otp_sent = False
+
 def get_metric_data():
     """Get real-time metric data from MongoDB."""
     try:
@@ -249,7 +277,7 @@ def get_metric_data():
             "new_today_display": "+0 Today"
         }
 
-def render_grant_card(grant):
+def render_grant_card(grant, current_page="Dashboard"):
     """Render an individual grant card with interactive elements."""
     grant_id = str(grant.get('_id', ''))
     title = grant.get('title', 'Untitled Grant')
@@ -310,21 +338,26 @@ def render_grant_card(grant):
     with col1:
         if st.button("View Details", key=f"view_{grant_id}"):
             st.session_state.selected_grant = grant
+            st.session_state.previous_page = current_page # Store where user came from
             st.session_state.page = "Grant Details"
+            st.experimental_rerun() # Rerun to navigate
     
     with col2:
         if st.button("Save Grant", key=f"save_{grant_id}"):
-            success = mongo_client.save_grant_for_user(grant_id)
+            success = mongo_client.save_grant_for_user("default_user", grant_id)
             if success:
-                st.success("Grant saved successfully!")
+                st.success("Grant saved!")
             else:
                 st.error("Failed to save grant.")
     
     with col3:
         if st.button("Alert Me", key=f"alert_{grant_id}"):
-            success = notifier.send_grant_alert([grant])
+            # Pass user_id if needed by notifier
+            success = notifier.send_grant_alert([grant], user_id="default_user") 
             if success:
                 st.success("Alert sent!")
+                # Record that alert was sent
+                mongo_client.record_alert_sent("default_user", grant_id)
             else:
                 st.error("Failed to send alert.")
 
@@ -413,7 +446,8 @@ def render_dashboard():
         st.info("No grants match your current filter criteria. Try adjusting your filters.")
     else:
         for grant in grants:
-            render_grant_card(grant)
+            # Pass current page context
+            render_grant_card(grant, current_page="Dashboard")
     
     # Recent searches section
     st.subheader("Recent Search Activity")
@@ -608,7 +642,8 @@ def render_search():
         
         # Display results
         for grant in sorted_results:
-            render_grant_card(grant)
+            # Pass current page context
+            render_grant_card(grant, current_page="Search Grants")
     elif search_button and st.session_state.search_results == []: # Explicitly check for empty results after search
         # Optional: keep the info message if search was run but found nothing
         # st.info("No grants were found matching your specific criteria.")
@@ -918,71 +953,78 @@ def render_settings():
                 st.error("Failed to save settings to database. Please try again.")
 
 def login_screen():
-    st.title("🔒 Secure Login")
-    st.markdown("Please verify your phone number to access the dashboard.")
+    st.title("🔐 Admin Login")
+    st.write("An OTP will be sent to the configured Admin Telegram account.")
 
-    # Ensure allowed phone number is configured
-    allowed_phone_number = os.getenv("NOTIFY_PHONE_NUMBER")
-    if not allowed_phone_number:
-        st.error("Application access is not configured. Please contact the administrator.")
-        logger.critical("CRITICAL: NOTIFY_PHONE_NUMBER is not set in environment variables. Cannot proceed with login.")
-        st.stop()
+    col1, col2 = st.columns(2)
 
-    # Use session state to manage OTP flow stages
-    if 'otp_sent' not in st.session_state:
-        st.session_state.otp_sent = False
-    if 'login_phone_number' not in st.session_state:
-        st.session_state.login_phone_number = ""
+    with col1:
+        if st.button("Send OTP to Admin Telegram"):
+            # Use asyncio.run because Streamlit runs in a sync context
+            import asyncio
+            if asyncio.run(send_telegram_otp()):
+                 st.success("OTP sent successfully via Telegram!")
+            # Error messages handled within send_telegram_otp
 
-    phone_number = st.text_input("Enter your phone number (e.g., +1234567890)", value=st.session_state.login_phone_number, key="phone_input")
-    st.session_state.login_phone_number = phone_number # Store number as user types
+    with col2:
+        if st.session_state.otp_sent:
+            otp_code_input = st.text_input(
+                "Enter OTP",
+                type="password",
+                key="otp_input"
+            )
 
-    if st.button("Send Verification Code", key="send_otp_button", disabled=st.session_state.otp_sent or not phone_number):
-        if phone_number == allowed_phone_number:
-            with st.spinner("Sending code..."):
-                success = send_otp(phone_number)
-                if success:
-                    st.session_state.otp_sent = True
-                    st.success("Verification code sent to your phone.")
-                    st.experimental_rerun() # Rerun to update button states
-                # Error message handled within send_otp
-        else:
-             st.warning("Please enter the registered phone number.")
-             logger.warning(f"Login attempt with non-registered number: {phone_number}")
-
-    if st.session_state.otp_sent:
-        otp_code = st.text_input("Enter the 6-digit code sent to your phone", max_chars=6, key="otp_input")
-        if st.button("Verify and Login", key="verify_button", disabled=not otp_code or len(otp_code) != 6):
-             with st.spinner("Verifying code..."):
-                if check_otp(phone_number, otp_code):
-                     st.session_state.authenticated = True
-                     st.session_state.otp_sent = False # Reset OTP state
-                     st.session_state.login_phone_number = "" # Clear phone number
-                     st.success("Login Successful!")
-                     time.sleep(1) # Brief pause before rerunning
-                     st.experimental_rerun()
+            if st.button("Verify OTP"):
+                if check_telegram_otp(otp_code_input):
+                    st.session_state.authenticated = True
+                    st.session_state.otp_sent = False # Reset OTP flow state
+                    st.success("Authentication successful!")
+                    logger.info("Admin user authenticated successfully.")
+                    time.sleep(1) # Brief pause before rerun
+                    st.experimental_rerun()
                 else:
-                     # Error handled within check_otp, maybe add specific feedback here?
-                     st.error("Invalid verification code. Please try again.")
-                     # Potentially reset otp_sent state after too many failures
+                    # Error messages handled within check_telegram_otp
+                    pass # Keep otp_sent True to allow retry
 
 def main_app():
     # --- Sidebar Navigation --- (This part runs only if authenticated)
     st.sidebar.title("Navigation")
-    page_options = ["Dashboard", "Search Grants", "Analytics", "Settings"]
-    st.session_state.page = st.sidebar.radio("Go to:", page_options, index=page_options.index(st.session_state.get('page', 'Dashboard')))
+    # Add new pages to options
+    page_options = ["Dashboard", "Search Grants", "Saved Grants", "Analytics", "Alert History", "Settings"]
+    
+    current_page_index = page_options.index(st.session_state.get('page', 'Dashboard'))
+    st.session_state.page = st.sidebar.radio(
+        "Go to:", 
+        page_options, 
+        index=current_page_index
+    )
 
+    # --- Logout Button --- 
+    st.sidebar.divider()
+    if st.sidebar.button("Logout"):
+        # Clear relevant session state
+        st.session_state.authenticated = False
+        st.session_state.page = "Dashboard" # Reset page state
+        st.session_state.selected_grant = None
+        st.session_state.otp_sent = False
+        logger.info("User logged out.")
+        st.experimental_rerun()
+        
     # --- Page Rendering --- (Based on sidebar selection)
     if st.session_state.page == "Dashboard":
         render_dashboard()
     elif st.session_state.page == "Search Grants":
         render_search()
+    elif st.session_state.page == "Saved Grants":
+        render_saved_grants()
     elif st.session_state.page == "Analytics":
         render_analytics()
+    elif st.session_state.page == "Alert History":
+        render_alert_history()
     elif st.session_state.page == "Settings":
         render_settings()
-    elif st.session_state.page == "Grant Details": # Add if you have a details page
-        render_grant_details() # Assuming this function exists
+    elif st.session_state.page == "Grant Details":
+        render_grant_details()
     else:
         render_dashboard() # Default to dashboard
 
@@ -1124,6 +1166,133 @@ def run_live_search(search_params: Dict) -> List[Dict]:
         logger.error(f"Error during live grant search execution: {e}", exc_info=True)
         st.error(f"An error occurred during the search. Please check logs.")
         return [] # Return empty list on failure
+
+# --- New Page Rendering Functions --- 
+def render_grant_details():
+    """Renders the detailed view for a selected grant."""
+    st.markdown('<h1 class="main-header">Grant Details</h1>', unsafe_allow_html=True)
+    
+    grant = st.session_state.get('selected_grant')
+
+    if not grant:
+        st.error("No grant selected or details lost. Please go back and select a grant.")
+        if st.button("Go to Dashboard"):
+            st.session_state.page = "Dashboard"
+            st.experimental_rerun()
+        return
+
+    # Display fields (use helper for potentially missing fields)
+    display_grant_field("Title", grant.get('title'))
+    display_grant_field("Description", grant.get('description'), markdown=True)
+    display_grant_field("Amount", grant.get('amount'), formatter=format_currency)
+    display_grant_field("Deadline", grant.get('deadline'))
+    display_grant_field("Source", grant.get('source_name'))
+    display_grant_field("Source URL", grant.get('source_url'), is_link=True)
+    display_grant_field("Category", grant.get('category'))
+    display_grant_field("Relevance Score", grant.get('relevance_score'), suffix="%")
+    display_grant_field("First Found", grant.get('first_found_at'))
+    display_grant_field("Last Updated", grant.get('last_updated'))
+    # Add other fields as necessary
+
+    st.divider()
+    
+    # Back button using stored previous page
+    if st.button(f"< Back to {st.session_state.previous_page}"):
+        st.session_state.page = st.session_state.previous_page
+        st.session_state.selected_grant = None # Clear selected grant
+        st.experimental_rerun()
+
+def render_saved_grants():
+    """Renders the list of grants saved by the user."""
+    st.markdown('<h1 class="main-header">📚 Saved Grants</h1>', unsafe_allow_html=True)
+    
+    user_id = "default_user" # Assuming single user
+    saved_grants = mongo_client.get_saved_grants_for_user(user_id)
+    
+    if not saved_grants:
+        st.info("You haven't saved any grants yet. Click 'Save Grant' on a grant card to add it here.")
+        return
+        
+    st.write(f"Displaying {len(saved_grants)} saved grants.")
+    st.divider()
+    
+    for grant in saved_grants:
+        grant_id = grant['_id']
+        # Use columns for layout: Grant Card | Remove Button
+        col1, col2 = st.columns([4, 1]) 
+        with col1:
+             render_grant_card(grant, current_page="Saved Grants") # Pass context
+        with col2:
+             st.write(" ") # Add some space
+             st.write(" ")
+             if st.button("❌ Remove", key=f"remove_{grant_id}"):
+                  success = mongo_client.remove_saved_grant_for_user(user_id, grant_id)
+                  if success:
+                       st.success("Grant removed from saved list.")
+                       # Rerun needed to refresh the list displayed
+                       time.sleep(0.5) # Short delay before rerun
+                       st.experimental_rerun()
+                  else:
+                       st.error("Failed to remove grant.")
+        st.divider()
+
+def render_alert_history():
+    """Renders the user's alert history."""
+    st.markdown('<h1 class="main-header">🔔 Alert History</h1>', unsafe_allow_html=True)
+    
+    user_id = "default_user"
+    alert_history = mongo_client.get_alert_history_for_user(user_id, limit=50) # Increase limit?
+    
+    if not alert_history:
+        st.info("No alert history found.")
+        return
+        
+    # Display as a table or formatted list
+    history_data = []
+    for entry in alert_history:
+        sent_at = entry.get('alert_sent_at')
+        sent_at_str = sent_at.strftime("%Y-%m-%d %H:%M:%S UTC") if isinstance(sent_at, datetime) else "N/A"
+        title = entry.get('grant_title', 'Grant details unavailable')
+        url = entry.get('grant_source_url')
+        link = f"[Link]({url})" if url else "N/A"
+        history_data.append({
+            "Sent At": sent_at_str,
+            "Grant Title": title,
+            # "Link": link # Maybe too noisy for table?
+        })
+    
+    st.dataframe(history_data, use_container_width=True)
+    
+    # Alternative: Markdown list
+    # for entry in alert_history:
+    #     sent_at_str = entry.get('alert_sent_at', datetime.now()).strftime("%Y-%m-%d %H:%M UTC")
+    #     title = entry.get('grant_title', 'Grant details unavailable')
+    #     url = entry.get('grant_source_url')
+    #     link_md = f" ([Link]({url}))" if url else ""
+    #     st.markdown(f"- **{sent_at_str}:** Alert sent for '{title}'{link_md}")
+
+# --- Helper function (can be moved to utils/helpers.py) ---
+def display_grant_field(label, value, formatter=None, suffix=None, is_link=False, markdown=False):
+    """Helper to display a field only if it has a value."""
+    if value is not None and value != '':
+        display_value = value
+        if formatter:
+            try:
+                display_value = formatter(value)
+            except Exception as e:
+                 logger.warning(f"Formatter error for {label}: {e}")
+                 display_value = str(value) # Fallback to string
+        
+        if suffix:
+            display_value = f"{display_value}{suffix}"
+
+        if is_link:
+            st.markdown(f"**{label}:** [{value}]({value})", unsafe_allow_html=True)
+        elif markdown:
+             st.markdown(f"**{label}:**")
+             st.markdown(value, unsafe_allow_html=True) # Allow basic markdown in descriptions
+        else:
+            st.write(f"**{label}:** {display_value}")
 
 # --- Entry Point --- 
 if __name__ == "__main__":
