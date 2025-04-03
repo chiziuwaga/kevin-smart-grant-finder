@@ -32,9 +32,13 @@ class NotificationManager:
         
         telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
         if telegram_token:
+            cleaned_token = telegram_token.strip().strip("'").strip('"') # Explicitly remove whitespace and quotes
+            if not cleaned_token:
+                 logging.warning("Telegram Bot Token is empty after cleaning.")
+                 return
             try:
                 # Use telegram.Bot for sending, Application might be needed elsewhere for receiving
-                self.telegram_bot = telegram.Bot(token=telegram_token)
+                self.telegram_bot = telegram.Bot(token=cleaned_token)
                 logging.info("Telegram bot initialized for sending.")
             except Exception as e:
                  logging.error(f"Failed to initialize Telegram bot: {e}")
