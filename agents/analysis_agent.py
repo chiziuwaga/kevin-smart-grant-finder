@@ -2,9 +2,17 @@
 Analysis Agent for processing and evaluating grant opportunities.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 class GrantAnalysisAgent:
-    def __init__(self):
+    def __init__(self, pinecone_client, mongo_client):
+        """Initialize the agent with necessary clients."""
+        self.pinecone_client = pinecone_client
+        self.mongo_client = mongo_client
         self.criteria = {}
+        logger.info("Grant Analysis Agent initialized")
 
     def analyze_grant(self, grant_data):
         """
