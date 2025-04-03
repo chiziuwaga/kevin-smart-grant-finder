@@ -55,18 +55,9 @@ class MongoDBClient:
         host = mongodb_host
 
         try:
-            # Connect to MongoDB
-            # Use appropriate connection method based on host type (SRV or standard)
-            # Assuming Atlas SRV record format for host, which pymongo handles directly
-            connection_string = f"mongodb+srv://{mongodb_user}:{mongodb_password}@{mongodb_host}/?retryWrites=true&w=majority"
-            if mongodb_replicaset:
-                connection_string += f"&replicaSet={mongodb_replicaset}"
-            if mongodb_authsource:
-                connection_string += f"&authSource={mongodb_authsource}"
-
-            # Alternative if *not* using SRV (less common for Atlas)
-            # self.client = pymongo.MongoClient(host, **options, serverSelectionTimeoutMS=5000)
-
+            # Connect to MongoDB using the connection string directly from environment
+            connection_string = mongodb_host
+            
             self.client = pymongo.MongoClient(connection_string, serverSelectionTimeoutMS=5000)
             self.client.admin.command('ping') # Verify connection
 
