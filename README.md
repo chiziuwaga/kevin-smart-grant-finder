@@ -19,10 +19,10 @@ This project implements an automated system to find, rank, and manage grant oppo
 *   **Frontend:** Streamlit
 *   **Database:** MongoDB Atlas
 *   **Vector Database:** Pinecone
-*   **Notifications:** Twilio (SMS), python-telegram-bot (Telegram)
+*   **Notifications:** python-telegram-bot (Telegram)
 *   **Scheduling:** Heroku Scheduler / Cron To Go (Recommended)
 *   **Deployment:** Heroku
-*   **Libraries:** `pymongo`, `pinecone-client`, `streamlit`, `python-dotenv`, `requests`, `beautifulsoup4`, `twilio`, `python-telegram-bot`, `heroku3` (for schedule management), `asyncio`
+*   **Libraries:** `pymongo`, `pinecone-client`, `streamlit`, `python-dotenv`, `requests`, `beautifulsoup4`, `python-telegram-bot`, `heroku3` (if schedule management used), `asyncio`
 
 ## Setup Instructions
 
@@ -47,46 +47,51 @@ This project implements an automated system to find, rank, and manage grant oppo
 
 4.  **Configure Environment Variables:**
     *   Create a file named `.env` in the project root directory.
-    *   Copy the contents of `.env.example` (if provided) or add the following variables, replacing placeholder values with your actual API keys and configuration:
+    *   Add the following variables, replacing placeholder values with your actual API keys and configuration (refer to `.env.example` in the repo if available):
 
     ```dotenv
     # --- API Keys ---
+    # AgentQL
+    AGENTQL_API_KEY=YOUR_AGENTQL_API_KEY
+    # Perplexity
+    PERPLEXITY_API_KEY=YOUR_PERPLEXITY_API_KEY
+    # OpenAI (for Pinecone embeddings, etc.)
+    OPENAI_API_KEY=YOUR_OPENAI_API_KEY
     # Pinecone
-    PINECONE_API_KEY="YOUR_PINECONE_API_KEY_HERE"
-    PINECONE_ENVIRONMENT="YOUR_PINECONE_ENVIRONMENT_HERE" # e.g., us-west1-gcp
+    # PINECONE_API_KEY=YOUR_PINECONE_API_KEY # Set this when resolving Pinecone issues
 
-    # MongoDB
-    MONGODB_URI="YOUR_MONGODB_CONNECTION_STRING_HERE" # e.g., mongodb+srv://...
+    # --- Database Configuration (MongoDB Atlas) ---
+    MONGODB_USER=YOUR_MONGO_USERNAME
+    MONGODB_PASSWORD=YOUR_MONGO_PASSWORD
+    MONGODB_HOST=YOUR_MONGO_HOST_CLUSTER_URL # e.g., grantcluster.xxxxx.mongodb.net
+    MONGODB_DBNAME=SmartGrantfinder # Or your preferred DB name
+    MONGODB_AUTHSOURCE=admin # Usually admin for Atlas
+    MONGODB_SSL=true # Usually true for Atlas
 
-    # OpenAI (for Pinecone embeddings)
-    OPENAI_API_KEY="YOUR_OPENAI_API_KEY_HERE"
+    # --- Pinecone Configuration ---
+    PINECONE_INDEX_NAME=grantpriorities # Or your chosen index name
 
-    # Twilio (for SMS alerts)
-    TWILIO_ACCOUNT_SID="YOUR_TWILIO_ACCOUNT_SID_HERE"
-    TWILIO_AUTH_TOKEN="YOUR_TWILIO_AUTH_TOKEN_HERE"
-    TWILIO_PHONE_NUMBER="YOUR_TWILIO_PHONE_NUMBER_HERE" # Must be Twilio number
-    NOTIFY_PHONE_NUMBER="RECIPIENT_PHONE_NUMBER_HERE" # e.g., Kevin's phone number
+    # --- Notification Configuration ---
+    TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+    ADMIN_TELEGRAM_CHAT_ID=YOUR_ADMIN_CHAT_ID # For OTP login
+    TELEGRAM_CHAT_ID=YOUR_GENERAL_ALERT_CHAT_ID # For grant alerts (can be same as admin)
 
-    # Telegram (for Telegram alerts)
-    TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN_HERE"
-    TELEGRAM_CHAT_ID="YOUR_TELEGRAM_CHAT_ID_HERE" # Can be user ID or group ID
+    # --- Application Settings ---
+    # APP_NAME=kevins-grant-finder # Optional
+    # RELEVANCE_THRESHOLD=85 # Optional default
+    # DEADLINE_THRESHOLD=30 # Optional default
 
-    # Heroku (for simulated schedule updates)
-    HEROKU_API_KEY="YOUR_HEROKU_API_KEY_HERE"
-    HEROKU_APP_NAME="YOUR_HEROKU_APP_NAME_HERE" # Your Heroku app name
-
-    # --- Database Config ---
-    MONGODB_DATABASE="grant_finder" # Or your preferred DB name
-    PINECONE_INDEX_NAME="grant-finder-index" # Or your preferred index name
-
-    # --- Application Config ---
-    # Set to "true" to use mock data and disable external API calls
-    MOCK_MODE="False"
-    # Set to "true" to run the scheduled job script with mock data
-    SCHEDULED_JOB_MOCK_MODE="False"
+    # --- Scheduling & Timezone (Used by Heroku Scheduler setup) ---
+    # SCHEDULE_DAYS=monday,thursday # Optional default
+    # SCHEDULE_TIME=10:00 # Optional default
+    # TIMEZONE=America/New_York # Optional default
 
     # --- Logging ---
-    LOG_LEVEL="INFO" # e.g., DEBUG, INFO, WARNING, ERROR
+    LOG_LEVEL=INFO # e.g., DEBUG, INFO, WARNING, ERROR
+
+    # --- Heroku API (Only needed if app modifies Heroku schedule directly) ---
+    # HEROKU_API_KEY=YOUR_HEROKU_API_KEY
+    # HEROKU_APP_NAME=YOUR_HEROKU_APP_NAME
     ```
 
 ## Running the Application
@@ -124,12 +129,14 @@ This project implements an automated system to find, rank, and manage grant oppo
 
 ## Known Limitations
 
-*   **Simulated Heroku Schedule Updates:** The feature allowing users to change the search schedule via the Streamlit settings page currently *simulates* the update to Heroku. It logs the intended action but does not make the actual API call to modify the Heroku Scheduler job. Implementing the real API call requires handling the Heroku Platform API directly (e.g., using `requests`).
+*   **Pinecone Integration:** Current deployment runs with Pinecone mocked due to initialization issues. Relevance ranking is simulated.
+*   **Simulated Heroku Schedule Updates:** The feature allowing users to change the search schedule via the Streamlit settings page currently *simulates* the update to Heroku.
 *   **Basic Duplicate Alert Prevention:** The system prevents sending alerts for the exact same grant within a 7-day window. More sophisticated logic might be needed depending on how grants are updated or re-listed.
 *   **Scraper Scope:** The current implementation primarily focuses on the Louisiana grant scraper. Expanding to other sources configured via AgentQL or Perplexity requires further development in `run_grant_search.py` or dedicated agent scripts.
 
 ## Future Enhancements
 
+*   Resolve Pinecone API key/initialization issues.
 *   Implement real Heroku API calls for dynamic schedule updates.
 *   Refine duplicate alert logic.
 *   Expand scraper coverage and integrate AgentQL/Perplexity searches into the scheduled job.
