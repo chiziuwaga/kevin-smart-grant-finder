@@ -248,7 +248,7 @@ async def send_telegram_otp() -> bool:
     
     try:
         # Use the existing notifier to send the message asynchronously
-        success = await notifier.send_telegram_message_async(message, chat_id=admin_chat_id)
+        success = await notifier.send_telegram_async(message, chat_id=admin_chat_id)
         
         if success:
             logger.info(f"Sent OTP successfully to admin chat ID: {admin_chat_id}")
