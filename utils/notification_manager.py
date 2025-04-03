@@ -2,7 +2,7 @@ import os
 # Removed: from twilio.rest import Client
 import telegram
 import logging
-from typing import Dict, Any, Union, List
+from typing import Dict, Any, Union, List, Optional
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -72,25 +72,29 @@ class NotificationManager:
     # def send_sms(self, message: str, to_number: str) -> bool:
     #    ...
     
-    async def send_telegram_async(self, message: str) -> bool:
-        """Send a Telegram notification asynchronously."""
-        if not self.telegram_bot or not self.telegram_chat_id:
-            logging.warning("Telegram not configured or failed to initialize. Cannot send Telegram message.")
+    async def send_telegram_async(self, message: str, chat_id: Optional[str] = None) -> bool:
+        """Send a Telegram notification asynchronously, optionally to a specific chat_id."""
+        # Determine the target chat ID
+        target_chat_id = chat_id if chat_id else self.telegram_chat_id
+        
+        if not self.telegram_bot or not target_chat_id:
+            log_message = "Telegram not configured" if not self.telegram_bot else "Target chat ID missing"
+            logging.warning(f"{log_message}. Cannot send Telegram message.")
             return False
         
         try:
             await self.telegram_bot.send_message(
-                chat_id=self.telegram_chat_id,
+                chat_id=target_chat_id, # Use the determined target chat ID
                 text=message,
                 parse_mode='HTML' # Ensure format_grant_message produces valid HTML
             )
-            logging.info("Telegram message sent successfully.")
+            logging.info(f"Telegram message sent successfully to chat_id: {target_chat_id}.")
             return True
         except telegram.error.TelegramError as e:
-            logging.error(f"Telegram API error sending message: {e}")
+            logging.error(f"Telegram API error sending message to {target_chat_id}: {e}")
             return False
         except Exception as e:
-            logging.error(f"Failed to send Telegram message: {str(e)}", exc_info=True)
+            logging.error(f"Failed to send Telegram message to {target_chat_id}: {str(e)}", exc_info=True)
             return False
     
     # Simplified: Assumes user_settings comes from a single source now
