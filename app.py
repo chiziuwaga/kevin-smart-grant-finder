@@ -1,10 +1,11 @@
 import os
 import logging
 import time # Needed for logout delay and OTP expiry
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time as dt_time # Alias time to avoid conflict
 from typing import Dict, List, Optional
 from pathlib import Path
 import secrets # For OTP generation
+import asyncio # For running async Telegram send
 
 import streamlit as st
 import pandas as pd
@@ -212,6 +213,86 @@ if 'otp_expiry' not in st.session_state:
     st.session_state.otp_expiry = None
 if 'otp_sent' not in st.session_state: # Keep this to manage UI flow
     st.session_state.otp_sent = False
+
+# --- OTP Functions ---
+OTP_EXPIRY_MINUTES = 5 # Configure OTP validity duration
+
+def generate_otp(length=6):
+    """Generate a secure random OTP of specified length."""
+    return "".join(secrets.choice("0123456789") for _ in range(length))
+
+async def send_telegram_otp() -> bool:
+    """Generates OTP, stores it, and sends via Telegram to admin."""
+    admin_chat_id = os.getenv("ADMIN_TELEGRAM_CHAT_ID")
+    if not admin_chat_id:
+        logger.error("ADMIN_TELEGRAM_CHAT_ID not set in environment variables.")
+        st.error("Admin Telegram Chat ID is not configured.")
+        return False
+    
+    if not notifier or not notifier.telegram_bot: # Check if notifier and its bot are ready
+         logger.error("Telegram Notifier is not initialized.")
+         st.error("Telegram Bot is not configured correctly.")
+         return False
+
+    otp_code = generate_otp()
+    expiry_time = datetime.utcnow() + timedelta(minutes=OTP_EXPIRY_MINUTES)
+    
+    # Store OTP and expiry in session state
+    st.session_state.otp_code = otp_code
+    st.session_state.otp_expiry = expiry_time
+    st.session_state.otp_sent = False # Reset to False initially, set True on success
+
+    logger.info(f"Generated OTP for admin login: {otp_code}") # Log OTP for debugging (REMOVE FOR PROD)
+    
+    message = f"Your SmartGrantFinder admin login OTP is: {otp_code}\nIt expires in {OTP_EXPIRY_MINUTES} minutes."
+    
+    try:
+        # Use the existing notifier to send the message asynchronously
+        success = await notifier.send_telegram_message_async(message, chat_id=admin_chat_id)
+        
+        if success:
+            logger.info(f"Sent OTP successfully to admin chat ID: {admin_chat_id}")
+            st.session_state.otp_sent = True # Mark as sent to show verification field
+            return True
+        else:
+            # Error logged within notifier.send_telegram_message_async
+            st.error("Failed to send OTP via Telegram. Check logs.")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error sending Telegram OTP: {e}", exc_info=True)
+        st.error(f"An unexpected error occurred while sending OTP: {e}")
+        return False
+
+def check_telegram_otp(user_input: str) -> bool:
+    """Checks the user-provided OTP against the stored one."""
+    stored_otp = st.session_state.get("otp_code")
+    expiry_time = st.session_state.get("otp_expiry")
+    
+    # Clear OTP after check regardless of outcome
+    st.session_state.otp_code = None 
+    st.session_state.otp_expiry = None
+    
+    if not stored_otp or not expiry_time:
+        logger.warning("OTP check attempted, but no OTP found in session state.")
+        st.error("No OTP found or session expired. Please request a new one.")
+        return False
+        
+    if datetime.utcnow() > expiry_time:
+        logger.warning("OTP check attempted, but OTP has expired.")
+        st.error("OTP has expired. Please request a new one.")
+        return False
+        
+    # Secure comparison (though less critical for short-lived OTPs)
+    if secrets.compare_digest(user_input, stored_otp):
+        logger.info("OTP verification successful.")
+        return True
+    else:
+        logger.warning("OTP verification failed. Incorrect code entered.")
+        st.error("Invalid OTP entered. Please try again.")
+        return False
+
+# --- End OTP Functions ---
 
 def get_metric_data():
     """Get real-time metric data from MongoDB."""
@@ -835,10 +916,10 @@ def render_settings():
     # Handle time - could be stored as string or time object
     default_schedule_time_str = current_settings.get("schedule_time", "10:00")
     try:
-        default_schedule_time_obj = datetime.strptime(default_schedule_time_str, "%H:%M").time()
+        default_schedule_time_obj = dt_time(int(default_schedule_time_str.split(':')[0]), int(default_schedule_time_str.split(':')[1]))
     except (ValueError, TypeError):
         logger.warning(f"Invalid stored time '{default_schedule_time_str}', defaulting to 10:00")
-        default_schedule_time_obj = time(10, 0)
+        default_schedule_time_obj = dt_time(10, 0)
     
     with st.form("settings_form"):
         st.subheader("Notification Preferences")
@@ -953,27 +1034,31 @@ def render_settings():
 def login_screen():
     st.title("🔐 Admin Login")
     st.write("An OTP will be sent to the configured Admin Telegram account.")
-
+    
     col1, col2 = st.columns(2)
 
     with col1:
         if st.button("Send OTP to Admin Telegram"):
-            # Use asyncio.run because Streamlit runs in a sync context
-            import asyncio
+            # Run the async function using asyncio.run
             if asyncio.run(send_telegram_otp()):
                  st.success("OTP sent successfully via Telegram!")
-            # Error messages handled within send_telegram_otp
+                 # State `otp_sent` is set within send_telegram_otp on success
+            # Error messages are handled within send_telegram_otp
 
     with col2:
-        if st.session_state.otp_sent:
+        # Only show OTP input if OTP was successfully sent
+        if st.session_state.get('otp_sent', False):
             otp_code_input = st.text_input(
                 "Enter OTP",
                 type="password",
-                key="otp_input"
+                key="otp_input",
+                help=f"Enter the {len(st.session_state.get('otp_code',' ') or '------')} digit code sent to Telegram." # Adjust help text
             )
 
             if st.button("Verify OTP"):
-                if check_telegram_otp(otp_code_input):
+                if not otp_code_input:
+                     st.warning("Please enter the OTP code.")
+                elif check_telegram_otp(otp_code_input):
                     st.session_state.authenticated = True
                     st.session_state.otp_sent = False # Reset OTP flow state
                     st.success("Authentication successful!")
@@ -982,7 +1067,10 @@ def login_screen():
                     st.experimental_rerun()
                 else:
                     # Error messages handled within check_telegram_otp
-                    pass # Keep otp_sent True to allow retry
+                    # Keep otp_sent True to allow retry if verification fails
+                    pass 
+        elif st.session_state.get('otp_code') is not None: # Handle case where send failed but state wasn't reset
+             st.warning("Previous OTP attempt may have failed. Try sending again.")
 
 def main_app():
     # --- Sidebar Navigation --- (This part runs only if authenticated)
@@ -1038,31 +1126,6 @@ def main_app():
 
 # Page rendering functions (Assuming render_dashboard, etc. are defined)
 # ...
-
-# --- OTP Functions --- (Moved here for better organization, ensure imports are at the top)
-# REMOVED Twilio Client setup check
-# twilio_verify_sid = os.getenv("TWILIO_VERIFY_SERVICE_SID")
-# twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-# twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-# try:
-#     if twilio_account_sid and twilio_auth_token:
-#         twilio_otp_client = Client(twilio_account_sid, twilio_auth_token)
-#     else:
-#         twilio_otp_client = None
-#         logger.warning("Twilio Account SID/Auth Token not found for OTP client.")
-# except Exception as e:
-#     twilio_otp_client = None
-#     logger.error(f"Failed to initialize Twilio client for OTP: {e}")
-
-# REMOVED send_otp function entirely
-# def send_otp(phone_number: str) -> bool:
-#     """Sends OTP using Twilio Verify."""
-#     ...
-
-# REMOVED check_otp function entirely
-# def check_otp(phone_number: str, otp_code: str) -> bool:
-#     """Checks OTP using Twilio Verify."""
-#     ...
 
 # --- Replace Placeholder Search with Agent Logic --- 
 def run_live_search(search_params: Dict) -> List[Dict]:
