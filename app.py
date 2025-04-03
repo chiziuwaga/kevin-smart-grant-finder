@@ -46,11 +46,11 @@ load_dotenv()
 
 # Initialize clients with proper error handling
 try:
-mongo_client = MongoDBClient()
+    mongo_client = MongoDBClient()
     pinecone_client = PineconeClient()
     agentql_client = AgentQLClient()
     perplexity_client = PerplexityClient()
-notifier = NotificationManager()
+    notifier = NotificationManager()
 
     # Initialize Telegram Bot Application
     telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
