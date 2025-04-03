@@ -46,11 +46,11 @@ load_dotenv()
 
 # Initialize clients with proper error handling
 try:
-    mongo_client = MongoDBClient()
+mongo_client = MongoDBClient()
     pinecone_client = PineconeClient()
     agentql_client = AgentQLClient()
     perplexity_client = PerplexityClient()
-    notifier = NotificationManager()
+notifier = NotificationManager()
 
     # Initialize Telegram Bot Application
     telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -249,7 +249,7 @@ def get_metric_data():
         ]
         funding_result = list(mongo_client.grants_collection.aggregate(pipeline))
         total_funding = funding_result[0]["totalFunding"] if funding_result else 0
-
+        
         # Get grants by category
         telecom_grants = mongo_client.grants_collection.count_documents({"category": "telecom"})
         nonprofit_grants = mongo_client.grants_collection.count_documents({"category": "nonprofit"})
@@ -258,7 +258,7 @@ def get_metric_data():
         # In a real app, you'd fetch the previous state or calculate based on timestamps
         high_priority_delta = new_high_priority_last_week # Example: delta is just new grants last week
         new_today_display = f"+{new_today_count} Today"
-
+        
         return {
             "high_priority": high_priority_count,
             "high_priority_delta": high_priority_delta,
@@ -525,7 +525,7 @@ def render_search():
         
         # Source selection - Dynamic
         st.subheader("Search Sources")
-
+        
         # Fetch sources from DB
         all_sources = mongo_client.get_sources_by_domain() # Fetch all sources
         source_names = sorted([s['name'] for s in all_sources if 'name' in s])
@@ -542,7 +542,7 @@ def render_search():
             with source_cols[col_index]:
                 # Use source name as key and label, default to True for now
                 selected_sources[source_name] = st.checkbox(source_name, value=True, key=f"source_{source_name}")
-
+        
         # Advanced options
         with st.expander("Advanced Options"):
             search_method = st.radio(
@@ -587,10 +587,10 @@ def render_search():
                 # Add other parameters like geo_focus, funding_range, eligibility
             }
             if category in ["telecom", "combined"]:
-                 search_params["geo_restrictions"] = geo_focus
+                search_params["geo_restrictions"] = geo_focus
             if category in ["nonprofit", "combined"]:
-                 search_params["funding_range"] = funding_range
-                 search_params["eligibility"] = eligibility
+                search_params["funding_range"] = funding_range
+                search_params["eligibility"] = eligibility
 
             
             # Show search progress
@@ -611,7 +611,7 @@ def render_search():
                         st.info("No grants were found matching your specific criteria.")
                 # else: # Error message is handled within run_live_search now
                     # st.error("An error occurred during the search. Please check application logs.")
-
+    
     # Display search results if available
     if st.session_state.search_results:
         st.subheader("Search Results")
@@ -824,7 +824,7 @@ def render_analytics():
 def render_settings():
     """Render the settings page."""
     st.markdown('<h1 class="main-header">⚙️ Settings</h1>', unsafe_allow_html=True)
-
+    
     user_id = "default_user" # Assuming single user for now
     current_settings = mongo_client.get_user_settings(user_id)
 
@@ -839,7 +839,7 @@ def render_settings():
     except (ValueError, TypeError):
         logger.warning(f"Invalid stored time '{default_schedule_time_str}', defaulting to 10:00")
         default_schedule_time_obj = time(10, 0)
-
+    
     with st.form("settings_form"):
         st.subheader("Notification Preferences")
         col1, col2 = st.columns(2)
@@ -861,7 +861,7 @@ def render_settings():
              schedule_freq_index = schedule_frequency_options.index(default_schedule_freq)
         except ValueError:
              schedule_freq_index = 2 # Default to Twice Weekly if stored value is invalid
-
+        
         schedule_frequency = st.radio(
             "Search Frequency",
             options=schedule_frequency_options,
@@ -879,7 +879,7 @@ def render_settings():
             selected_schedule_days = weekdays # Internally, daily means all days for cron
         elif schedule_frequency == "Weekly":
              selected_schedule_days = [st.selectbox(
-                 "Search Day",
+                "Search Day",
                  options=weekdays,
                  index=weekdays.index(valid_default_days[0]) if valid_default_days else 0 # Default to Monday if invalid/empty
              )]
@@ -946,7 +946,7 @@ def render_settings():
 
                 if heroku_update_success:
                     st.success("Heroku schedule update simulated successfully! (Check logs for details)")
-                else:
+            else:
                     # Error messages are now handled within update_heroku_schedule
                     st.error("Failed to update Heroku schedule. Check application logs and Heroku configuration.")
             else:
@@ -1227,12 +1227,12 @@ def render_saved_grants():
              st.write(" ")
              if st.button("❌ Remove", key=f"remove_{grant_id}"):
                   success = mongo_client.remove_saved_grant_for_user(user_id, grant_id)
-                  if success:
+                if success:
                        st.success("Grant removed from saved list.")
                        # Rerun needed to refresh the list displayed
                        time.sleep(0.5) # Short delay before rerun
                        st.experimental_rerun()
-                  else:
+                else:
                        st.error("Failed to remove grant.")
         st.divider()
 
@@ -1291,7 +1291,7 @@ def display_grant_field(label, value, formatter=None, suffix=None, is_link=False
         elif markdown:
              st.markdown(f"**{label}:**")
              st.markdown(value, unsafe_allow_html=True) # Allow basic markdown in descriptions
-        else:
+                else:
             st.write(f"**{label}:** {display_value}")
 
 # --- Entry Point --- 

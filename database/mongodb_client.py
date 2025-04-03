@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Union
 from pymongo import MongoClient, ASCENDING, DESCENDING
-from pymongo.errors import PyMongoError, OperationFailure
+from pymongo.errors import PyMongoError, OperationFailure, ConnectionFailure, ConfigurationError
 import pymongo
 from dotenv import load_dotenv
 from bson.objectid import ObjectId
@@ -68,12 +68,9 @@ class MongoDBClient:
             # self.client = pymongo.MongoClient(host, **options, serverSelectionTimeoutMS=5000)
 
             self.client = pymongo.MongoClient(connection_string, serverSelectionTimeoutMS=5000)
+            self.client.admin.command('ping') # Verify connection
 
-            # Verify connection
-            self.client.server_info() # Raise exception if connection fails
             self.db = self.client[mongodb_dbname]
-
-            # Collections
             self.grants_collection = self.db["grants"]
             self.priorities_collection = self.db["priorities"]
             self.search_history_collection = self.db["search_history"]
@@ -85,15 +82,13 @@ class MongoDBClient:
             self._create_indexes()
 
             logger.info("MongoDB client initialized successfully using component variables.")
-        except ConfigurationError as e:
-             logger.error(f"MongoDB configuration error: {e}")
-             raise
-        except ConnectionFailure as e:
-            logger.error(f"MongoDB connection failed: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Error initializing MongoDB client: {e}")
-            raise
+        except (ConfigurationError, ConnectionFailure, pymongo.errors.InvalidURI) as e: # Catch specific PyMongo errors
+             logger.critical(f"CRITICAL: MongoDB connection/configuration error: {e}") # Log as critical
+             # Optionally raise a custom exception or handle appropriately
+             raise ConnectionError(f"Failed to connect to MongoDB: {e}") from e # Raise a standard ConnectionError
+        except Exception as e: # Catch any other unexpected errors during init
+            logger.critical(f"CRITICAL: Unexpected error initializing MongoDB client: {e}", exc_info=True)
+            raise ConnectionError(f"Unexpected error initializing MongoDB: {e}") from e # Raise a standard ConnectionError
 
     def _create_indexes(self):
         """Create database indexes for optimized queries."""
@@ -384,26 +379,32 @@ class MongoDBClient:
         #     return {...} # Commented out
         
         # Real get settings logic starts here
+        # Add saved_grant_ids to the default structure if needed
+        default_settings = {
+            "user_id": user_id,
+            "notifications": {"sms_enabled": False, "telegram_enabled": False, "sms_number": "", "telegram_username": ""},
+            "relevance_threshold": 85,
+            "deadline_threshold": 30,
+            "schedule_frequency": "Twice Weekly",
+            "schedule_days": ["Monday", "Thursday"],
+            "schedule_time": "10:00",
+            "saved_grant_ids": [] # Initialize empty list
+        }
         try:
             settings = self.user_settings_collection.find_one({"user_id": user_id})
             if settings:
                 settings["_id"] = str(settings["_id"])
+                # Ensure saved_grant_ids field exists
+                if "saved_grant_ids" not in settings:
+                    settings["saved_grant_ids"] = []
                 return settings
             else:
                 logger.info(f"No settings found for user {user_id}, returning defaults.")
-                # Return consistent default structure
-                return {
-                    "user_id": user_id,
-                    "notifications": {"sms_enabled": False, "telegram_enabled": False, "sms_number": "", "telegram_username": ""},
-                    "relevance_threshold": 85,
-                    "deadline_threshold": 30,
-                    "schedule_frequency": "Twice Weekly",
-                    "schedule_days": ["Monday", "Thursday"],
-                    "schedule_time": "10:00"
-                }
+                return default_settings
         except Exception as e:
             logger.error(f"Error retrieving user settings for {user_id}: {str(e)}")
-            return {} # Return empty dict on error
+            # Return default structure even on error, but log it
+            return default_settings
 
     def record_alert_sent(self, user_id: str, grant_id: str) -> bool:
         """Records that an alert was sent for a specific grant to a user."""
@@ -446,3 +447,126 @@ class MongoDBClient:
         except Exception as e:
             logger.error(f"Error checking alert status for grant {grant_id}, user {user_id}: {e}")
             return False # Assume not sent if error occurs
+
+    def save_grant_for_user(self, user_id: str, grant_id: str) -> bool:
+        """Adds a grant ID to the user's saved list."""
+        try:
+            grant_object_id = ObjectId(grant_id)
+            result = self.user_settings_collection.update_one(
+                {"user_id": user_id},
+                {"$addToSet": {"saved_grant_ids": grant_object_id}},
+                upsert=True # Create the user settings doc if it doesn't exist
+            )
+            # Check if the update was acknowledged and either modified or upserted
+            if result.acknowledged and (result.modified_count > 0 or result.upserted_id is not None):
+                 logger.info(f"Successfully saved grant {grant_id} for user {user_id}.")
+                 return True
+            elif result.acknowledged and result.matched_count > 0 and result.modified_count == 0:
+                 logger.info(f"Grant {grant_id} was already saved for user {user_id}.")
+                 return True # Still considered success
+            else:
+                 logger.warning(f"Save grant operation for user {user_id}, grant {grant_id} - Acknowledged: {result.acknowledged}, Matched: {result.matched_count}, Modified: {result.modified_count}, UpsertedId: {result.upserted_id}")
+                 return False
+        except Exception as e:
+            logger.error(f"Error saving grant {grant_id} for user {user_id}: {str(e)}", exc_info=True)
+            return False
+
+    def remove_saved_grant_for_user(self, user_id: str, grant_id: str) -> bool:
+        """Removes a grant ID from the user's saved list."""
+        try:
+            grant_object_id = ObjectId(grant_id)
+            result = self.user_settings_collection.update_one(
+                {"user_id": user_id},
+                {"$pull": {"saved_grant_ids": grant_object_id}}
+            )
+            if result.acknowledged and result.modified_count > 0:
+                logger.info(f"Successfully removed saved grant {grant_id} for user {user_id}.")
+                return True
+            elif result.acknowledged and result.matched_count > 0 and result.modified_count == 0:
+                 logger.info(f"Grant {grant_id} was not found in saved list for user {user_id} to remove.")
+                 return True # Or False depending on desired behavior (True = no error occurred)
+            else:
+                 logger.warning(f"Remove saved grant operation for user {user_id}, grant {grant_id} - Acknowledged: {result.acknowledged}, Matched: {result.matched_count}, Modified: {result.modified_count}")
+                 return False
+        except Exception as e:
+            logger.error(f"Error removing saved grant {grant_id} for user {user_id}: {str(e)}", exc_info=True)
+            return False
+
+    def get_saved_grants_for_user(self, user_id: str) -> List[Dict]:
+        """Retrieves the full grant documents for grants saved by the user."""
+        try:
+            user_settings = self.user_settings_collection.find_one({"user_id": user_id})
+            if not user_settings or "saved_grant_ids" not in user_settings or not user_settings["saved_grant_ids"]:
+                return []
+
+            saved_grant_ids = user_settings["saved_grant_ids"]
+            # Ensure IDs are ObjectIds
+            saved_object_ids = [ObjectId(gid) for gid in saved_grant_ids]
+
+            # Fetch corresponding grants
+            grants_cursor = self.grants_collection.find({"_id": {"$in": saved_object_ids}})
+
+            saved_grants = []
+            for grant in grants_cursor:
+                grant["_id"] = str(grant["_id"]) # Convert _id back to string for frontend
+                saved_grants.append(grant)
+            
+            # Optional: Sort saved grants, e.g., by deadline or relevance
+            # saved_grants.sort(key=lambda x: x.get('deadline', datetime.max))
+
+            logger.debug(f"Retrieved {len(saved_grants)} saved grants for user {user_id}.")
+            return saved_grants
+        except Exception as e:
+            logger.error(f"Error retrieving saved grants for user {user_id}: {str(e)}", exc_info=True)
+            return []
+
+    # --- Add Alert History Retrieval ---
+    def get_alert_history_for_user(self, user_id: str, limit: int = 20) -> List[Dict]:
+        """Retrieves the alert history for a user, joining with grant details."""
+        try:
+            pipeline = [
+                {
+                    "$match": {"user_id": user_id}
+                },
+                {
+                    "$sort": {"alert_sent_at": pymongo.DESCENDING}
+                },
+                {
+                    "$limit": limit
+                },
+                {
+                    # Join with grants collection
+                    "$lookup": {
+                        "from": "grants",           # The collection to join with
+                        "localField": "grant_id",   # Field from the alert_history collection
+                        "foreignField": "_id",      # Field from the grants collection
+                        "as": "grant_details_array" # Output array field name
+                    }
+                },
+                {
+                    # Deconstruct the array (assuming one grant per alert)
+                    "$unwind": {
+                        "path": "$grant_details_array",
+                        "preserveNullAndEmptyArrays": True # Keep history even if grant deleted
+                    }
+                },
+                {
+                    # Rename/reshape fields for output
+                    "$project": {
+                        "_id": 0, # Exclude history _id
+                        "alert_sent_at": 1,
+                        "grant_id": {"$toString": "$grant_id"}, # Convert grant_id to string
+                        "grant_title": "$grant_details_array.title",
+                        "grant_source_url": "$grant_details_array.source_url",
+                        # Add other grant fields if needed
+                    }
+                }
+            ]
+
+            history_cursor = self.alert_history_collection.aggregate(pipeline)
+            alert_history = list(history_cursor)
+            logger.debug(f"Retrieved {len(alert_history)} alert history entries for user {user_id}.")
+            return alert_history
+        except Exception as e:
+            logger.error(f"Error retrieving alert history for user {user_id}: {str(e)}", exc_info=True)
+            return []
