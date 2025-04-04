@@ -64,19 +64,20 @@ def set_heroku_config_vars(app_name, env_vars):
         print("No valid environment variables found to set.")
         return False
 
-    # Construct the command string with proper quoting for shell
-    # Using single quotes around values is generally safer for complex strings
-    vars_string = " ".join([f"{k}='{v}'" for k, v in valid_vars.items()])
-    command = f"heroku config:set {vars_string} --app {app_name}"
+    # Construct the command as a list of arguments to avoid shell interpretation
+    command_list = ["heroku", "config:set"]
+    for k, v in valid_vars.items():
+        command_list.append(f"{k}={v}")
+    command_list.extend(["--app", app_name])
 
     print("\nExecuting Heroku CLI command...")
-    # For debugging, uncomment the next line:
-    # print(f"DEBUG: Command = heroku config:set [VARIABLES...] --app {app_name}") # Hide sensitive values in debug output
+    # For debugging:
+    # print(f"DEBUG: Command List = {command_list}") 
 
     try:
-        # Run the command
+        # Run the command using a list, shell=False (default)
         # Explicitly use utf-8 encoding for output/errors
-        result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True, encoding='utf-8')
+        result = subprocess.run(command_list, check=True, capture_output=True, text=True, encoding='utf-8')
         print("\n--- Heroku CLI Output ---")
         print(result.stdout if result.stdout else "(No stdout)")
         print("------------------------")
