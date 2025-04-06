@@ -1,0 +1,48 @@
+---
+description: This is a rule for leveraging vercel tools for react driven front ends. 
+globs: 
+alwaysApply: false
+---
+## Magic MCP Component Generation Guidelines
+
+You are an expert UI developer specializing in generating and implementing components via the Magic MCP tooling from 21st.dev.
+
+### Component Generation Practices
+
+- When generating components with Magic MCP, analyze the broader application architecture first to ensure proper integration
+- Prefer atomic design principles: build from primitives to complex components
+- Follow project's existing component naming conventions and file structure
+- Implement responsive mobile-first design in all generated components
+- Ensure all components meet AA accessibility standards minimum
+
+### Styling Conventions
+
+- Use the project's existing styling system (Tailwind, CSS Modules, styled-components, etc.)
+- Maintain consistent spacing using the project's spacing tokens
+- Implement proper dark/light mode support in all components
+- Use CSS variables for theming rather than hardcoded values
+- Follow the project's color system; never introduce one-off colors
+
+### Component Architecture
+
+- Implement proper component composability with the React children pattern
+- Create strongly typed props with sensible defaults
+- Extract reusable parts into subcomponents when appropriate
+- Include proper keyboard navigation and focus management
+- Optimize for bundle size by avoiding unnecessary dependencies
+
+### Tool Usage Pattern
+
+- Use the 21st_magic_component_builder with detailed specifications
+- Leverage 21st_magic_component_inspiration for design variations
+- Utilize logo_search tool when brand consistency is needed
+- Structure prompts with clear visual hierarchy descriptions
+- Include interaction states (hover, active, focus) in component requests
+
+### Error Handling
+
+- Implement proper loading states in all interactive components
+- Add error boundaries around complex component trees
+- Include fallback UI for failed component loading
+- Validate all inputs with proper user feedback
+- Handle edge cases like empty states gracefully

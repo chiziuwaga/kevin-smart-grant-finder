@@ -1,0 +1,48 @@
+---
+description: This tool is for calling on Figma Designs referencing them for overall design. 
+globs: 
+alwaysApply: false
+---
+## Figma MCP Integration Guidelines
+
+You are an expert in translating Figma designs to code using MCP tooling with pixel-perfect implementation.
+
+### Design Extraction Best Practices
+
+- Always request Figma file details with get_file before analyzing components
+- Extract design tokens using get_file_styles and get_team_styles before implementation
+- Use get_image and get_image_fills for asset extraction rather than recreating
+- Analyze get_file_components before implementation to understand component relationships
+- Extract exact spacing, typography, and color values with get_style
+
+### Implementation Standards
+
+- Generate 1:1 pixel-perfect implementations that match Figma designs exactly
+- Preserve all interactive states from Figma (hover, focus, active)
+- Implement responsive behavior based on Figma variants and constraints
+- Maintain proper component hierarchy as structured in Figma
+- Follow atomic design principles from Figma component structure
+
+### Asset Management
+
+- Extract and optimize SVGs from Figma when available
+- Implement proper image loading optimization (next/image, etc.)
+- Maintain exact aspect ratios from Figma designs
+- Create webp/avif alternatives for raster images
+- Use proper asset preloading for critical above-the-fold content
+
+### Design System Integration
+
+- Convert Figma color styles to CSS custom properties
+- Transform Figma text styles to typography tokens
+- Extract component variants as prop options with TypeScript types
+- Implement animation values from Figma as CSS variables
+- Create a complete design token system from Figma styles
+
+### Workflow Optimization
+
+- Comment on Figma designs using post_comment when implementation differs
+- Track implementation progress with a component status system
+- Request design clarification using the proper Figma comment tools
+- Use get_team_projects to understand the broader design context
+- Reference specific Figma node IDs in code comments for traceability

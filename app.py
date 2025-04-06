@@ -47,11 +47,11 @@ load_dotenv()
 
 # Initialize clients with proper error handling
 try:
-    mongo_client = MongoDBClient()
+mongo_client = MongoDBClient()
     pinecone_client = PineconeClient()
     agentql_client = AgentQLClient()
     perplexity_client = PerplexityClient()
-    notifier = NotificationManager()
+notifier = NotificationManager()
 
     # Initialize Telegram Bot Application
     telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -1026,7 +1026,7 @@ def render_settings():
 
                 if heroku_update_success:
                     st.success("Heroku schedule update simulated successfully! (Check logs for details)")
-                else:
+            else:
                     st.error("Failed to update Heroku schedule. Check application logs and Heroku configuration.")
             else:
                 st.error("Failed to save settings to database. Please try again.")
@@ -1223,11 +1223,11 @@ def render_saved_grants():
              st.write(" ")
              if st.button("❌ Remove", key=f"remove_{grant_id}"):
                   success = mongo_client.remove_saved_grant_for_user(user_id, grant_id)
-                  if success:
+                if success:
                        st.success("Grant removed from saved list.")
                        time.sleep(0.5) # Short delay before rerun
                        st.experimental_rerun()
-                  else:
+                else:
                        st.error("Failed to remove grant.")
         st.divider()
 
@@ -1286,7 +1286,7 @@ def display_grant_field(label, value, formatter=None, suffix=None, is_link=False
         elif markdown:
              st.markdown(f"**{label}:**")
              st.markdown(value, unsafe_allow_html=True) # Allow basic markdown
-        else:
+                else:
             st.write(f"**{label}:** {display_value}")
 
 # --- Entry Point --- 
