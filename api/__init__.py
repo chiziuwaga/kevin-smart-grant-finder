@@ -1,3 +1,5 @@
-from .perplexity_handler import PerplexityRateLimitHandler
+"""API module initialization."""
 
-__all__ = ['PerplexityRateLimitHandler']
+from api.routes import api
+
+__all__ = ['api']

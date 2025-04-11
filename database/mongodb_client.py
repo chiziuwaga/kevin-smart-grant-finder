@@ -16,49 +16,45 @@ logger = logging.getLogger(__name__)
 
 class MongoDBClient:
     def __init__(self):
-        """Initialize MongoDB client with connection to grant database using component variables."""
-        # self.use_mock = use_mock # Commented out
-        # if use_mock: # Commented out
-        # ... mock initialization logic ...
-        #     return # Commented out
-
-        # Real connection logic starts here
-        # Get connection components from environment variables
-        mongodb_user = os.getenv("MONGODB_USER")
-        mongodb_password = os.getenv("MONGODB_PASSWORD")
-        mongodb_host = os.getenv("MONGODB_HOST")
-        mongodb_dbname = os.getenv("MONGODB_DBNAME", "grant_finder") # Default db name
-        mongodb_authsource = os.getenv("MONGODB_AUTHSOURCE", "admin")
-        mongodb_replicaset = os.getenv("MONGODB_REPLICASET")
-        mongodb_ssl_str = os.getenv("MONGODB_SSL", "true").lower()
-
-        # Basic validation
-        if not all([mongodb_user, mongodb_password, mongodb_host]):
-            logger.error("Missing required MongoDB connection components (User, Password, Host) in environment variables.")
-            raise ConfigurationError("Missing required MongoDB connection components.")
-
-        # Construct connection options
-        options = {
-            "username": mongodb_user,
-            "password": mongodb_password,
-            "authSource": mongodb_authsource,
-            "ssl": mongodb_ssl_str == "true",
-            "retryWrites": True, # Recommended for Atlas
-            "w": "majority"     # Recommended for Atlas
-        }
-        if mongodb_replicaset:
-            options["replicaSet"] = mongodb_replicaset
-
-        # Construct the host string (usually includes port if not default)
-        # For Atlas SRV records, the host usually handles ports/replicas, check Atlas instructions
-        # If not using SRV, host might be like "host1:port1,host2:port2"
-        host = mongodb_host
-
+        """Initialize MongoDB client with connection to grant database."""
         try:
-            # Connect to MongoDB using the connection string directly from environment
-            connection_string = mongodb_host
+            # Get MongoDB connection string from environment variables
+            # First check for a complete MongoDB URI
+            mongodb_uri = os.getenv("MONGODB_URI")
             
-            self.client = pymongo.MongoClient(connection_string, serverSelectionTimeoutMS=5000)
+            # If no direct URI is provided, check for host (which may contain the full connection string)
+            if not mongodb_uri:
+                mongodb_uri = os.getenv("MONGODB_HOST")
+            
+            # If still no URI, try to build from components
+            if not mongodb_uri:
+                mongodb_user = os.getenv("MONGODB_USER")
+                mongodb_password = os.getenv("MONGODB_PASSWORD")
+                mongodb_host_only = os.getenv("MONGODB_SERVER")
+                mongodb_dbname = os.getenv("MONGODB_DBNAME", "grant_finder")
+                
+                # Basic validation for component-based connection
+                if not all([mongodb_user, mongodb_password, mongodb_host_only]):
+                    raise ConfigurationError("Missing required MongoDB connection components.")
+                
+                # Construct URI from components
+                mongodb_uri = f"mongodb+srv://{mongodb_user}:{mongodb_password}@{mongodb_host_only}/{mongodb_dbname}?retryWrites=true&w=majority"
+            
+            # Validate we have a connection string
+            if not mongodb_uri:
+                raise ConfigurationError("No MongoDB connection string available")
+            
+            # Sanitize the connection string (remove quotes)
+            mongodb_uri = mongodb_uri.strip('"\'')
+            
+            # Get database name from env or default
+            mongodb_dbname = os.getenv("MONGODB_DBNAME", "grant_finder")
+            
+            # Log connection string format (not credentials) for debugging
+            logger.debug(f"MongoDB URI format: {'mongodb+srv://' if 'mongodb+srv://' in mongodb_uri else 'mongodb://'}")
+            
+            # Connect to MongoDB
+            self.client = pymongo.MongoClient(mongodb_uri, serverSelectionTimeoutMS=5000)
             self.client.admin.command('ping') # Verify connection
 
             self.db = self.client[mongodb_dbname]
@@ -67,19 +63,18 @@ class MongoDBClient:
             self.search_history_collection = self.db["search_history"]
             self.source_collection = self.db["sources"]
             self.user_settings_collection = self.db["user_settings"]
-            self.alert_history_collection = self.db["alert_history"] # New collection
+            self.alert_history_collection = self.db["alert_history"]
 
             # Create indexes for faster queries
             self._create_indexes()
 
-            logger.info("MongoDB client initialized successfully using component variables.")
-        except (ConfigurationError, ConnectionFailure, pymongo.errors.InvalidURI) as e: # Catch specific PyMongo errors
-             logger.critical(f"CRITICAL: MongoDB connection/configuration error: {e}") # Log as critical
-             # Optionally raise a custom exception or handle appropriately
-             raise ConnectionError(f"Failed to connect to MongoDB: {e}") from e # Raise a standard ConnectionError
-        except Exception as e: # Catch any other unexpected errors during init
+            logger.info("MongoDB client initialized successfully.")
+        except (ConfigurationError, ConnectionFailure, pymongo.errors.InvalidURI) as e:
+            logger.critical(f"CRITICAL: MongoDB connection/configuration error: {e}")
+            raise ConnectionError(f"Failed to connect to MongoDB: {e}") from e
+        except Exception as e:
             logger.critical(f"CRITICAL: Unexpected error initializing MongoDB client: {e}", exc_info=True)
-            raise ConnectionError(f"Unexpected error initializing MongoDB: {e}") from e # Raise a standard ConnectionError
+            raise ConnectionError(f"Unexpected error initializing MongoDB: {e}") from e
 
     def _create_indexes(self):
         """Create database indexes for optimized queries."""
@@ -561,3 +556,94 @@ class MongoDBClient:
         except Exception as e:
             logger.error(f"Error retrieving alert history for user {user_id}: {str(e)}", exc_info=True)
             return []
+
+    # --- Methods required by API routes --- 
+
+    def get_grant_by_id(self, grant_id: str) -> Optional[Dict]:
+        """Retrieve a single grant by its MongoDB ObjectId string."""
+        # TODO: Implement fetching a single grant by ID
+        try:
+            obj_id = ObjectId(grant_id)
+            grant = self.grants_collection.find_one({"_id": obj_id})
+            if grant:
+                grant["_id"] = str(grant["_id"]) # Convert ID back to string
+                return grant
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching grant by ID {grant_id}: {e}")
+            return None
+
+    def search_grants(self, query: str, limit: int = 20) -> List[Dict]:
+        """Search grants using MongoDB's text search capabilities."""
+        # TODO: Implement text search using a text index
+        # Ensure a text index exists on fields like 'title', 'description', 'category'
+        # Example: self.grants_collection.create_index([("title", pymongo.TEXT), ("description", pymongo.TEXT)])
+        try:
+            # Basic text search
+            search_query = {"$text": {"$search": query}}
+            # Add projection for relevance score
+            projection = {"score": {"$meta": "textScore"}}
+            
+            cursor = self.grants_collection.find(search_query, projection=projection)\
+                                         .sort([("score", {"$meta": "textScore"})])\
+                                         .limit(limit)
+                                         
+            grants = []
+            for grant in cursor:
+                 grant["_id"] = str(grant["_id"])
+                 # Add the relevance score from the search meta if needed
+                 # grant['search_relevance'] = grant.get('score') 
+                 grants.append(grant)
+            logger.debug(f"Text search for '{query}' returned {len(grants)} grants.")
+            return grants
+        except OperationFailure as e:
+             # Handle case where text index might not exist
+             if "text index required" in str(e).lower():
+                 logger.error(f"Text search failed: Text index does not exist on grants collection.")
+                 raise NotImplementedError("Text search requires a text index on the grants collection.")
+             else:
+                 logger.error(f"Database operation failure during text search: {e}")
+                 return []
+        except Exception as e:
+            logger.error(f"Error during text search for '{query}': {e}")
+            return []
+
+    def count_documents(self, query: Optional[Dict] = None) -> int:
+        """Count documents in the grants collection, optionally matching a query."""
+        # TODO: Implement document counting
+        try:
+            if query is None:
+                query = {}
+            count = self.grants_collection.count_documents(query)
+            return count
+        except Exception as e:
+            logger.error(f"Error counting documents with query {query}: {e}")
+            return 0
+            
+    def calculate_total_funding(self) -> str:
+        """Calculate the estimated total funding amount from available grants."""
+        # TODO: Implement total funding calculation (requires parsing 'amount' field)
+        # This is complex due to varied formats ($10k, $1,000,000, up to $50,000)
+        # Might require regex and careful parsing. Returning placeholder for now.
+        logger.warning("calculate_total_funding is not fully implemented and returns a placeholder.")
+        return "$5M+ (Estimated)" 
+
+    def calculate_average_score(self) -> float:
+        """Calculate the average relevance score across all grants."""
+        # TODO: Implement average score calculation using aggregation pipeline
+        try:
+             pipeline = [
+                 {
+                     "$group": {
+                         "_id": None,
+                         "averageScore": {"$avg": "$relevance_score"}
+                     }
+                 }
+             ]
+             result = list(self.grants_collection.aggregate(pipeline))
+             if result:
+                 return result[0].get("averageScore", 0.0)
+             return 0.0
+        except Exception as e:
+            logger.error(f"Error calculating average relevance score: {e}")
+            return 0.0

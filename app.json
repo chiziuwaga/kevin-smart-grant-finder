@@ -1,8 +1,8 @@
 {
   "name": "Kevin's Smart Grant Finder",
   "description": "AI-powered grant search and notification system for telecommunications and women-owned nonprofit sectors",
-  "repository": "https://github.com/yourusername/kevin-smart-grant-finder",
-  "keywords": ["python", "streamlit", "grants", "AI", "mongodb", "pinecone"],
+  "repository": "https://github.com/chiziuwaga/kevin-smart-grant-finder",
+  "keywords": ["python", "fastapi", "react", "grants", "AI", "mongodb", "pinecone"],
   "env": {
     "PERPLEXITY_API_KEY": {
       "description": "Perplexity API key for deep search capabilities",
@@ -10,10 +10,6 @@
     },
     "PINECONE_API_KEY": {
       "description": "Pinecone API key for vector database",
-      "required": true
-    },
-    "PINECONE_ENVIRONMENT": {
-      "description": "Pinecone environment (e.g., us-west1)",
       "required": true
     },
     "MONGODB_URI": {
@@ -28,24 +24,12 @@
       "description": "AgentQL API key for specialized search agents",
       "required": true
     },
-    "TWILIO_ACCOUNT_SID": {
-      "description": "Twilio Account SID for SMS notifications",
-      "required": false
-    },
-    "TWILIO_AUTH_TOKEN": {
-      "description": "Twilio Auth Token for SMS notifications",
-      "required": false
-    },
-    "TWILIO_PHONE_NUMBER": {
-      "description": "Twilio Phone Number for sending SMS",
-      "required": false
-    },
     "TELEGRAM_BOT_TOKEN": {
       "description": "Telegram Bot Token for notifications",
       "required": false
     },
-    "TELEGRAM_CHAT_ID": {
-      "description": "Telegram Chat ID for notifications",
+    "ADMIN_TELEGRAM_CHAT_ID": {
+      "description": "Admin Telegram Chat ID for system notifications",
       "required": false
     },
     "RELEVANCE_THRESHOLD": {
@@ -68,17 +52,9 @@
       "description": "Timezone for scheduling",
       "value": "America/New_York"
     },
-    "MONGODB_DATABASE": {
-      "description": "MongoDB database name",
-      "value": "grant_finder"
-    },
     "PINECONE_INDEX_NAME": {
       "description": "Pinecone index name",
-      "value": "grant_priorities"
-    },
-    "PINECONE_NAMESPACE": {
-      "description": "Pinecone namespace",
-      "value": "grant_finder"
+      "value": "grantcluster"
     }
   },
   "buildpacks": [
@@ -92,11 +68,12 @@
       "as": "CRONTOGO"
     }
   ],
-  "scripts": {
-    "postdeploy": "python setup.py"
-  },
   "formation": {
     "web": {
+      "quantity": 1,
+      "size": "basic"
+    },
+    "worker": {
       "quantity": 1,
       "size": "basic"
     }

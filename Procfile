@@ -1,2 +1,2 @@
-web: streamlit run Home.py --server.port=$PORT --server.headless=true
+web: uvicorn Home:main_app --host 0.0.0.0 --port $PORT
 worker: python utils/run_grant_search.py

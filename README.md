@@ -1,145 +1,158 @@
 # Kevin's Smart Grant Finder
 
-This project implements an automated system to find, rank, and manage grant opportunities relevant to specific domains (initially Telecommunications and Women-Owned Nonprofits), tailored for Kevin Carter.
+A comprehensive system for automatically discovering, analyzing, and prioritizing grant opportunities in telecommunications and women-owned nonprofit domains.
 
 ## Features
 
-*   **Automated Grant Scraping:** Periodically searches various sources for new grant opportunities. (Currently focuses on Louisiana grants).
-*   **Relevance Ranking:** Uses Pinecone vector embeddings to score grants based on user-defined priorities.
-*   **MongoDB Storage:** Stores grant details, user settings, priorities, and alert history.
-*   **Streamlit Dashboard:** Provides an interactive interface to view grants, manage settings, and potentially trigger searches.
-*   **Automated Alerts:** Sends notifications (SMS/Telegram) for new, high-priority grants meeting user criteria (prevents duplicate alerts within a set period).
-*   **Configurable Settings:** Allows users to define relevance thresholds, deadline filters, notification preferences, and search schedules via the dashboard.
-*   **Heroku Integration (Partially Simulated):** Designed for deployment on Heroku, with scheduled job execution managed via Heroku Scheduler (or Cron To Go). *Note: The automatic updating of the Heroku schedule based on user settings is currently simulated.*
-*   **Mock Mode:** Supports running in mock mode for development and testing without live API calls or database connections.
+- **Automated Grant Discovery**: Searches for grants using AgentQL and Perplexity APIs
+- **Smart Prioritization**: Ranks grants based on relevance to user priorities using Pinecone
+- **Multi-Channel Notifications**: Telegram alerts for high-priority grants
+- **API Backend**: FastAPI application providing endpoints for the frontend.
+- **Modern UI**: React-based frontend with Material UI and data visualizations deployed on Vercel.
+- **Geographically Targeted**: Special focus on LA-08 district opportunities
+- **Robust Error Handling**: Fallback mechanisms for service disruptions
+- **Scheduled Execution**: Twice-weekly automated searches via Heroku worker.
 
-## Tech Stack
+## Architecture
 
-*   **Backend:** Python
-*   **Frontend:** Streamlit
-*   **Database:** MongoDB Atlas
-*   **Vector Database:** Pinecone
-*   **Notifications:** python-telegram-bot (Telegram)
-*   **Scheduling:** Heroku Scheduler / Cron To Go (Recommended)
-*   **Deployment:** Heroku
-*   **Libraries:** `pymongo`, `pinecone-client`, `streamlit`, `python-dotenv`, `requests`, `beautifulsoup4`, `python-telegram-bot`, `heroku3` (if schedule management used), `asyncio`
+```
++-----------------+     +-----------------+      +-----------------+
+| React Frontend  | --> | FastAPI Backend | ---->| MongoDB Atlas   |
+| (Vercel)        |     | (Heroku)        | <---->| (Data Storage)  |
++-----------------+     +-----------------+      +-----------------+
+                           |        ^
+                           |        |
+                           v        |
++-----------------+     +-----------------+      +-----------------+
+| External APIs   | <-- | Agents          | ---->| Pinecone        |
+| (Perplexity,    |     | (Research/Rank) |      | (Vector Store)  |
+| AgentQL)        |     +-----------------+      +-----------------+
++-----------------+
+```
 
-## Setup Instructions
+## Getting Started
 
-1.  **Clone the Repository:**
-    ```bash
-    git clone <repository-url>
-    cd kevin-smart-grant-finder
-    ```
+### Prerequisites
 
-2.  **Create a Virtual Environment:**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # Linux/macOS
-    # or
-    venv\\Scripts\\activate  # Windows
-    ```
+- Python 3.11+ (for backend)
+- Node.js 14+ (for frontend)
+- MongoDB Atlas account
+- Pinecone account
+- Perplexity API key
+- AgentQL API key
+- Telegram bot token (optional)
 
-3.  **Install Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+### Backend Configuration (FastAPI on Heroku)
 
-4.  **Configure Environment Variables:**
-    *   Create a file named `.env` in the project root directory.
-    *   Add the following variables, replacing placeholder values with your actual API keys and configuration (refer to `.env.example` in the repo if available):
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/chiziuwaga/kevin-smart-grant-finder.git
+   cd kevin-smart-grant-finder
+   ```
 
-    ```dotenv
-    # --- API Keys ---
-    # AgentQL
-    AGENTQL_API_KEY=YOUR_AGENTQL_API_KEY
-    # Perplexity
-    PERPLEXITY_API_KEY=YOUR_PERPLEXITY_API_KEY
-    # OpenAI (for Pinecone embeddings, etc.)
-    OPENAI_API_KEY=YOUR_OPENAI_API_KEY
-    # Pinecone
-    # PINECONE_API_KEY=YOUR_PINECONE_API_KEY # Set this when resolving Pinecone issues
+2. Create a virtual environment:
+   ```bash
+   python -m venv venv
+   venv\Scripts\activate     # Windows
+   # source venv/bin/activate  # Linux/Mac
+   ```
 
-    # --- Database Configuration (MongoDB Atlas) ---
-    MONGODB_USER=YOUR_MONGO_USERNAME
-    MONGODB_PASSWORD=YOUR_MONGO_PASSWORD
-    MONGODB_HOST=YOUR_MONGO_HOST_CLUSTER_URL # e.g., grantcluster.xxxxx.mongodb.net
-    MONGODB_DBNAME=SmartGrantfinder # Or your preferred DB name
-    MONGODB_AUTHSOURCE=admin # Usually admin for Atlas
-    MONGODB_SSL=true # Usually true for Atlas
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-    # --- Pinecone Configuration ---
-    PINECONE_INDEX_NAME=grantpriorities # Or your chosen index name
+4. Create a `.env` file with required credentials (see `.env.example`):
+   ```
+   # API Keys
+   PERPLEXITY_API_KEY=...
+   PINECONE_API_KEY=...
+   AGENTQL_API_KEY=...
+   OPENAI_API_KEY=... # Needed for Pinecone embeddings
+   
+   # Database
+   MONGODB_URI=mongodb+srv://...
+   
+   # Notifications
+   TELEGRAM_BOT_TOKEN=...
+   ADMIN_TELEGRAM_CHAT_ID=...
+   ```
 
-    # --- Notification Configuration ---
-    TELEGRAM_BOT_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
-    ADMIN_TELEGRAM_CHAT_ID=YOUR_ADMIN_CHAT_ID # For OTP login
-    TELEGRAM_CHAT_ID=YOUR_GENERAL_ALERT_CHAT_ID # For grant alerts (can be same as admin)
+### Frontend Configuration (React on Vercel)
 
-    # --- Application Settings ---
-    # APP_NAME=kevins-grant-finder # Optional
-    # RELEVANCE_THRESHOLD=85 # Optional default
-    # DEADLINE_THRESHOLD=30 # Optional default
+1. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
 
-    # --- Scheduling & Timezone (Used by Heroku Scheduler setup) ---
-    # SCHEDULE_DAYS=monday,thursday # Optional default
-    # SCHEDULE_TIME=10:00 # Optional default
-    # TIMEZONE=America/New_York # Optional default
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-    # --- Logging ---
-    LOG_LEVEL=INFO # e.g., DEBUG, INFO, WARNING, ERROR
+3. Create a `.env` file for the frontend:
+   ```
+   REACT_APP_API_URL=http://localhost:8000/api # For local dev, assuming backend runs on 8000
+   ```
+   *Note: For production, this will be set in Vercel environment variables to point to your Heroku backend URL.* 
 
-    # --- Heroku API (Only needed if app modifies Heroku schedule directly) ---
-    # HEROKU_API_KEY=YOUR_HEROKU_API_KEY
-    # HEROKU_APP_NAME=YOUR_HEROKU_APP_NAME
-    ```
+### Running Locally
 
-## Running the Application
+1. Start the FastAPI backend (from project root):
+   ```bash
+   uvicorn Home:main_app --host 0.0.0.0 --port 8000 --reload
+   ```
+   *(The backend API will be available at `http://localhost:8000`)*
 
-1.  **Start the Streamlit Dashboard:**
-    ```bash
-    streamlit run app.py
-    ```
-    Access the dashboard in your browser (usually at `http://localhost:8501`).
+2. Start the React frontend (in a separate terminal):
+   ```bash
+   cd frontend
+   npm start
+   ```
+   *(The frontend will be available at `http://localhost:3000`)*
 
-2.  **Run the Scheduled Grant Search Manually:**
-    To test the grant scraping, processing, and alerting job:
-    ```bash
-    python utils/run_grant_search.py
-    ```
-    *Note: Ensure `SCHEDULED_JOB_MOCK_MODE` is set appropriately in `.env`.*
+### Deployment
 
-## Deployment & Scheduling (Heroku)
+See `frontend/DEPLOYMENT.md` for detailed instructions on deploying the backend to Heroku and the frontend to Vercel.
 
-1.  **Deploy:** Deploy the application to Heroku using standard methods (e.g., Git push, Heroku CLI).
-2.  **Configure Add-ons:**
-    *   Add a MongoDB add-on (like MongoDB Atlas) or configure `MONGODB_URI` in Heroku config vars.
-    *   Add a scheduler add-on like **Cron To Go** (Recommended) or **Heroku Scheduler**.
-3.  **Schedule the Job:**
-    Configure the scheduler add-on to run the grant search script periodically. Using Cron To Go:
-    ```bash
-    # Example: Run Mon & Thu at 10:00 AM America/New_York time
-    heroku cron:jobs:create \
-      --command "python utils/run_grant_search.py" \
-      --schedule "0 14 * * 1,4" \
-      --timezone "America/New_York" \
-      --app YOUR_HEROKU_APP_NAME_HERE
-    ```
-    *(Adjust the schedule and command as needed)*
+## Key Components
 
-## Known Limitations
+### Backend (`/` - Root Directory)
 
-*   **Pinecone Integration:** Current deployment runs with Pinecone mocked due to initialization issues. Relevance ranking is simulated.
-*   **Simulated Heroku Schedule Updates:** The feature allowing users to change the search schedule via the Streamlit settings page currently *simulates* the update to Heroku.
-*   **Basic Duplicate Alert Prevention:** The system prevents sending alerts for the exact same grant within a 7-day window. More sophisticated logic might be needed depending on how grants are updated or re-listed.
-*   **Scraper Scope:** The current implementation primarily focuses on the Louisiana grant scraper. Expanding to other sources configured via AgentQL or Perplexity requires further development in `run_grant_search.py` or dedicated agent scripts.
+- `Home.py`: FastAPI application entry point and service initialization.
+- `api/`: Contains FastAPI routers and API endpoint definitions.
+- `database/`: MongoDB and Pinecone client implementations.
+- `agents/`: Research and Analysis agent logic.
+- `utils/`: Helper utilities, notification manager, API clients.
+- `config/`: Logging configuration.
+- `requirements.txt`: Backend Python dependencies.
+- `Procfile`: Heroku process definitions (web and worker).
+- `.env`: Backend environment variables (ignored by git).
 
-## Future Enhancements
+### Frontend (`/frontend` Directory)
 
-*   Resolve Pinecone API key/initialization issues.
-*   Implement real Heroku API calls for dynamic schedule updates.
-*   Refine duplicate alert logic.
-*   Expand scraper coverage and integrate AgentQL/Perplexity searches into the scheduled job.
-*   Add user authentication for multi-user support.
-*   Develop more sophisticated analytics and reporting.
-*   Add comprehensive unit and integration tests. 
+- `src/`: Main React application code.
+  - `App.js`: Main application component with routing.
+  - `components/`: Reusable UI components (Dashboard, GrantCard, Layout).
+  - `api/`: Axios API client for backend communication.
+  - `theme.js`: Material UI theme configuration.
+- `public/`: Static assets and `index.html`.
+- `package.json`: Frontend dependencies and scripts.
+- `vercel.json`: Vercel deployment configuration.
+- `.env`: Frontend environment variables (for local development).
+- `README.md`: Frontend-specific documentation.
+- `DEPLOYMENT.md`: Detailed deployment instructions for frontend and backend.
+
+## Contributing
+
+Please review contribution guidelines if you wish to contribute.
+
+## License
+
+MIT License.
+
+## Acknowledgments
+
+- MongoDB Atlas, Pinecone, Perplexity API, AgentQL
+- FastAPI, React, Material UI
+- Heroku, Vercel 

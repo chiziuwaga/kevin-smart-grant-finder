@@ -1,31 +1,20 @@
 import os
 import logging
-from datetime import datetime, timedelta
-from pathlib import Path
-import asyncio
+import time
 
-import streamlit as st
 from dotenv import load_dotenv
-import telegram
-from telegram.ext import Application
+from fastapi import FastAPI
 
+# Import your API routers and database clients
 from database.mongodb_client import MongoDBClient
 from database.pinecone_client import PineconeClient
 from config.logging_config import setup_logging
 from utils.notification_manager import NotificationManager
-from utils.components import load_custom_css, initialize_session_state
 from agents.research_agent import ResearchAgent
 from agents.analysis_agent import GrantAnalysisAgent
 from utils.agentql_client import AgentQLClient
 from utils.perplexity_client import PerplexityClient
-
-# Page configuration must be the first Streamlit command
-st.set_page_config(
-    page_title="Kevin's Smart Grant Finder",
-    page_icon="📋",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+from api.routes import api as api_router # Rename imported 'api' to avoid conflict
 
 # Set up logging
 setup_logging()
@@ -34,83 +23,128 @@ logger = logging.getLogger("grant_finder")
 # Load environment variables
 load_dotenv()
 
-# Initialize session state
-initialize_session_state()
+# Initialize FastAPI app
+main_app = FastAPI(title="Kevin's Smart Grant Finder API", version="1.0.0")
 
-# Load custom CSS
-load_custom_css()
+# --- Service Initialization --- 
+# This section initializes necessary services that the API might need access to.
+# In a production setup, consider dependency injection (e.g., using FastAPI's Depends)
+# or a global state management approach if services need to be shared across requests.
 
-def initialize_services():
-    """Lazy initialization of services"""
-    if 'services_initialized' not in st.session_state:
+services = {}
+init_status = {}
+
+def initialize_service_with_retry(service_name, init_func, max_retries=3, retry_delay=2):
+    """Initialize a service with retry logic and proper error handling."""
+    for attempt in range(max_retries):
         try:
-            st.session_state.mongo_client = MongoDBClient()
-            st.session_state.pinecone_client = PineconeClient()
-            st.session_state.agentql_client = AgentQLClient()
-            st.session_state.perplexity_client = PerplexityClient()
-            st.session_state.notifier = NotificationManager()
-
-            # Initialize Telegram Bot Application
-            telegram_token = os.getenv('TELEGRAM_BOT_TOKEN')
-            if telegram_token:
-                st.session_state.telegram_app = Application.builder().token(telegram_token).build()
-                logger.info("Telegram Bot Application initialized.")
-            else:
-                logger.warning("TELEGRAM_BOT_TOKEN not found. Telegram features disabled.")
-                st.session_state.telegram_app = None
-
-            # Initialize Agents
-            st.session_state.research_agent = ResearchAgent(
-                st.session_state.agentql_client,
-                st.session_state.perplexity_client,
-                st.session_state.mongo_client
-            )
-            st.session_state.analysis_agent = GrantAnalysisAgent(
-                st.session_state.pinecone_client,
-                st.session_state.mongo_client
-            )
-
-            st.session_state.services_initialized = True
-            logger.info("All clients and agents initialized.")
-            return True
+            logger.info(f"Initializing {service_name} (attempt {attempt+1}/{max_retries})...")
+            service = init_func()
+            logger.info(f"Successfully initialized {service_name}")
+            return service, True
         except Exception as e:
-            logger.error(f"Failed to initialize services: {str(e)}", exc_info=True)
-            return False
-    return True
+            logger.error(f"Error initializing {service_name} (attempt {attempt+1}/{max_retries}): {str(e)}")
+            if attempt < max_retries - 1:
+                logger.info(f"Retrying {service_name} initialization in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, 30)
+            else:
+                logger.critical(f"Failed to initialize {service_name} after {max_retries} attempts")
+                return None, False
+    return None, False
 
-def main():
-    st.title("Welcome to Kevin's Smart Grant Finder")
-    
-    if not st.session_state.authenticated:
-        st.warning("Please log in to access the full functionality.")
-        st.info("For testing purposes, authentication is currently bypassed.")
-        st.session_state.authenticated = True
-    
-    if st.session_state.authenticated:
-        # Initialize services only when authenticated
-        services_ok = initialize_services()
-        
-        if not services_ok:
-            st.error("Failed to initialize some services. Some features may be limited.")
-        else:
-            st.success("You're logged in! Use the sidebar to navigate through different sections.")
-            
-            # Display quick stats
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Active Grants", "150+")
-            with col2:
-                st.metric("Success Rate", "85%")
-            with col3:
-                st.metric("Total Funding Available", "$2.5M+")
-            
-            st.markdown("""
-            ### 🚀 Getting Started
-            1. Use the **Dashboard** to view recommended grants
-            2. Try the **Search** page for specific criteria
-            3. Check **Analytics** for insights
-            4. Configure your preferences in **Settings**
-            """)
+def initialize_global_services():
+    """Initialize all required services at startup."""
+    global services, init_status
+    logger.info("Initializing global services...")
 
-if __name__ == "__main__":
-    main() 
+    services["mongodb_client"], init_status['mongo'] = initialize_service_with_retry(
+        "MongoDB client", 
+        lambda: MongoDBClient()
+    )
+    services["pinecone_client"], init_status['pinecone'] = initialize_service_with_retry(
+        "Pinecone client",
+        lambda: PineconeClient()
+    )
+    services["agentql_client"], init_status['agentql'] = initialize_service_with_retry(
+        "AgentQL client",
+        lambda: AgentQLClient()
+    )
+    services["perplexity_client"], init_status['perplexity'] = initialize_service_with_retry(
+        "Perplexity client",
+        lambda: PerplexityClient()
+    )
+    services["notification_manager"], init_status['notifier'] = initialize_service_with_retry(
+        "Notification manager",
+        lambda: NotificationManager()
+    )
+
+    # Initialize Agents - they depend on other clients
+    if init_status['mongo'] and init_status['agentql'] and init_status['perplexity']:
+        services["research_agent"], init_status['research_agent'] = initialize_service_with_retry(
+            "Research Agent",
+            lambda: ResearchAgent(
+                services["agentql_client"],
+                services["perplexity_client"],
+                services["mongodb_client"]
+            )
+        )
+    else:
+        logger.error("Cannot initialize Research Agent due to missing dependencies.")
+        init_status['research_agent'] = False
+
+    if init_status['mongo'] and init_status['pinecone']:
+        services["analysis_agent"], init_status['analysis_agent'] = initialize_service_with_retry(
+            "Analysis Agent",
+            lambda: GrantAnalysisAgent(
+                services["pinecone_client"],
+                services["mongodb_client"]
+            )
+        )
+    else:
+        logger.error("Cannot initialize Analysis Agent due to missing dependencies.")
+        init_status['analysis_agent'] = False
+
+    init_summary = ", ".join([f"{svc}: {'✓' if status else '✗'}" for svc, status in init_status.items()])
+    logger.info(f"Global service initialization summary: {init_summary}")
+
+# Run service initialization at startup
+initialize_global_services()
+
+# --- Mount API Router --- 
+# Make services available to the API routes (e.g., via dependency injection)
+# For simplicity here, we might pass them directly if needed, but Depends is cleaner.
+
+# Example: Update get_db in api/routes.py to use the global services dict
+# This avoids re-initializing the client on every request.
+# In api/routes.py:
+# 
+# from Home import services # Assuming services is accessible
+# 
+# def get_db():
+#     if "mongodb_client" in services and services["mongodb_client"]:
+#         return services["mongodb_client"]
+#     else:
+#         logger.error("MongoDB client not initialized globally.")
+#         raise HTTPException(status_code=503, detail="Database service unavailable")
+
+main_app.include_router(api_router, prefix="/api")
+
+# --- Root Endpoint (Optional) --- 
+@main_app.get("/")
+async def read_root():
+    return {"message": "Welcome to Kevin's Smart Grant Finder API"}
+
+# --- Application Startup Event (Optional) --- 
+# @main_app.on_event("startup")
+# async def startup_event():
+#     logger.info("API Application startup complete.")
+
+# --- Application Shutdown Event (Optional) --- 
+# @main_app.on_event("shutdown")
+# async def shutdown_event():
+#     # Clean up resources if needed
+#     logger.info("API Application shutting down.")
+
+# Note: When running with uvicorn like `uvicorn Home:main_app --reload`,
+# this file (Home.py) becomes the entry point for the ASGI server. 

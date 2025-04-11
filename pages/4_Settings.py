@@ -86,21 +86,62 @@ def render_schedule_settings():
     # Schedule settings
     st.markdown("### Grant Search Schedule")
     
-    # Time selection
-    selected_time = st.time_input(
-        "Select daily search time",
-        value=dt_time(0, 0),
-        help="Select the time when the grant search should run daily"
+    # Frequency selection
+    frequency_options = ["Daily", "Weekly", "Twice Weekly"]
+    selected_frequency = st.selectbox(
+        "Schedule Frequency",
+        options=frequency_options,
+        index=2,  # Default to "Twice Weekly"
+        help="How often the grant search should run"
     )
     
-    # Generate and display cron expression
-    cron_expression = generate_cron_expression(selected_time)
-    st.code(cron_expression, language="text")
+    # Day selection for Weekly/Twice Weekly
+    day_options = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    
+    # Default to Monday and Thursday for "Twice Weekly"
+    default_days = ["Monday", "Thursday"] if selected_frequency == "Twice Weekly" else \
+                   ["Monday"] if selected_frequency == "Weekly" else []
+    
+    # Only show day selection for Weekly/Twice Weekly
+    selected_days = []
+    if selected_frequency in ["Weekly", "Twice Weekly"]:
+        selected_days = st.multiselect(
+            "Select days to run",
+            options=day_options,
+            default=default_days,
+            help="Select the days when the grant search should run"
+        )
+    
+    # Time selection
+    selected_time = st.time_input(
+        "Select search time",
+        value=dt_time(10, 0),  # Default to 10:00 AM
+        help="Select the time when the grant search should run"
+    )
+    
+    # Convert time to string format
+    time_str = selected_time.strftime("%H:%M")
+    
+    # Generate and display cron expression - Fix: Pass all required parameters
+    cron_expression = generate_cron_expression(selected_frequency, selected_days, time_str)
+    
+    if cron_expression:
+        st.code(cron_expression, language="text")
+    else:
+        st.warning("Could not generate a valid schedule. Please check your selections.")
     
     # Update schedule button
     if st.button("Update Schedule"):
         try:
-            update_result = update_heroku_schedule(cron_expression)
+            # Create settings dict with all required parameters
+            schedule_settings = {
+                'schedule_frequency': selected_frequency,
+                'schedule_days': selected_days,
+                'schedule_time': time_str
+            }
+            
+            update_result = update_heroku_schedule(schedule_settings)
+            
             if update_result:
                 st.success("Schedule updated successfully!")
             else:
