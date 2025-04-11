@@ -273,8 +273,8 @@ async def test_notification(
          
     try:
         settings = db.get_user_settings(user_id)
-        test_message = f"This is a test notification from Smart Grant Finder via {channel.upper()}.
-" 
+        test_message = f"This is a test notification from Smart Grant Finder via {channel.upper()}."
+ 
         # Check if channel enabled in settings (add this logic to get_user_settings or here)
         # if channel == "telegram" and not settings...:
         #     raise HTTPException(status_code=400, ...)
