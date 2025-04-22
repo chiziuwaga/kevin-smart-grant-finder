@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 # Import necessary database models and clients
 from database.mongodb_client import MongoDBClient
-from Home import services # Import globally initialized services
+from service_registry import services  # Avoid circular import
 
 # Setup logging
 logger = logging.getLogger(__name__)

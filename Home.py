@@ -14,6 +14,10 @@ from agents.research_agent import ResearchAgent
 from agents.analysis_agent import GrantAnalysisAgent
 from utils.agentql_client import AgentQLClient
 from utils.perplexity_client import PerplexityClient
+# Shared services dictionary
+from service_registry import services
+
+# Import API router (after we have a placeholder services dict)
 from api.routes import api as api_router # Rename imported 'api' to avoid conflict
 
 # Set up logging
@@ -31,7 +35,6 @@ main_app = FastAPI(title="Kevin's Smart Grant Finder API", version="1.0.0")
 # In a production setup, consider dependency injection (e.g., using FastAPI's Depends)
 # or a global state management approach if services need to be shared across requests.
 
-services = {}
 init_status = {}
 
 def initialize_service_with_retry(service_name, init_func, max_retries=3, retry_delay=2):
