@@ -40,11 +40,11 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # Expose port
-EXPOSE 8501
+EXPOSE 8000
 
-# Health check
+# Healthcheck for FastAPI
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+    CMD curl -f http://localhost:8000/api/metrics || exit 1
 
-# Command to run the application
-CMD ["streamlit", "run", "Home.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Command to run FastAPI
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
