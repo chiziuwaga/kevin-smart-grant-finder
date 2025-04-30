@@ -4,9 +4,6 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    STREAMLIT_SERVER_PORT=8501 \
-    STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
-    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
     DEBIAN_FRONTEND=noninteractive
 
 # Create a non-root user and set permissions
@@ -47,4 +44,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/api/metrics || exit 1
 
 # Command to run FastAPI
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "Home:main_app", "--host", "0.0.0.0", "--port", "8000"]

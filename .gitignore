@@ -56,3 +56,4 @@ htmlcov/
 # Distribution
 dist/
 build/
+.vercel

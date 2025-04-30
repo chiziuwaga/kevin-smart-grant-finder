@@ -1,24 +1,25 @@
-import os
 import logging
+import os
 import time
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
+from agents.analysis_agent import GrantAnalysisAgent
+from agents.research_agent import ResearchAgent
+# Import API router (after we have a placeholder services dict)
+from api.routes import \
+    api as api_router  # Rename imported 'api' to avoid conflict
+from config.logging_config import setup_logging
 # Import your API routers and database clients
 from database.mongodb_client import MongoDBClient
 from database.pinecone_client import PineconeClient
-from config.logging_config import setup_logging
-from utils.notification_manager import NotificationManager
-from agents.research_agent import ResearchAgent
-from agents.analysis_agent import GrantAnalysisAgent
-from utils.agentql_client import AgentQLClient
-from utils.perplexity_client import PerplexityClient
 # Shared services dictionary
 from service_registry import services
-
-# Import API router (after we have a placeholder services dict)
-from api.routes import api as api_router # Rename imported 'api' to avoid conflict
+from utils.agentql_client import AgentQLClient
+from utils.notification_manager import NotificationManager
+from utils.perplexity_client import PerplexityClient
 
 # Set up logging
 setup_logging()
@@ -29,6 +30,15 @@ load_dotenv()
 
 # Initialize FastAPI app
 main_app = FastAPI(title="Kevin's Smart Grant Finder API", version="1.0.0")
+
+# Configure CORS
+main_app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # TODO: Update with specific Vercel URL in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Service Initialization --- 
 # This section initializes necessary services that the API might need access to.

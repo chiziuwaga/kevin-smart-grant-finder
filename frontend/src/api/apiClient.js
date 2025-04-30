@@ -41,31 +41,29 @@ apiClient.interceptors.response.use(
 
 // API endpoints
 const API = {
-  // Grants
-  getGrants: (params) => apiClient.get('/grants', { params }),
-  getGrantById: (id) => apiClient.get(`/grants/${id}`),
-  searchGrants: (query) => apiClient.get('/grants/search', { params: { query } }),
+  // Grants API (FastAPI backend)
+  searchGrants: (params) => apiClient.get('/search', { params }),
   
-  // User settings
-  getUserSettings: () => apiClient.get('/user/settings'),
-  updateUserSettings: (settings) => apiClient.put('/user/settings', settings),
+  // Placeholder endpoints for future features (currently NOP)
+  getUserSettings: () => Promise.resolve({ data: {} }),
+  updateUserSettings: () => Promise.resolve({}),
   
-  // Saved grants
-  getSavedGrants: () => apiClient.get('/user/saved-grants'),
-  saveGrant: (grantId) => apiClient.post(`/user/saved-grants/${grantId}`),
-  unsaveGrant: (grantId) => apiClient.delete(`/user/saved-grants/${grantId}`),
+  // Saved grants placeholders
+  getSavedGrants: () => Promise.resolve({ data: [] }),
+  saveGrant: () => Promise.resolve({}),
+  unsaveGrant: () => Promise.resolve({}),
   
-  // Dashboard data
-  getDashboardStats: () => apiClient.get('/dashboard/stats'),
-  getRecentGrants: () => apiClient.get('/dashboard/recent-grants'),
-  getHighPriorityGrants: () => apiClient.get('/dashboard/high-priority'),
+  // Dashboard data using metrics endpoint
+  getDashboardStats: () => apiClient.get('/metrics'),
+  getRecentGrants: () => apiClient.get('/search', { params: { category: 'recent' } }),
+  getHighPriorityGrants: () => apiClient.get('/search', { params: { category: 'high_priority' } }),
   
-  // Notifications
-  getNotificationHistory: () => apiClient.get('/notifications/history'),
-  testNotification: (channel) => apiClient.post('/notifications/test', { channel }),
+  // Notifications placeholders
+  getNotificationHistory: () => Promise.resolve({ data: [] }),
+  testNotification: () => Promise.resolve({}),
   
-  // System status
-  getSystemStatus: () => apiClient.get('/system/status'),
+  // System status from metrics
+  getSystemStatus: () => apiClient.get('/metrics'),
 };
 
 export default API; 

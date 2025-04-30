@@ -16,13 +16,13 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.11.1",
-    "react-scripts": "^3.0.1",
+    "react-scripts": "^5.0.1",
     "recharts": "^2.6.2",
     "web-vitals": "^3.3.1"
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "set \"GENERATE_SOURCEMAP=false\" && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -44,5 +44,9 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:8501"
+  "proxy": "https://smartgrantfinder.herokuapp.com",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
 }

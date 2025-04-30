@@ -316,6 +316,9 @@ class ResearchAgent:
         except Exception:
             return "Unknown Source"
 
+# Alias for backward compatibility
+GrantResearchAgent = ResearchAgent
+
 # Example Usage (requires instances of clients)
 # research_agent = ResearchAgent(perplexity_client, agentql_client, mongodb_client)
 # params = {
