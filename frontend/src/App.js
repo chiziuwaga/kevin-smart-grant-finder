@@ -1,6 +1,6 @@
+import { CssBaseline, ThemeProvider } from '@mui/material';
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, CssBaseline } from '@mui/material';
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import theme from './theme';
 
 // Layout
@@ -8,13 +8,12 @@ import AppLayout from './components/Layout/AppLayout';
 
 // Pages
 import Dashboard from './components/Dashboard';
-
-// Placeholder components for routes we'll implement later
-const GrantsPage = () => <div>Grants Page</div>;
-const SearchPage = () => <div>Search Page</div>;
-const SettingsPage = () => <div>Settings Page</div>;
-const SavedGrantsPage = () => <div>Saved Grants Page</div>;
-const NotFoundPage = () => <div>Page Not Found</div>;
+import AnalyticsPage from './pages/AnalyticsPage';
+import GrantsPage from './pages/GrantsPage';
+import NotFoundPage from './pages/NotFoundPage';
+import SavedGrantsPage from './pages/SavedGrantsPage';
+import SearchPage from './pages/SearchPage';
+import SettingsPage from './pages/SettingsPage';
 
 function App() {
   return (
@@ -28,6 +27,7 @@ function App() {
             <Route path="search" element={<SearchPage />} />
             <Route path="saved" element={<SavedGrantsPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="analytics" element={<AnalyticsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>

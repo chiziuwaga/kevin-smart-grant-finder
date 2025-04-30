@@ -1,37 +1,37 @@
-import React, { useState } from 'react';
-import { Outlet, useLocation, Link as RouterLink } from 'react-router-dom';
 import {
-  AppBar,
-  Box,
-  Drawer,
-  IconButton,
-  Toolbar,
-  Typography,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Divider,
-  Badge,
-  Avatar,
-  Menu,
-  MenuItem,
-  useTheme,
-  useMediaQuery
-} from '@mui/material';
-import {
-  Menu as MenuIcon,
-  Dashboard as DashboardIcon,
-  Search as SearchIcon,
-  Settings as SettingsIcon,
-  Bookmarks as BookmarksIcon,
-  NotificationsOutlined as NotificationsIcon,
-  PersonOutline as PersonIcon,
-  ChevronLeft as ChevronLeftIcon,
-  AssignmentOutlined as AssignmentIcon,
-  BarChart as BarChartIcon
+    AssignmentOutlined as AssignmentIcon,
+    BarChart as BarChartIcon,
+    Bookmarks as BookmarksIcon,
+    ChevronLeft as ChevronLeftIcon,
+    Dashboard as DashboardIcon,
+    Menu as MenuIcon,
+    NotificationsOutlined as NotificationsIcon,
+    PersonOutline as PersonIcon,
+    Search as SearchIcon,
+    Settings as SettingsIcon
 } from '@mui/icons-material';
+import {
+    AppBar,
+    Avatar,
+    Badge,
+    Box,
+    Divider,
+    Drawer,
+    IconButton,
+    List,
+    ListItem,
+    ListItemButton,
+    ListItemIcon,
+    ListItemText,
+    Menu,
+    MenuItem,
+    Toolbar,
+    Typography,
+    useMediaQuery,
+    useTheme
+} from '@mui/material';
+import React, { useState } from 'react';
+import { Outlet, Link as RouterLink, useLocation } from 'react-router-dom';
 
 const drawerWidth = 240;
 

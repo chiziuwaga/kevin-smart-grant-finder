@@ -1,13 +1,19 @@
 import axios from 'axios';
 
-// Create an axios instance with base configuration
+// Decide base URL dynamically – in Vercel we proxy `/api/*`, in local dev we hit localhost:8000 directly.
+const baseURL = process.env.REACT_APP_API_URL ||
+  (window.location.hostname === 'localhost' ? 'http://localhost:8000/api' : '/api');
+
 const apiClient = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || '/api',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 seconds timeout
+  timeout: 30000,
 });
+
+// Helper to unwrap .data to reduce boilerplate
+const unwrap = promise => promise.then(res => res.data);
 
 // Request interceptor for API calls
 apiClient.interceptors.request.use(
@@ -41,29 +47,24 @@ apiClient.interceptors.response.use(
 
 // API endpoints
 const API = {
-  // Grants API (FastAPI backend)
-  searchGrants: (params) => apiClient.get('/search', { params }),
-  
-  // Placeholder endpoints for future features (currently NOP)
-  getUserSettings: () => Promise.resolve({ data: {} }),
-  updateUserSettings: () => Promise.resolve({}),
-  
-  // Saved grants placeholders
-  getSavedGrants: () => apiClient.get('/user/saved-grants'),
-  saveGrant: (grantId) => apiClient.post(`/user/saved-grants/${grantId}`),
-  unsaveGrant: (grantId) => apiClient.delete(`/user/saved-grants/${grantId}`),
-  
-  // Dashboard data using metrics endpoint
-  getDashboardStats: () => apiClient.get('/dashboard/stats'),
-  getRecentGrants: () => apiClient.get('/search', { params: { category: 'recent' } }),
-  getHighPriorityGrants: () => apiClient.get('/search', { params: { category: 'high_priority' } }),
-  
-  // Notifications placeholders
-  getNotificationHistory: () => Promise.resolve({ data: [] }),
-  testNotification: () => Promise.resolve({}),
-  
-  // System status from metrics
-  getSystemStatus: () => apiClient.get('/metrics'),
+  // ----- Dashboard & Overview -----
+  getOverview: () => unwrap(apiClient.get('/grants/overview')),
+
+  // ----- Grant queries -----
+  getGrants: params => unwrap(apiClient.get('/grants/search', { params })), // simple GET wrapper
+  searchGrants: body => unwrap(apiClient.post('/grants/search', body)),     // advanced search POST
+
+  // ----- Saved grants -----
+  getSavedGrants: () => unwrap(apiClient.get('/user/saved-grants')),
+  saveGrant: id => unwrap(apiClient.post(`/user/saved-grants/${id}`)),
+  unsaveGrant: id => unwrap(apiClient.delete(`/user/saved-grants/${id}`)),
+
+  // ----- Analytics -----
+  getDistribution: () => unwrap(apiClient.get('/analytics/distribution')),
+
+  // ----- User settings (placeholders) -----
+  getUserSettings: () => Promise.resolve({ alerts: { sms: true, telegram: true }, schedule: 'Mon/Thu' }),
+  updateUserSettings: data => Promise.resolve(data),
 };
 
 export default API; 

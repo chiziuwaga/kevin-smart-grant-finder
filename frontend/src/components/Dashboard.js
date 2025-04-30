@@ -60,42 +60,21 @@ const Dashboard = () => {
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
-        const statsResponse = await API.getDashboardStats();
+        const statsResponse = await API.getOverview();
         const highPriorityResponse = await API.getGrants({ min_score: 85, limit: 5 });
         const deadlineSoonResponse = await API.getGrants({ days_to_deadline: 7, limit: 5 });
         const savedGrantsResponse = await API.getSavedGrants();
+        const distributionResponse = await API.getDistribution();
 
-        setStats(statsResponse.data);
-        setHighPriorityGrants(highPriorityResponse.data);
-        setDeadlineSoonGrants(deadlineSoonResponse.data);
-        setSavedGrants(new Set(savedGrantsResponse.data.map(g => g.id)));
-
-        const mockDeadlineChart = [
-          { name: 'This Week', count: deadlineSoonResponse.data.length },
-          { name: '1-2 Weeks', count: 7 },
-          { name: '3-4 Weeks', count: 12 },
-          { name: '1-2 Months', count: 25 },
-          { name: '3+ Months', count: 42 }
-        ];
-
-        const mockCategoriesChart = [
-          { name: 'Research', value: 58 },
-          { name: 'Education', value: 42 },
-          { name: 'Community', value: 35 },
-          { name: 'Other', value: 56 }
-        ];
-        
-        const mockRelevanceChart = [
-          { name: '90-100', value: 12 },
-          { name: '80-89', value: 30 },
-          { name: '70-79', value: 45 },
-          { name: '< 70', value: 90 }
-        ];
+        setStats(statsResponse);
+        setHighPriorityGrants(highPriorityResponse);
+        setDeadlineSoonGrants(deadlineSoonResponse);
+        setSavedGrants(new Set(savedGrantsResponse.map(g => g.id)));
 
         setChartData({
-          deadlines: mockDeadlineChart,
-          categories: mockCategoriesChart,
-          relevanceDistribution: mockRelevanceChart
+          deadlines: distributionResponse.deadlines || [],
+          categories: distributionResponse.categories || [],
+          relevanceDistribution: distributionResponse.relevanceDistribution || []
         });
 
       } catch (error) {
