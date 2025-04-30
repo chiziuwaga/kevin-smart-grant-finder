@@ -3,8 +3,9 @@
   "builds": [
     { "src": "package.json", "use": "@vercel/static-build" }
   ],
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "https://smartgrantfinder.herokuapp.com/api/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/api/(.*)", "dest": "https://smartgrantfinder.herokuapp.com/api/$1" },
+    { "src": "/.*",        "dest": "/index.html" }
   ]
 } 

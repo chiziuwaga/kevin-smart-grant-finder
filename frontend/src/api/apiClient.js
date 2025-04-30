@@ -49,12 +49,12 @@ const API = {
   updateUserSettings: () => Promise.resolve({}),
   
   // Saved grants placeholders
-  getSavedGrants: () => Promise.resolve({ data: [] }),
-  saveGrant: () => Promise.resolve({}),
-  unsaveGrant: () => Promise.resolve({}),
+  getSavedGrants: () => apiClient.get('/user/saved-grants'),
+  saveGrant: (grantId) => apiClient.post(`/user/saved-grants/${grantId}`),
+  unsaveGrant: (grantId) => apiClient.delete(`/user/saved-grants/${grantId}`),
   
   // Dashboard data using metrics endpoint
-  getDashboardStats: () => apiClient.get('/metrics'),
+  getDashboardStats: () => apiClient.get('/dashboard/stats'),
   getRecentGrants: () => apiClient.get('/search', { params: { category: 'recent' } }),
   getHighPriorityGrants: () => apiClient.get('/search', { params: { category: 'high_priority' } }),
   
