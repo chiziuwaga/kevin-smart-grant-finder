@@ -1,4 +1,4 @@
-import { Alert, Box, Button, CircularProgress, FormControlLabel, Snackbar, Switch, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, FormControlLabel, Snackbar, Switch, TextField, Typography } from '@mui/material';
 import React, { useEffect, useState } from 'react';
 import API from '../api/apiClient';
 
@@ -43,8 +43,8 @@ const SettingsPage = () => {
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" sx={{ mb: 3 }}>Settings</Typography>
-      <FormControlLabel control={<Switch checked={settings.alerts.sms} onChange={handleToggle('sms')} />} label="SMS Alerts" />
       <FormControlLabel control={<Switch checked={settings.alerts.telegram} onChange={handleToggle('telegram')} />} label="Telegram Alerts" />
+      <TextField label="Phone Number" fullWidth sx={{my:2}} value={settings.alerts.phone||''} onChange={e=>setSettings(prev=>({...prev,alerts:{...prev.alerts,phone:e.target.value}}))} />
       <Box sx={{ mt: 2 }}>
         <Button variant="contained" onClick={handleSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</Button>
       </Box>

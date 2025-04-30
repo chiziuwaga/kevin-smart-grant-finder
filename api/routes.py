@@ -2,11 +2,13 @@
 API routes for the Grant Finder.
 """
 
+import asyncio
 import logging
+import uuid
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query, Depends, Body
+from fastapi import Body, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -24,7 +26,11 @@ logger = logging.getLogger(__name__)
 # Assuming api = FastAPI() or APIRouter() is defined elsewhere and imported
 # For this example, let's assume 'api' is an APIRouter instance.
 from fastapi import APIRouter
+
 api = APIRouter()
+
+# store run progress
+runs: Dict[str, Dict[str, Any]] = {}
 
 # --- Pydantic Models --- 
 class GrantBase(BaseModel):
@@ -297,3 +303,51 @@ async def test_notification(
     except Exception as e:
         logger.error(f"Error sending test notification via {channel}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error sending test notification")
+
+# ---------------- Manual run-search -----------------
+
+@api.post("/system/run-search", status_code=202, tags=["System"])
+async def run_search_now(payload: Dict[str,str] = Body({"category":"all"})):
+    """Trigger an out-of-schedule grant discovery run."""
+    category = payload.get("category", "all")
+    run_id = str(uuid.uuid4())
+
+    async def background_job():
+        runs[run_id] = {"status":"running","start":datetime.utcnow().isoformat()}
+        try:
+            research_agent = services.get("research_agent")
+            analysis_agent = services.get("analysis_agent")
+            if not research_agent or not analysis_agent:
+                logger.error("Agents not initialized, aborting run-search")
+                return
+
+            categories = ["telecom","nonprofit"] if category=="all" else [category]
+            all_results = []
+            for cat in categories:
+                params = {"category": cat, "search_terms": []}
+                results = research_agent.search_grants(params)
+                all_results.extend(results)
+
+            stats = analysis_agent.rank_and_store(all_results)
+            runs[run_id].update({"status":"finished","stored":stats["stored"],"total":stats["total"],"end":datetime.utcnow().isoformat()})
+            logger.info(f"Run-search {run_id} finished: stored {stats['stored']}/{stats['total']}")
+        except Exception as e:
+            runs[run_id]["status"]="error"
+            logger.exception(f"Unhandled error in run-search {run_id}: {e}")
+
+    asyncio.create_task(background_job())
+
+    return {"run_id": run_id, "message": "Discovery job started"}
+
+@api.get("/system/last-run", tags=["System"])
+async def get_last_run():
+    if not runs:
+        return {"status":"none"}
+    last_run = sorted(runs.values(), key=lambda r:r["start"], reverse=True)[0]
+    return last_run
+
+@api.get("/system/run-history", tags=["System"])
+async def get_run_history(limit: int = 10):
+    """Return last N runs metadata."""
+    history = sorted(runs.values(), key=lambda r:r["start"], reverse=True)[:limit]
+    return history

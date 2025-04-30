@@ -65,6 +65,11 @@ const API = {
   // ----- User settings (placeholders) -----
   getUserSettings: () => Promise.resolve({ alerts: { sms: true, telegram: true }, schedule: 'Mon/Thu' }),
   updateUserSettings: data => Promise.resolve(data),
+
+  // ----- System -----
+  runSearchNow: (category='all') => unwrap(apiClient.post('/system/run-search',{category})),
+  getLastRun: () => unwrap(apiClient.get('/system/last-run')),
+  getRunHistory: (limit=10)=>unwrap(apiClient.get('/system/run-history',{params:{limit}})),
 };
 
 export default API; 

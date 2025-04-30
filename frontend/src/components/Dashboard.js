@@ -10,6 +10,7 @@ import {
 } from '@mui/icons-material';
 import {
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -28,6 +29,7 @@ import {
   useTheme
 } from '@mui/material';
 import { differenceInDays, format, parseISO } from 'date-fns';
+import { useSnackbar } from 'notistack';
 import React, { useEffect, useState } from 'react';
 import {
   Bar,
@@ -55,6 +57,7 @@ const Dashboard = () => {
     relevanceDistribution: []
   });
   const [savedGrants, setSavedGrants] = useState(new Set());
+  const { enqueueSnackbar } = useSnackbar();
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -224,9 +227,17 @@ const Dashboard = () => {
 
   return (
     <Box sx={{ p: 3, backgroundColor: theme.palette.background.default, minHeight: 'calc(100vh - 64px)' }}>
-      <Typography variant="h4" sx={{ mb: 3, fontWeight: 700 }}>
-        Dashboard
-      </Typography>
+      <Box sx={{ display:'flex', justifyContent:'space-between', alignItems:'center', mb:3 }}>
+        <Typography variant="h4" sx={{ fontWeight:700 }}>Dashboard</Typography>
+        <Button variant="contained" size="small" onClick={async ()=>{
+          try{
+            await API.runSearchNow();
+            const now = new Date().toLocaleString();
+            document.getElementById('last-run-time').innerText = now;
+            enqueueSnackbar('Background discovery started',{variant:'success'});
+          }catch(e){ console.error(e); enqueueSnackbar('Failed to start discovery',{variant:'error'});}
+        }}>Run Discovery Now</Button>
+      </Box>
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={4} lg={2}>

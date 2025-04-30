@@ -1,12 +1,14 @@
-import os
 import logging
+import os
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Union
-from pymongo import MongoClient, ASCENDING, DESCENDING
-from pymongo.errors import PyMongoError, OperationFailure, ConnectionFailure, ConfigurationError
+from typing import Any, Dict, List, Optional, Union
+
 import pymongo
-from dotenv import load_dotenv
 from bson.objectid import ObjectId
+from dotenv import load_dotenv
+from pymongo import ASCENDING, DESCENDING, MongoClient
+from pymongo.errors import (ConfigurationError, ConnectionFailure,
+                            OperationFailure, PyMongoError)
 
 # Load environment variables
 load_dotenv()
@@ -647,3 +649,31 @@ class MongoDBClient:
         except Exception as e:
             logger.error(f"Error calculating average relevance score: {e}")
             return 0.0
+
+    def get_distribution(self):
+        """Return simple distribution for deadlines and categories for analytics."""
+        try:
+            # Deadlines buckets (0-7,8-14,15-30,31-60,61+)
+            from datetime import datetime, timedelta
+            now = datetime.utcnow()
+            pipeline_deadlines = [
+                {"$project": {"delta": {"$divide": [{"$subtract": ["$deadline", now]}, 1000*60*60*24]}}},
+                {"$bucket": {
+                    "groupBy": "$delta",
+                    "boundaries": [0,7,14,30,60,365],
+                    "default": 365,
+                    "output": {"count": {"$sum":1}}
+                }}]
+            buckets = list(self.grants_collection.aggregate(pipeline_deadlines))
+            deadlines = []
+            names=["This Week","1-2 Weeks","3-4 Weeks","1-2 Months","3+ Months"]
+            for i,b in enumerate(buckets):
+                deadlines.append({"name":names[i] if i<len(names) else str(b['_id']),"count":b['count']})
+
+            pipeline_cat=[{"$group":{"_id":"$category","value":{"$sum":1}}}]
+            cats=list(self.grants_collection.aggregate(pipeline_cat))
+            categories=[{"name":c['_id'] or 'Other',"value":c['value']} for c in cats]
+            return {"deadlines":deadlines,"categories":categories,"relevanceDistribution":[]}
+        except Exception as e:
+            logger.error(f"Error computing distribution: {e}")
+            return {"deadlines":[],"categories":[],"relevanceDistribution":[]}

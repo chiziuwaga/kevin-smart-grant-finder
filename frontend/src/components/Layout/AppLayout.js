@@ -5,16 +5,13 @@ import {
     ChevronLeft as ChevronLeftIcon,
     Dashboard as DashboardIcon,
     Menu as MenuIcon,
-    NotificationsOutlined as NotificationsIcon,
-    PersonOutline as PersonIcon,
     Search as SearchIcon,
     Settings as SettingsIcon
 } from '@mui/icons-material';
 import {
     AppBar,
-    Avatar,
-    Badge,
     Box,
+    Button,
     Divider,
     Drawer,
     IconButton,
@@ -23,15 +20,14 @@ import {
     ListItemButton,
     ListItemIcon,
     ListItemText,
-    Menu,
-    MenuItem,
     Toolbar,
     Typography,
     useMediaQuery,
     useTheme
 } from '@mui/material';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, Link as RouterLink, useLocation } from 'react-router-dom';
+import RunHistoryModal from './RunHistoryModal';
 
 const drawerWidth = 240;
 
@@ -39,20 +35,24 @@ const AppLayout = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [open, setOpen] = useState(!isMobile);
-  const [anchorEl, setAnchorEl] = useState(null);
   const location = useLocation();
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const handleDrawerToggle = () => {
     setOpen(!open);
   };
 
-  const handleProfileMenuOpen = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
+  useEffect(() => {
+    const fetchLastRun = async () => {
+      try { const data = await (await import('../../api/apiClient')).default.getLastRun();
+        if(data.status!=='none'){
+          document.getElementById('last-run-time').innerText = new Date(data.end || data.start).toLocaleString();
+        }
+      }catch(e){console.error(e);}  };
+    fetchLastRun();
+    const interval = setInterval(fetchLastRun, 60000);
+    return ()=>clearInterval(interval);
+  },[]);
 
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
@@ -62,29 +62,6 @@ const AppLayout = () => {
     { text: 'Analytics', icon: <BarChartIcon />, path: '/analytics' },
     { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
   ];
-
-  const isMenuOpen = Boolean(anchorEl);
-
-  const renderMenu = (
-    <Menu
-      anchorEl={anchorEl}
-      anchorOrigin={{
-        vertical: 'bottom',
-        horizontal: 'right',
-      }}
-      keepMounted
-      transformOrigin={{
-        vertical: 'top',
-        horizontal: 'right',
-      }}
-      open={isMenuOpen}
-      onClose={handleMenuClose}
-    >
-      <MenuItem onClick={handleMenuClose}>Profile</MenuItem>
-      <MenuItem onClick={handleMenuClose}>Account</MenuItem>
-      <MenuItem onClick={handleMenuClose}>Logout</MenuItem>
-    </Menu>
-  );
 
   return (
     <Box sx={{ display: 'flex', height: '100vh' }}>
@@ -113,26 +90,8 @@ const AppLayout = () => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Smart Grant Finder
           </Typography>
-          <IconButton color="inherit">
-            <Badge badgeContent={4} color="error">
-              <NotificationsIcon />
-            </Badge>
-          </IconButton>
-          <IconButton
-            edge="end"
-            aria-label="account of current user"
-            aria-controls="menu-appbar"
-            aria-haspopup="true"
-            onClick={handleProfileMenuOpen}
-            color="inherit"
-          >
-            <Avatar sx={{ width: 32, height: 32, bgcolor: theme.palette.secondary.main }}>
-              <PersonIcon />
-            </Avatar>
-          </IconButton>
         </Toolbar>
       </AppBar>
-      {renderMenu}
       <Drawer
         variant={isMobile ? "temporary" : "persistent"}
         open={isMobile ? false : open}
@@ -195,6 +154,12 @@ const AppLayout = () => {
             <Typography variant="body2" color="textSecondary">
               System Status: All Good
             </Typography>
+            <Box sx={{display:'flex',alignItems:'center',columnGap:1}}>
+              <Typography variant="caption" color="textSecondary">
+                Last run: <span id="last-run-time">—</span>
+              </Typography>
+              <Button size="small" variant="text" onClick={()=>setHistoryOpen(true)}>History</Button>
+            </Box>
             <Typography variant="caption" color="textSecondary">
               Version 1.0.0
             </Typography>
@@ -221,6 +186,7 @@ const AppLayout = () => {
           <Outlet />
         </Box>
       </Box>
+      <RunHistoryModal open={historyOpen} onClose={()=>setHistoryOpen(false)} />
     </Box>
   );
 };

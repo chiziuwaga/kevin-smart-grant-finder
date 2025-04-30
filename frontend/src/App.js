@@ -1,5 +1,5 @@
 import { CssBaseline, ThemeProvider } from '@mui/material';
-import React from 'react';
+import React, { useState } from 'react';
 import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import theme from './theme';
 
@@ -16,6 +16,12 @@ import SearchPage from './pages/SearchPage';
 import SettingsPage from './pages/SettingsPage';
 
 function App() {
+  const [ok,setOk]=useState(()=>localStorage.getItem('authOK')==='1');
+  if(!ok){
+    const pwd = prompt('Enter password to access Smart Grant Finder');
+    if(pwd==='smartgrantfinder'){localStorage.setItem('authOK','1');setOk(true);} else {window.location.href='https://google.com';}
+    return null;
+  }
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
