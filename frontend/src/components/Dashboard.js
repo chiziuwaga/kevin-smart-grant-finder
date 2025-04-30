@@ -1,49 +1,46 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Card, 
-  CardContent, 
-  Grid, 
-  Typography, 
-  Button, 
-  Chip,
-  CircularProgress,
-  IconButton,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  useTheme,
-  Link as MuiLink
-} from '@mui/material';
-import { 
-  AccessTime as AccessTimeIcon,
-  Assessment as AssessmentIcon,
-  AttachMoney as AttachMoneyIcon,
-  BookmarkBorder as BookmarkBorderIcon,
-  Bookmark as BookmarkIcon,
-  TrendingUp as TrendingUpIcon,
-  NotificationsActive as NotificationsActiveIcon,
-  ArrowUpward as ArrowUpwardIcon,
-  ArrowDownward as ArrowDownwardIcon,
-  InfoOutlined as InfoOutlinedIcon
+import {
+    AccessTime as AccessTimeIcon,
+    Assessment as AssessmentIcon,
+    AttachMoney as AttachMoneyIcon,
+    BookmarkBorder as BookmarkBorderIcon,
+    Bookmark as BookmarkIcon,
+    InfoOutlined as InfoOutlinedIcon,
+    NotificationsActive as NotificationsActiveIcon,
+    TrendingUp as TrendingUpIcon
 } from '@mui/icons-material';
-import { 
-  BarChart, 
-  Bar, 
-  PieChart, 
-  Pie, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  Cell
+import {
+    Box,
+    Card,
+    CardContent,
+    Chip,
+    CircularProgress,
+    Grid,
+    IconButton,
+    Link as MuiLink,
+    Paper,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    Typography,
+    useTheme
+} from '@mui/material';
+import { differenceInDays, format, parseISO } from 'date-fns';
+import React, { useEffect, useState } from 'react';
+import {
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Cell,
+    Pie,
+    PieChart,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis
 } from 'recharts';
-import { format, parseISO, differenceInDays } from 'date-fns';
 import API from '../api/apiClient';
 
 const Dashboard = () => {
