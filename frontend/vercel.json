@@ -1,11 +1,15 @@
 {
   "version": 2,
   "builds": [
-    { "src": "package.json", "use": "@vercel/static-build" }
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "build" }
+    }
   ],
   "routes": [
     { "handle": "filesystem" },
     { "src": "/api/(.*)", "dest": "https://smartgrantfinder-a4e2fa159e79.herokuapp.com/api/$1" },
     { "src": "/.*",        "dest": "/index.html" }
   ]
-} 
+}
