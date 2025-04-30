@@ -1,10 +1,12 @@
 ﻿# -*- coding: utf-8 -*-
 
-import sys
 import os
 import subprocess
+import sys
 from pathlib import Path
+
 from pkg_resources import working_set
+
 
 def check_python_version():
     """Check if Python version is 3.8 or higher"""
@@ -18,6 +20,10 @@ def check_python_version():
 
 def check_venv():
     """Check if running in a virtual environment"""
+    # Skip virtual environment check in CI environments (e.g., GitHub Actions)
+    if os.getenv("CI", "false").lower() == "true":
+        print("⚠️ Skipping virtual environment check in CI environment")
+        return True
     in_venv = sys.prefix != sys.base_prefix
     if not in_venv:
         print("❌ Not running in a virtual environment")
@@ -67,6 +73,19 @@ def check_project_structure():
             print(f"✅ {directory}/ directory exists")
     return all_exist
 
+def check_mongodb_connection():
+    """Check if MongoDB is reachable using the MongoDBClient class."""
+    try:
+        from database.mongodb_client import MongoDBClient
+        client = MongoDBClient()
+        # ping the server to verify
+        client.client.admin.command('ping')
+        print("✅ MongoDB ping successful")
+        return True
+    except Exception as e:
+        print(f"❌ MongoDB connectivity check failed: {e}")
+        return False
+
 def main():
     """Main verification function"""
     print("\n🔍 Verifying project setup...\n")
@@ -75,7 +94,8 @@ def main():
         ("Python Version", check_python_version()),
         ("Virtual Environment", check_venv()),
         ("Dependencies", check_dependencies()),
-        ("Project Structure", check_project_structure())
+        ("Project Structure", check_project_structure()),
+        ("MongoDB Connection", check_mongodb_connection())
     ]
     
     print("\n📋 Summary:")

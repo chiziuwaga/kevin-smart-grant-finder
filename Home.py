@@ -143,6 +143,30 @@ initialize_global_services()
 
 main_app.include_router(api_router, prefix="/api")
 
+from fastapi.exceptions import HTTPException
+# Add a global exception handler for unhandled exceptions
+from fastapi.responses import JSONResponse
+
+
+@main_app.exception_handler(Exception)
+async def global_exception_handler(request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"status": "error", "detail": "Internal server error"}
+    )
+
+@main_app.get("/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint to verify MongoDB connection."""
+    try:
+        # Ping the MongoDB server via the global client
+        services["mongodb_client"].client.admin.command("ping")
+        return {"status": "ok", "detail": "MongoDB connected"}
+    except Exception as e:
+        # Return a 503 if MongoDB is unreachable
+        return JSONResponse(status_code=503, content={"status": "error", "detail": str(e)})
+
 # --- Root Endpoint (Optional) --- 
 @main_app.get("/")
 async def read_root():
