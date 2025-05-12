@@ -1,31 +1,37 @@
-import os
 import logging
+import os
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import Dict, List
 
 from database.mongodb_client import MongoDBClient
 from database.pinecone_client import PineconeClient
-try:
-    from scrapers.sources.louisiana_scraper import LouisianaGrantScraper
-except ImportError:
-    logger.warning("Could not import LouisianaGrantScraper from scrapers.sources, trying utils.scrapers")
-    from utils.scrapers.louisiana_scraper import LouisianaGrantScraper
 
-from utils.notification_manager import NotificationManager
-from utils.helpers import calculate_days_remaining
-
-try:
-    from utils.api_handlers.perplexity_handler import PerplexityRateLimitHandler
-except ImportError:
-    logger.warning("Could not import PerplexityRateLimitHandler")
-    PerplexityRateLimitHandler = None
-
-# Configure logging
+# Configure logging FIRST
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+try:
+    from scrapers.sources.louisiana_scraper import LouisianaGrantScraper
+except ImportError:
+    logger.warning("Could not import LouisianaGrantScraper from scrapers.sources, trying scrapers.louisiana_grant_scraper")
+    try:
+        from scrapers.louisiana_grant_scraper import LouisianaGrantScraper
+    except ImportError:
+        logger.error("Failed to import LouisianaGrantScraper from fallback path.")
+        LouisianaGrantScraper = None
+
+from utils.helpers import calculate_days_remaining
+from utils.notification_manager import NotificationManager
+
+# Correct import path for PerplexityRateLimitHandler
+try:
+    from api.perplexity_handler import PerplexityRateLimitHandler
+except ImportError:
+    logger.warning("Could not import PerplexityRateLimitHandler from api.perplexity_handler")
+    PerplexityRateLimitHandler = None
 
 class GrantSearchJob:
     def __init__(self):
@@ -33,10 +39,10 @@ class GrantSearchJob:
         self.use_mock = os.getenv("SCHEDULED_JOB_MOCK_MODE", "False").lower() == "true"
         logger.info(f"GrantSearchJob initializing (Mock Mode: {self.use_mock})")
 
-        self.mongodb_client = MongoDBClient(use_mock=self.use_mock)
-        self.pinecone_client = PineconeClient(use_mock=self.use_mock)
-        self.la_scraper = LouisianaGrantScraper(use_mock=self.use_mock)
-        self.notifier = NotificationManager(use_mock=self.use_mock)
+        self.mongodb_client = MongoDBClient()
+        self.pinecone_client = PineconeClient()
+        self.la_scraper = LouisianaGrantScraper() if LouisianaGrantScraper else None
+        self.notifier = NotificationManager()
 
         if PerplexityRateLimitHandler:
             self.perplexity_handler = PerplexityRateLimitHandler()
@@ -134,7 +140,7 @@ class GrantSearchJob:
                     deadline = grant.get('deadline')
                     meets_deadline = False
                     if isinstance(deadline, datetime):
-                        days_remaining = calculate_days_remaining(deadline, now) # Use helper
+                        days_remaining = calculate_days_remaining(deadline)
                         if 0 <= days_remaining <= deadline_threshold_days:
                              meets_deadline = True
                         else:
@@ -160,7 +166,7 @@ class GrantSearchJob:
             if grants_to_alert:
                 logger.info(f"Attempting to send alerts for {len(grants_to_alert)} NEW grants...")
                 # Pass user settings to notifier if it needs contact details etc.
-                alert_success = self.notifier.send_grant_alert(grants_to_alert, user_settings)
+                alert_success = self.notifier.send_grant_alert(grants_to_alert)
                 if alert_success:
                     logger.info("Successfully sent grant alerts.")
                     # Record that alerts were sent for these specific grants

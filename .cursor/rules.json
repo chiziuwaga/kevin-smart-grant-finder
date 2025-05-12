@@ -1,0 +1,46 @@
+{
+  "rules": [
+    {
+      "name": "project-structure",
+      "description": "This project uses a Python backend (FastAPI in api/) and likely a Vercel-deployed frontend (frontend/). Backend utilities are in utils/, data scraping in scrapers/, agent logic in agents/, and database interactions in database/. Configuration is in config/. Deployment targets Heroku (backend) and Vercel (frontend/). Note: Older Streamlit code (Home.py, pages/) might exist but is likely deprecated.",
+      "globs": ["**/*"],
+      "related_rules": ["backend-tech", "frontend-tech", "deployment", "data-flow"]
+    },
+    {
+      "name": "backend-tech",
+      "description": "The backend is built with Python/FastAPI. Key files include api/routes.py, utils/*.py for core logic, scrapers/*.py for data acquisition, and database/mongodb_client.py for persistence. Uses requirements.txt for dependencies.",
+      "globs": ["api/**/*.py", "utils/**/*.py", "scrapers/**/*.py", "database/**/*.py", "requirements.txt"],
+      "related_rules": ["project-structure", "data-flow", "deployment"]
+    },
+    {
+      "name": "frontend-tech",
+      "description": "The primary frontend is located in the frontend/ directory, likely using React/Next.js for Vercel deployment. It interacts with the backend via the /api routes.",
+      "globs": ["frontend/**/*"],
+      "related_rules": ["project-structure", "deployment"]
+    },
+    {
+      "name": "deployment",
+      "description": "The backend (API) is configured for Heroku deployment (Procfile, heroku.yml, Dockerfile, app.json, deploy_heroku.py). The frontend (frontend/) is deployed via Vercel (.vercel/). Ensure changes consider Dev (local), Test (staging, if any), and Prod (Heroku/Vercel) environments.",
+      "globs": ["Procfile", "heroku.yml", "Dockerfile", "app.json", "deploy_heroku.py", ".vercel/**/*", "frontend/**/*"],
+      "related_rules": ["project-structure", "backend-tech", "frontend-tech"]
+    },
+    {
+      "name": "testing-strategy",
+      "description": "Tests are located in the tests/ directory. Prefer end-to-end tests validating the API-frontend interaction. Unit tests can be added for complex utility functions in utils/.",
+      "globs": ["tests/**/*.py"],
+      "related_rules": ["project-structure"]
+    },
+    {
+      "name": "data-flow",
+      "description": "Data flows from scrapers/ (run by scheduled job or manually triggered) -> database/mongodb_client.py (storage) -> api/routes.py (serving data) -> frontend/ (display). Grant searching/ranking happens in utils/run_grant_search.py (job) or via agents/ (manual trigger).",
+      "globs": ["scrapers/**/*.py", "database/**/*.py", "utils/**/*.py", "api/**/*.py", "frontend/**/*", "agents/**/*.py"],
+      "related_rules": ["project-structure", "backend-tech", "frontend-tech", "key-functions"]
+    },
+    {
+      "name": "key-functions",
+      "description": "utils.run_grant_search.GrantSearchJob.run() is the core scheduled job. api/routes.py contains endpoints like /grants and /dashboard/stats. database/mongodb_client.py handles DB operations. agents/ handle research/analysis.",
+      "globs": ["utils/run_grant_search.py", "api/routes.py", "database/mongodb_client.py", "agents/**/*.py"],
+      "related_rules": ["data-flow"]
+    }
+  ]
+} 

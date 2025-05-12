@@ -37,7 +37,7 @@ class GrantBase(BaseModel):
     title: str
     source: str
     category: str
-    deadline: datetime
+    deadline: Optional[datetime]
     relevance_score: float
     funding_amount: Optional[str] = None
     description: Optional[str] = None
