@@ -13,6 +13,7 @@ pinecone-client>=2.0.0
 # API Integration
 aiohttp>=3.8.0
 python-dotenv>=0.19.0
+openai>=1.0.0  # Added for OpenAI API access
 
 # Data Processing
 pydantic>=2.0.0
