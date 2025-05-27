@@ -8,7 +8,7 @@ SQLAlchemy>=2.0.0
 alembic>=1.11.0
 psycopg2-binary>=2.9.6
 asyncpg>=0.27.0
-pinecone-client>=2.0.0
+pinecone>=3.0.0  # Corrected package name, assuming a recent version
 
 # API Integration
 aiohttp>=3.8.0
