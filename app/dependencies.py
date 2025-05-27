@@ -32,21 +32,23 @@ def get_notifier() -> NotificationManager:
     return services.notifier
 
 def get_research_agent(
-    db: AsyncSession = Depends(get_db_session),
     perplexity: PerplexityClient = Depends(get_perplexity),
     pinecone: PineconeClient = Depends(get_pinecone)
 ) -> ResearchAgent:
+    if not services.db_sessionmaker:
+        raise RuntimeError("Database sessionmaker not initialized in services.")
     return ResearchAgent(
         perplexity_client=perplexity,
-        db_session=db,
+        db_sessionmaker=services.db_sessionmaker,  # Corrected: Pass the sessionmaker
         pinecone_client=pinecone
     )
 
 def get_analysis_agent(
-    db: AsyncSession = Depends(get_db_session),
     pinecone: PineconeClient = Depends(get_pinecone)
 ) -> AnalysisAgent:
+    if not services.db_sessionmaker:
+        raise RuntimeError("Database sessionmaker not initialized in services.")
     return AnalysisAgent(
-        db_session=db,
+        db_sessionmaker=services.db_sessionmaker,  # Corrected: Pass the sessionmaker
         pinecone_client=pinecone
     )
