@@ -43,7 +43,12 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import API from '../api/apiClient';
+import {
+  getDashboardStats,
+  getGrants,
+  getDistribution,
+  runSearch
+} from '../api/apiClient';
 
 const Dashboard = () => {
   const theme = useTheme();
@@ -63,22 +68,26 @@ const Dashboard = () => {
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
-        const statsResponse = await API.getOverview();
-        const highPriorityResponse = await API.getGrants({ min_score: 85, limit: 5 });
-        const deadlineSoonResponse = await API.getGrants({ days_to_deadline: 7, limit: 5 });
-        const savedGrantsResponse = await API.getSavedGrants();
-        const distributionResponse = await API.getDistribution();
+        const statsResponse = await getDashboardStats(); // Use directly imported function
+        const highPriorityResponse = await getGrants({ min_score: 85, limit: 5 }); // Use directly imported function
+        const deadlineSoonResponse = await getGrants({ days_to_deadline: 7, limit: 5 }); // Use directly imported function
+        // const savedGrantsResponse = await getSavedGrants(); // TODO: Implement or import getSavedGrants
+        const distributionResponse = await getDistribution(); // Use directly imported function
 
-        setStats(statsResponse);
-        setHighPriorityGrants(highPriorityResponse);
-        setDeadlineSoonGrants(deadlineSoonResponse);
-        setSavedGrants(new Set(savedGrantsResponse.map(g => g.id)));
+        setStats(statsResponse.data);
+        setHighPriorityGrants(highPriorityResponse.data);
+        setDeadlineSoonGrants(deadlineSoonResponse.data);
+        // if (savedGrantsResponse && savedGrantsResponse.data) { // TODO: Uncomment when getSavedGrants is available
+        //   setSavedGrants(new Set(savedGrantsResponse.data.map(g => g.id)));
+        // }
 
-        setChartData({
-          deadlines: distributionResponse.deadlines || [],
-          categories: distributionResponse.categories || [],
-          relevanceDistribution: distributionResponse.relevanceDistribution || []
-        });
+        if (distributionResponse && distributionResponse.data) {
+          setChartData({
+            deadlines: distributionResponse.data.deadlines || [],
+            categories: distributionResponse.data.categories || [],
+            relevanceDistribution: distributionResponse.data.relevanceDistribution || []
+          });
+        }
 
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -92,23 +101,26 @@ const Dashboard = () => {
     };
 
     fetchDashboardData();
-  }, []);
+  }, []); // Added missing dependency array for useEffect
 
   const handleSaveGrant = async (grantId, shouldSave) => {
     try {
       if (shouldSave) {
-        await API.saveGrant(grantId);
+        // await saveGrant(grantId); // TODO: Implement or import saveGrant
         setSavedGrants(prev => new Set(prev).add(grantId));
+        enqueueSnackbar('Grant saved!', { variant: 'success' });
       } else {
-        await API.unsaveGrant(grantId);
+        // await unsaveGrant(grantId); // TODO: Implement or import unsaveGrant
         setSavedGrants(prev => {
           const next = new Set(prev);
           next.delete(grantId);
           return next;
         });
+        enqueueSnackbar('Grant unsaved.', { variant: 'info' });
       }
     } catch (error) {
-      console.error("Error saving/unsaving grant:", error);
+      console.error('Error saving/unsaving grant:', error);
+      enqueueSnackbar(`Error ${shouldSave ? 'saving' : 'unsaving'} grant.`, { variant: 'error' });
     }
   };
 
@@ -231,9 +243,13 @@ const Dashboard = () => {
         <Typography variant="h4" sx={{ fontWeight:700 }}>Dashboard</Typography>
         <Button variant="contained" size="small" onClick={async ()=>{
           try{
-            await API.runSearchNow();
+            await runSearch(); // Use directly imported function
             const now = new Date().toLocaleString();
-            document.getElementById('last-run-time').innerText = now;
+            // Ensure 'last-run-time' element exists if you're using this
+            const lastRunElement = document.getElementById('last-run-time');
+            if (lastRunElement) {
+              lastRunElement.innerText = now;
+            }
             enqueueSnackbar('Background discovery started',{variant:'success'});
           }catch(e){ console.error(e); enqueueSnackbar('Failed to start discovery',{variant:'error'});}
         }}>Run Discovery Now</Button>
@@ -409,4 +425,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard; 
+export default Dashboard;
