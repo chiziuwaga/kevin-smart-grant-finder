@@ -14,7 +14,7 @@ def create_directory_structure():
         'tests',
         'utils',
         'api',
-        'scrapers',
+        'agents',
         'templates',
         'docs'
     ]

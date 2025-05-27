@@ -30,8 +30,9 @@ The system is built with the following components:
    - Analysis agent for scoring relevance
    - Integration with multiple data sources
 
-4. Data Collection (`scrapers/`)
-   - Source-specific scrapers
+4. Data Collection (`agents/`)
+   - AI-powered grant research
+   - Grant analysis and scoring
    - Data validation and cleaning
    - Scheduled updates
 

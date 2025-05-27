@@ -70,7 +70,7 @@ def generate_cron_expression(frequency: str, days: List[str], time_str: str) -> 
 
 # --- Heroku Interaction ---
 
-def update_heroku_schedule(schedule_settings: dict, scheduler_command: str = "python run_scrapers.py") -> bool:
+def update_heroku_schedule(schedule_settings: dict, scheduler_command: str = "python run_grant_search.py") -> bool:
     """
     Updates a specific Heroku Scheduler job based on provided settings.
     **Note:** Currently simulates the update due to complexity with heroku3 library.

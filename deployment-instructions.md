@@ -26,7 +26,6 @@ heroku config:set MONGODB_DBNAME="SmartGrantFinder"
 
 ```
 heroku config:set PINECONE_API_KEY="your_pinecone_api_key"
-heroku config:set AGENTQL_API_KEY="your_agentql_api_key"
 heroku config:set PERPLEXITY_API_KEY="your_perplexity_api_key"
 ```
 

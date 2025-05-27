@@ -3,8 +3,7 @@
   "description": "AI-powered grant search and notification system for telecommunications and women-owned nonprofit sectors",
   "repository": "https://github.com/chiziuwaga/kevin-smart-grant-finder",
   "keywords": ["python", "fastapi", "react", "grants", "AI", "mongodb", "pinecone"],
-  "env": {
-    "PERPLEXITY_API_KEY": {
+  "env": {    "PERPLEXITY_API_KEY": {
       "description": "Perplexity API key for deep search capabilities",
       "required": true
     },
@@ -14,14 +13,6 @@
     },
     "MONGODB_URI": {
       "description": "MongoDB connection string (Atlas)",
-      "required": true
-    },
-    "OPENAI_API_KEY": {
-      "description": "OpenAI API key for embeddings and summaries",
-      "required": true
-    },
-    "AGENTQL_API_KEY": {
-      "description": "AgentQL API key for specialized search agents",
       "required": true
     },
     "TELEGRAM_BOT_TOKEN": {
