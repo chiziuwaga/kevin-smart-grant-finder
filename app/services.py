@@ -5,6 +5,9 @@ from utils.pinecone_client import PineconeClient
 from utils.perplexity_client import PerplexityClient
 from utils.notification_manager import NotificationManager
 from config.settings import get_settings
+import logging # Added logging import
+
+logger = logging.getLogger(__name__) # Added logger instance
 
 @dataclass
 class Services:
@@ -44,7 +47,14 @@ async def init_services():
     services.perplexity_client = PerplexityClient() # API key is read from env vars within the client
 
     # Initialize Notifications
-    services.notifier = NotificationManager() # Tokens/IDs are read from env vars within the client
+    if settings.telegram_bot_token and settings.telegram_chat_id:
+        services.notifier = NotificationManager(
+            telegram_token=settings.telegram_bot_token,
+            telegram_chat_id=settings.telegram_chat_id
+        )
+    else:
+        logger.warning("Telegram token or chat ID not found in settings. NotificationManager not initialized.")
+        services.notifier = None # Explicitly set to None if not configured
 
     # The following line can be removed if Home.py has its own separate initialization logic
     # or if it also relies on this central init_services.
