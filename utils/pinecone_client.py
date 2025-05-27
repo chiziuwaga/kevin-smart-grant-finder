@@ -13,67 +13,93 @@ class PineconeClient:
     def __init__(self):
         """Initialize Pinecone client, with fallback to mock data if needed."""
         self.use_mock = False
-        self.index_name = os.getenv("PINECONE_INDEX_NAME", "grant_priorities")
-        self.mock_relevance_range = (70.0, 95.0) # Range for mock scores
+        self.index_name = os.getenv("PINECONE_INDEX_NAME", "grantcluster") # Using existing 3072-dim index
+        self.expected_dimension = 3072 # For text-embedding-3-large
+        self.mock_relevance_range = (70.0, 95.0)
+        self.pc = None
+        self.index = None
+        self.openai_client = None
+
+        pinecone_api_key = os.getenv("PINECONE_API_KEY")
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+
+        if not pinecone_api_key:
+            logging.critical("CRITICAL: PINECONE_API_KEY is missing. Pinecone client cannot be initialized.")
+            self.use_mock = True # Fallback to mock if essential keys are missing
+            self._setup_mock()
+            return
+        if not openai_api_key:
+            logging.critical("CRITICAL: OPENAI_API_KEY is missing. Pinecone client cannot generate embeddings.")
+            self.use_mock = True # Fallback to mock if essential keys are missing
+            self._setup_mock()
+            return
 
         try:
-            # Get API keys and config from environment variables
-            pinecone_api_key = os.getenv("PINECONE_API_KEY")
-            openai_api_key = os.getenv("OPENAI_API_KEY")
-
-            if not pinecone_api_key or not openai_api_key:
-                logging.warning("Pinecone or OpenAI API key missing. Falling back to mock Pinecone client.")
-                self.use_mock = True
-                self._setup_mock()
-                return # Stop initialization here if mocking
-
-            # Initialize OpenAI (for embeddings)
             self.openai_client = openai.OpenAI(api_key=openai_api_key)
-
-            # Initialize Pinecone
             self.pc = Pinecone(api_key=pinecone_api_key)
 
-            # Check if index exists, create if it doesn't
-            if self.index_name not in self.pc.list_indexes().names():
-                self._create_index() # This might still fail if permissions/config wrong
-
-            # Connect to the index
-            self.index = self.pc.Index(self.index_name)
-            logging.info(f"Successfully connected to Pinecone index: {self.index_name}")
+            index_description = None
+            available_indexes = self.pc.list_indexes().names()
+            if self.index_name in available_indexes:
+                logging.info(f"Pinecone index '{self.index_name}' found. Describing index...")
+                index_description = self.pc.describe_index(self.index_name)
+                if index_description.dimension != self.expected_dimension:
+                    logging.critical(
+                        f"CRITICAL: Pinecone index '{self.index_name}' exists but has dimension {index_description.dimension}, "
+                        f"expected {self.expected_dimension} for model 'text-embedding-3-small'. "
+                        f"Please ensure index name in .env (PINECONE_INDEX_NAME) matches an index with dimension {self.expected_dimension}, "
+                        f"or update the embedding model and expected_dimension in pinecone_client.py."
+                    )
+                    # Do not connect to this index, effectively disabling real Pinecone ops
+                    self.use_mock = True
+                    self._setup_mock()
+                    return 
+                self.index = self.pc.Index(self.index_name)
+                logging.info(f"Successfully connected to Pinecone index: '{self.index_name}' with dimension {index_description.dimension}.")
+            else:
+                logging.warning(f"Pinecone index '{self.index_name}' not found. Attempting to create it.")
+                self._create_index() # This might raise an exception if it fails
+                self.index = self.pc.Index(self.index_name)
+                logging.info(f"Successfully created and connected to Pinecone index: '{self.index_name}'.")
 
         except Exception as e:
-            logging.error(f"Failed to initialize real Pinecone client: {str(e)}. Falling back to mock Pinecone client.")
+            logging.error(f"Failed to initialize real Pinecone client: {str(e)}. Falling back to mock Pinecone client.", exc_info=True)
             self.use_mock = True
             self._setup_mock()
 
     def _setup_mock(self):
         """Set up mock attributes and log message."""
-        logging.info("Using Mock PineconeClient. Relevance scores will be simulated.")
-        self.index = None # No real index connection for mock
-        self.pc = None
-        self.openai_client = None
+        logging.warning("PineconeClient: Operating in MOCK mode. Real Pinecone operations will be skipped.")
+        # self.index, self.pc, self.openai_client are already None or will be if init fails before this
 
     def _create_index(self):
         """Create Pinecone index if it doesn't exist."""
-        if self.use_mock:
-            logging.debug("Mock mode: Skipping _create_index")
+        if self.use_mock: # Should not happen if we intend to create
+            logging.debug("Mock mode: Skipping _create_index call.")
             return
         try:
-            # Corrected dimension and region based on user info and OpenAI model
-            dimension = 1536 # For text-embedding-3-small
-            region = "us-east-1" # Aligned with existing index
+            dimension = self.expected_dimension
+            region = "us-east-1" # As per user's existing grant-cluster index
             metric = "cosine"
             
+            logging.info(f"Creating new Pinecone index: '{self.index_name}' in region '{region}' with dimension {dimension}, metric '{metric}'.")
             self.pc.create_index(
                 name=self.index_name,
                 dimension=dimension,
                 metric=metric,
                 spec=ServerlessSpec(cloud="aws", region=region)
             )
-            logging.info(f"Created new Pinecone index: {self.index_name} in region {region} with dimension {dimension}")
+            # Wait for index to be ready
+            while not self.pc.describe_index(self.index_name).status['ready']:
+                logging.info("Waiting for Pinecone index to be ready...")
+                time.sleep(5)
+            logging.info(f"Pinecone index '{self.index_name}' created and ready.")
         except Exception as e:
-            logging.error(f"Error creating Pinecone index: {str(e)}")
-            raise
+            logging.error(f"Error creating Pinecone index '{self.index_name}': {str(e)}", exc_info=True)
+            # If creation fails, we must fallback to mock or signal critical failure
+            self.use_mock = True 
+            self._setup_mock() # Ensure mock setup is called on creation failure
+            raise # Re-raise the exception to make the failure clear during startup
     
     def calculate_relevance(self, grant_description, grant_title=None):
         """Calculate relevance score (real or mock)."""
@@ -128,26 +154,17 @@ class PineconeClient:
             logging.error(f"Error calculating real relevance score: {str(e)}")
             return 0.0  # Default fallback score 0
     
-    def _generate_embedding(self, text):
-        """Generate vector embedding (real or mock)."""
-        if self.use_mock or not self.openai_client:
-            logging.debug("Mock mode: Skipping _generate_embedding")
-            # Return a dummy vector of the correct dimension if needed by callers
-            # Dimension for text-embedding-3-small is 1536
-            return [random.random() for _ in range(1536)]
-
-        # --- Real implementation --- #
-        try:
-             response = self.openai_client.embeddings.create(
-                model="text-embedding-3-small",
-                input=text
-             )
-             return response.data[0].embedding
-        except Exception as e:
-            logging.error(f"Error generating OpenAI embedding: {str(e)}")
-            # Need to decide how to handle this - raise error or return dummy?
-            # Returning dummy vector for now to potentially allow flow continuation
-            return [0.0] * 1536
+    def _generate_embedding(self, text: str) -> List[float]:
+        """Generate embedding for text using OpenAI's API."""
+        if self.use_mock:
+            # Return mock embedding of correct dimension
+            return [random.uniform(-1, 1) for _ in range(self.expected_dimension)]
+        
+        response = self.openai_client.embeddings.create(
+            model="text-embedding-3-large",  # Updated to match 3072 dimensions
+            input=text
+        )
+        return response.data[0].embedding
 
     async def store_grant_embedding(self, 
                                   grant_id: str, 

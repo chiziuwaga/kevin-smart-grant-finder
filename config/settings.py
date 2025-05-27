@@ -60,16 +60,18 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str:
-        """Get database URL."""
+        """Get the database URL, preferring DATABASE_URL if set."""
         if self.database_url:
-            return self.database_url
-            
+            # For asyncpg, we need to modify the postgres:// to postgresql+asyncpg://
+            return self.database_url.replace("postgres://", "postgresql+asyncpg://")
+        
         return DatabaseURL.build_connection_string(
             user=self.db_user,
             password=self.db_pass,
             host=self.db_host,
             port=self.db_port,
-            db=self.db_name
+            db=self.db_name,
+            async_driver=True
         )
 
 @lru_cache()

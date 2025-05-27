@@ -15,8 +15,8 @@ settings = get_settings()
 
 # Create async engine
 engine = create_async_engine(
-    settings.database.url,
-    echo=settings.debug,
+    settings.db_url,  # Corrected: Use the db_url property
+    echo=settings.app_debug,  # Corrected: Use app_debug
     future=True,
     poolclass=NullPool
 )
