@@ -20,7 +20,7 @@ config = context.config
 
 # Set database URL from environment
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database.url)
+config.set_main_option("sqlalchemy.url", settings.db_url) # Ensure this uses the correct property for URL
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -67,6 +67,8 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        future=True,
+        echo=settings.app_debug  # Changed from settings.debug
     )
 
     async with connectable.connect() as connection:
