@@ -3,25 +3,61 @@ Tests for the agents package.
 """
 
 import pytest
-from agents.research_agent import GrantResearchAgent
-from agents.analysis_agent import GrantAnalysisAgent
+from unittest.mock import Mock, AsyncMock
+from agents.research_agent import ResearchAgent
+from agents.analysis_agent import AnalysisAgent
+from datetime import datetime
 
-def test_research_agent_initialization():
-    agent = GrantResearchAgent()
-    assert agent.sources == []
+@pytest.fixture
+def mock_clients():
+    return {
+        'perplexity': AsyncMock(),
+        'mongodb': AsyncMock(),
+        'pinecone': AsyncMock()
+    }
 
-def test_analysis_agent_initialization():
-    agent = GrantAnalysisAgent()
-    assert agent.criteria == {}
+@pytest.mark.asyncio
+async def test_research_agent_search(mock_clients):
+    # Setup
+    agent = ResearchAgent(
+        perplexity_client=mock_clients['perplexity'],
+        mongodb_client=mock_clients['mongodb'],
+        pinecone_client=mock_clients['pinecone']
+    )
+    
+    # Mock responses
+    mock_clients['perplexity'].query.return_value = "Sample grant data"
+    mock_clients['pinecone'].get_embedding.return_value = [0.1] * 10
+    mock_clients['pinecone'].calculate_relevance.return_value = 0.8
+    
+    # Test
+    results = await agent.search_grants({"keywords": "test"})
+    assert isinstance(results, list)
+    mock_clients['perplexity'].query.assert_called_once()
 
-def test_add_source():
-    agent = GrantResearchAgent()
-    source = 'https://example.com/grants'
-    agent.add_source(source)
-    assert source in agent.sources
-
-def test_set_criteria():
-    agent = GrantAnalysisAgent()
-    criteria = {'relevance': 0.5, 'amount': 0.3, 'deadline': 0.2}
-    agent.set_criteria(criteria)
-    assert agent.criteria == criteria
+@pytest.mark.asyncio
+async def test_analysis_agent_analyze(mock_clients):
+    # Setup
+    agent = AnalysisAgent(
+        mongodb_client=mock_clients['mongodb'],
+        pinecone_client=mock_clients['pinecone']
+    )
+    
+    # Mock data
+    test_grants = [{
+        "title": "Test Grant",
+        "description": "Description",
+        "funding_amount": "100000",
+        "deadline": datetime.now().isoformat(),
+        "score": 0.8
+    }]
+    
+    # Mock existing grants
+    mock_clients['mongodb'].grants.distinct.return_value = []
+    
+    # Test
+    analyzed = await agent.analyze_grants(test_grants)
+    assert isinstance(analyzed, list)
+    assert len(analyzed) > 0
+    assert "score" in analyzed[0]
+    assert "factors" in analyzed[0]

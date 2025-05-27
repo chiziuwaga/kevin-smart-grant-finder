@@ -9,12 +9,12 @@ const API = axios.create({
 });
 
 // Dashboard endpoints
-export const getDashboardStats = () => API.get('/dashboard/stats');
+export const getDashboardStats = () => API.get('/dashboard/stats');  // Changed from /grants/overview
 export const getDistribution = () => API.get('/analytics/distribution');
 
 // Grants endpoints
-export const getGrants = (params = {}) => API.get('/grants', { params });
-export const searchGrants = (filters = {}) => API.post('/grants/search', filters);
+export const getGrants = (params = {}) => API.get('/grants', { params });  // Use for filtered queries
+export const searchGrants = (filters = {}) => API.post('/grants/search', filters);  // Use for advanced search
 export const getGrantById = (id) => API.get(`/grants/${id}`);
 
 // System endpoints
