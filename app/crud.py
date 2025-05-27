@@ -171,3 +171,24 @@ async def run_full_search_cycle(
         await db.commit()
     
     return [g for g in results if g.get("score", 0) >= 0.7]  # Return only high-priority grants
+
+async def create_search_run(
+    db: AsyncSession, 
+    grants_found: int, 
+    high_priority_found: int, 
+    search_filters: Optional[Dict[str, Any]] = None
+) -> SearchRun:
+    """Create and store a new search run record."""
+    if search_filters is None:
+        search_filters = {}
+        
+    new_search_run = SearchRun(
+        timestamp=datetime.utcnow(), # Use UTC for timestamps
+        grants_found=grants_found,
+        high_priority=high_priority_found,
+        search_filters=search_filters
+    )
+    db.add(new_search_run)
+    await db.commit()
+    await db.refresh(new_search_run)
+    return new_search_run

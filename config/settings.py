@@ -49,27 +49,29 @@ class Settings(BaseSettings):
 
     # API Keys
     pinecone_api_key: str = Field(default="", env="PINECONE_API_KEY")
-    pinecone_index: str = Field(default="grants", env="PINECONE_INDEX")
+    pinecone_index_name: str = Field(default="grantcluster", env="PINECONE_INDEX_NAME") # Corrected
     perplexity_api_key: str = Field(default="", env="PERPLEXITY_API_KEY")
     perplexity_rate_limit: int = Field(default=30, env="PERPLEXITY_RATE_LIMIT")
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")  # Added OpenAI API Key
 
     # Notifications
-    telegram_token: str = Field(default="", env="TELEGRAM_TOKEN")
+    telegram_bot_token: str = Field(default="", env="TELEGRAM_BOT_TOKEN") # Changed from telegram_token
     telegram_chat_id: str = Field(default="", env="TELEGRAM_CHAT_ID")
 
     @property
     def db_url(self) -> str:
-        """Get database URL."""
+        """Get the database URL, preferring DATABASE_URL if set."""
         if self.database_url:
-            return self.database_url
-            
+            # For asyncpg, we need to modify the postgres:// to postgresql+asyncpg://
+            return self.database_url.replace("postgres://", "postgresql+asyncpg://")
+        
         return DatabaseURL.build_connection_string(
             user=self.db_user,
             password=self.db_pass,
             host=self.db_host,
             port=self.db_port,
-            db=self.db_name
+            db=self.db_name,
+            async_driver=True
         )
 
 @lru_cache()

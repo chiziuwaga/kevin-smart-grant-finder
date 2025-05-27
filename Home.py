@@ -6,20 +6,22 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from agents.analysis_agent import GrantAnalysisAgent
+from agents.analysis_agent import AnalysisAgent
 from agents.research_agent import ResearchAgent
 # Import API router (after we have a placeholder services dict)
-from api.routes import \
-    api as api_router  # Rename imported 'api' to avoid conflict
+from app.router import \
+    api_router as api_router  # Corrected import
 from config.logging_config import setup_logging
+from config.settings import get_settings # Added import
 # Import your API routers and database clients
-from database.mongodb_client import MongoDBClient
-from database.pinecone_client import PineconeClient
+from utils.pinecone_client import PineconeClient # Corrected import path
 # Shared services dictionary
-from service_registry import services
-from utils.agentql_client import AgentQLClient
+from app.services import services # Corrected import path
+# from utils.agentql_client import AgentQLClient # Commented out missing client
 from utils.notification_manager import NotificationManager
 from utils.perplexity_client import PerplexityClient
+from fastapi.responses import JSONResponse
+from sqlalchemy import text # Added for health check
 
 # Set up logging
 setup_logging()
@@ -68,58 +70,96 @@ def initialize_service_with_retry(service_name, init_func, max_retries=3, retry_
 
 def initialize_global_services():
     """Initialize all required services at startup."""
-    global services, init_status
+    global services, init_status # services is now the dataclass instance
     logger.info("Initializing global services...")
+    current_settings = get_settings() # Ensure settings are loaded here
 
-    services["mongodb_client"], init_status['mongo'] = initialize_service_with_retry(
-        "MongoDB client", 
-        lambda: MongoDBClient()
-    )
-    services["pinecone_client"], init_status['pinecone'] = initialize_service_with_retry(
+    init_status['mongo'] = False 
+    pinecone_instance, pinecone_status_from_retry = initialize_service_with_retry(
         "Pinecone client",
         lambda: PineconeClient()
     )
-    services["agentql_client"], init_status['agentql'] = initialize_service_with_retry(
-        "AgentQL client",
-        lambda: AgentQLClient()
-    )
-    services["perplexity_client"], init_status['perplexity'] = initialize_service_with_retry(
+    if pinecone_status_from_retry and pinecone_instance and not pinecone_instance.use_mock:
+        services.pinecone_client = pinecone_instance
+        init_status['pinecone'] = True
+        logging.info("Pinecone client initialized successfully (REAL).")
+    else:
+        services.pinecone_client = pinecone_instance # Store even if mock, for consistent access patterns
+        init_status['pinecone'] = False # Mark as failed for real operations
+        if pinecone_instance and pinecone_instance.use_mock:
+            logging.warning("Pinecone client initialized in MOCK mode.")
+        else:
+            logging.error("Pinecone client failed to initialize from retry logic.")
+
+    init_status['agentql'] = False 
+
+    perplexity_instance, perplexity_status = initialize_service_with_retry(
         "Perplexity client",
         lambda: PerplexityClient()
     )
-    services["notification_manager"], init_status['notifier'] = initialize_service_with_retry(
+    if perplexity_status:
+        services.perplexity_client = perplexity_instance
+    init_status['perplexity'] = perplexity_status
+    
+    notification_instance, notification_status = initialize_service_with_retry(
         "Notification manager",
-        lambda: NotificationManager()
+        lambda: NotificationManager(
+            telegram_token=current_settings.telegram_token,
+            telegram_chat_id=current_settings.telegram_chat_id
+        )
     )
+    if notification_status:
+        services.notifier = notification_instance 
+    init_status['notifier'] = notification_status
 
-    # Initialize Agents - they depend on other clients
-    if init_status['mongo'] and init_status['agentql'] and init_status['perplexity']:
-        services["research_agent"], init_status['research_agent'] = initialize_service_with_retry(
+    try:
+        logger.info("Initializing Database session manager...")
+        from database.session import AsyncSessionLocal, engine 
+        services.db_engine = engine 
+        services.db_sessionmaker = AsyncSessionLocal 
+        logger.info("Database session manager configured.")
+        init_status['db'] = True
+    except Exception as e:
+        logger.critical(f"Failed to initialize Database session manager: {e}", exc_info=True)
+        init_status['db'] = False
+
+    if init_status['perplexity'] and init_status['pinecone'] and init_status['db']:
+        research_agent_instance, research_agent_status = initialize_service_with_retry(
             "Research Agent",
             lambda: ResearchAgent(
-                services["agentql_client"],
-                services["perplexity_client"],
-                services["mongodb_client"]
+                perplexity_client=services.perplexity_client,
+                db_sessionmaker=services.db_sessionmaker,  # Pass sessionmaker
+                pinecone_client=services.pinecone_client
             )
         )
+        init_status['research_agent'] = research_agent_status
     else:
-        logger.error("Cannot initialize Research Agent due to missing dependencies.")
+        logger.error(f"Cannot initialize Research Agent due to missing dependencies. Status - Perplexity: {init_status.get('perplexity')}, Pinecone: {init_status.get('pinecone')}, DB: {init_status.get('db')}.")
         init_status['research_agent'] = False
 
-    if init_status['mongo'] and init_status['pinecone']:
-        services["analysis_agent"], init_status['analysis_agent'] = initialize_service_with_retry(
+    if init_status['pinecone'] and init_status['db']:
+        analysis_agent_instance, analysis_agent_status = initialize_service_with_retry(
             "Analysis Agent",
-            lambda: GrantAnalysisAgent(
-                services["pinecone_client"],
-                services["mongodb_client"]
+            lambda: AnalysisAgent(
+                db_sessionmaker=services.db_sessionmaker, # Pass sessionmaker
+                pinecone_client=services.pinecone_client
             )
         )
+        init_status['analysis_agent'] = analysis_agent_status
     else:
-        logger.error("Cannot initialize Analysis Agent due to missing dependencies.")
+        logger.error(f"Cannot initialize Analysis Agent due to missing dependencies. Status - Pinecone: {init_status.get('pinecone')}, DB: {init_status.get('db')}.")
         init_status['analysis_agent'] = False
-
-    init_summary = ", ".join([f"{svc}: {'✓' if status else '✗'}" for svc, status in init_status.items()])
-    logger.info(f"Global service initialization summary: {init_summary}")
+    
+    # Replace special characters for logging if needed, or ensure console supports UTF-8
+    summary_items = []
+    for svc, status in init_status.items():
+        summary_items.append(f"{svc}: {'✓' if status else '✗'}") # Using ✓ and ✗ for clarity
+    init_summary = ", ".join(summary_items)
+    try:
+        logger.info(f"Global service initialization summary: {init_summary}")
+    except UnicodeEncodeError:
+        safe_init_summary = init_summary.replace('✓', 'OK').replace('✗', 'FAIL')
+        logger.info(f"Global service initialization summary (ASCII): {safe_init_summary}")
 
 # Run service initialization at startup
 initialize_global_services()
@@ -143,31 +183,30 @@ initialize_global_services()
 
 main_app.include_router(api_router, prefix="/api")
 
-from fastapi.exceptions import HTTPException
-# Add a global exception handler for unhandled exceptions
-from fastapi.responses import JSONResponse
-
-
-@main_app.exception_handler(Exception)
-async def global_exception_handler(request, exc: Exception):
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"status": "error", "detail": "Internal server error"}
-    )
+# @main_app.exception_handler(Exception) # Commented out for now to see specific errors if they occur
+# async def global_exception_handler(request, exc: Exception):
+#     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+#     return JSONResponse(
+#         status_code=500,
+#         content={"status": "error", "detail": "Internal server error"}
+#     )
 
 @main_app.get("/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint to verify MongoDB connection."""
+    """Health check endpoint to verify database connection."""
+    if not services.db_sessionmaker:
+        logger.error("Database sessionmaker not initialized for health check.")
+        return JSONResponse(status_code=503, content={"status": "error", "detail": "Database service not configured"})
     try:
-        # Ping the MongoDB server via the global client
-        services["mongodb_client"].client.admin.command("ping")
-        return {"status": "ok", "detail": "MongoDB connected"}
+        async with services.db_sessionmaker() as session:
+            await session.execute(text("SELECT 1"))
+        logger.info("Database health check successful.")
+        return {"status": "ok", "detail": "Database connected"}
     except Exception as e:
-        # Return a 503 if MongoDB is unreachable
-        return JSONResponse(status_code=503, content={"status": "error", "detail": str(e)})
+        logger.error(f"Database health check failed: {str(e)}", exc_info=True)
+        return JSONResponse(status_code=503, content={"status": "error", "detail": f"Database connection failed: {str(e)}"})
 
-# --- Root Endpoint (Optional) --- 
+# --- Root Endpoint (Optional) ---
 @main_app.get("/")
 async def read_root():
     return {"message": "Welcome to Kevin's Smart Grant Finder API"}
@@ -184,4 +223,4 @@ async def read_root():
 #     logger.info("API Application shutting down.")
 
 # Note: When running with uvicorn like `uvicorn Home:main_app --reload`,
-# this file (Home.py) becomes the entry point for the ASGI server. 
+# this file (Home.py) becomes the entry point for the ASGI server.
