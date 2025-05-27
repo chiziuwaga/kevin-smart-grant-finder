@@ -7,13 +7,25 @@ import time
 from datetime import datetime, timedelta
 import re
 from urllib.parse import urlparse
+from typing import Dict, List, Any, Optional
+from utils.perplexity_client import PerplexityClient
+from utils.mongodb_client import MongoDBClient
+from utils.pinecone_client import PineconeClient
+from app.models import Grant, GrantFilter
+
+logger = logging.getLogger(__name__)
 
 class ResearchAgent:
-    def __init__(self, perplexity_client, agentql_client, mongodb_client):
+    def __init__(
+        self,
+        perplexity_client: PerplexityClient,
+        mongodb_client: MongoDBClient,
+        pinecone_client: PineconeClient
+    ):
         """Initialize Research Agent."""
-        self.perplexity_client = perplexity_client
-        self.agentql_client = agentql_client  # Added agentql_client
-        self.mongodb_client = mongodb_client
+        self.perplexity = perplexity_client
+        self.mongodb = mongodb_client
+        self.pinecone = pinecone_client
 
         # Initialize agent IDs (from the updated description)
         self.telecom_agent_id = None
@@ -58,127 +70,81 @@ class ResearchAgent:
 
         logging.info(f"Set up AgentQL search agents: Telecom ID={self.telecom_agent_id}, Nonprofit ID={self.nonprofit_agent_id}")
 
-    def search_grants(self, search_params):
-        """Search for grants using the provided parameters."""
-        start_time = time.time()
-        logging.info(f"Starting grant search with params: {search_params}")
+    async def search_grants(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Search for grants using Perplexity AI and filter results."""
+        try:
+            # Convert filters to validated model
+            search_filters = GrantFilter(**filters)
+            
+            # Build search query
+            query = self._build_search_query(search_filters)
+            
+            # Get results from Perplexity
+            raw_results = await self.perplexity.query(query)
+            
+            # Parse and format results
+            grants = self._parse_results(raw_results)
+            
+            # Score and filter results
+            scored_grants = await self._score_and_filter_grants(grants, search_filters)
+            
+            return scored_grants
+            
+        except Exception as e:
+            logger.error(f"Error during grant search: {str(e)}", exc_info=True)
+            return []
 
-        # Extract core search parameters
-        category = search_params.get("category", "unknown")
-        search_terms = search_params.get("search_terms", [])
-        sources = search_params.get("sources", []) # Base sources
+    def _build_search_query(self, filters: GrantFilter) -> str:
+        """Build a natural language query for Perplexity."""
+        query_parts = ["Find available grants"]
+        
+        if filters.categories:
+            query_parts.append(f"in categories: {', '.join(filters.categories)}")
+        
+        if filters.keywords:
+            query_parts.append(f"matching keywords: {filters.keywords}")
+            
+        if filters.deadline_after:
+            query_parts.append(f"with deadlines after {filters.deadline_after.strftime('%Y-%m-%d')}")
+            
+        if filters.deadline_before:
+            query_parts.append(f"with deadlines before {filters.deadline_before.strftime('%Y-%m-%d')}")
+        
+        query = " ".join(query_parts)
+        query += ". Include title, description, funding amount, deadline, and eligibility requirements."
+        
+        return query
 
-        # Extract advanced filter parameters
-        funding_types = search_params.get("funding_type", []) # List of strings
-        eligible_entities = search_params.get("eligible_entities", []) # List of strings
-        geo_restrictions = search_params.get("geo_restrictions", None) # String like 'LA-08'
-        priority_keywords = search_params.get("priority_keywords", []) # List of strings for nonprofit
-        funding_range = search_params.get("funding_range", None) # Tuple (min, max)
-        compliance_check = search_params.get("compliance_check", False) # Boolean for 501c3
-        custom_search_text = search_params.get("search_text", "") # User-entered text
+    def _parse_results(self, raw_results: str) -> List[Dict[str, Any]]:
+        """Parse Perplexity results into structured grant data."""
+        # This would need proper implementation to parse the AI response
+        # For now, return a placeholder
+        return []
 
-        # Store sources in database
-        for source in sources:
-            self.mongodb_client.store_source({
-                "name": source,
-                "domain": category,
-                "url": self._get_source_url(source),
-                "last_searched": datetime.utcnow()
-            })
-
-        # --- AgentQL Search --- (Enhanced Query Construction)
-        results = []
-        agent_id = self.telecom_agent_id if category == "telecom" else self.nonprofit_agent_id
-        if not agent_id:
-            self.setup_search_agents()
-            agent_id = self.telecom_agent_id if category == "telecom" else self.nonprofit_agent_id
-
-        if agent_id and self.agentql_client:
-            # Combine base terms and priority keywords
-            all_keywords = list(set(search_terms + priority_keywords + ([custom_search_text] if custom_search_text else [])))
-            if not all_keywords:
-                all_keywords = [category] # Default to category if no keywords
-
-            query = " OR ".join([f'"{term}"' for term in all_keywords if term])
-
-            # Add structured parameters if supported by AgentQL (assuming capability)
-            agentql_params = {"max_results": 20}
-            if funding_types:
-                agentql_params["funding_type"] = funding_types
-            if eligible_entities:
-                agentql_params["eligibility"] = eligible_entities
-            if geo_restrictions:
-                agentql_params["geographic_area"] = geo_restrictions
-            if funding_range:
-                agentql_params["funding_min"] = funding_range[0]
-                agentql_params["funding_max"] = funding_range[1]
-            if compliance_check:
-                 agentql_params["requirements"] = "501(c)(3)"
-
-            logging.info(f"Executing AgentQL search with query: {query} and params: {agentql_params}")
-            agent_results = self.agentql_client.search_grants(
-                agent_id=agent_id,
-                query=query,
-                parameters=agentql_params
-            )
-            results.extend(agent_results)
-            logging.info(f"AgentQL search returned {len(agent_results)} results.")
-        else:
-            logging.warning("AgentQL search skipped: Client or Agent ID not available.")
-
-        # --- Perplexity Search --- (Enhanced Query Construction)
-        if self.perplexity_client:
-            # Combine keywords for broader search
-            perplexity_keywords = list(set(search_terms + priority_keywords + ([custom_search_text] if custom_search_text else [])))
-            if not perplexity_keywords:
-                perplexity_keywords = [category]
-
-            query_parts = [" OR ".join([f'"{term}"' for term in perplexity_keywords if term])]
-
-            # Add filters as natural language parts of the query
-            if funding_types:
-                query_parts.append(f"funding type: ({' OR '.join(funding_types)})" )
-            if eligible_entities:
-                query_parts.append(f"eligible entities: ({' OR '.join(eligible_entities)})" )
-            if geo_restrictions:
-                query_parts.append(f'in geographic area "{geo_restrictions}"' )
-            if funding_range:
-                query_parts.append(f"funding between ${funding_range[0]:,} and ${funding_range[1]:,}")
-            if compliance_check:
-                query_parts.append("requires 501(c)(3) status")
-
-            perplexity_query = " AND ".join(query_parts)
-            perplexity_query += ' "application deadline" OR "grant deadline" OR "submission deadline"' # Keep deadline focus
-
-            # Prepare site restrictions (ensure valid domains)
-            site_restrictions = [f"site:{self._get_domain(s)}" for s in sources if self._get_domain(s)]
-            if not site_restrictions:
-                site_restrictions = ["site:gov", "site:org", "site:edu"] # Defaults
-
-            logging.info(f"Executing Perplexity search with query: {perplexity_query}")
-            perplexity_search_results = self.perplexity_client.deep_search(
-                query=perplexity_query,
-                site_restrictions=site_restrictions,
-                max_results=50
-            )
-            extracted_grants = self.perplexity_client.extract_grant_data(perplexity_search_results)
-            logging.info(f"Perplexity search returned {len(extracted_grants)} potential grants.")
-            results.extend(extracted_grants)
-        else:
-             logging.warning("Perplexity search skipped: Client not available.")
-
-        # Deduplicate results based on source_url or title+description hash
-        processed_grants = self._deduplicate_and_process(results, category)
-
-        # Store processed grants
-        stored_count = self.mongodb_client.store_grants(processed_grants)
-
-        # Log search history
-        search_duration = time.time() - start_time
-        self.mongodb_client.store_search_history(search_params, stored_count, search_duration)
-
-        logging.info(f"Completed grant search for category '{category}'. Found {len(results)} raw, processed {len(processed_grants)}, stored {stored_count} grants in {search_duration:.2f}s.")
-        return processed_grants
+    async def _score_and_filter_grants(
+        self,
+        grants: List[Dict[str, Any]],
+        filters: GrantFilter
+    ) -> List[Dict[str, Any]]:
+        """Score grants using Pinecone and filter by criteria."""
+        if not grants:
+            return []
+            
+        # Score grants using Pinecone
+        for grant in grants:
+            embedding = await self.pinecone.get_embedding(grant["description"])
+            grant["score"] = await self.pinecone.calculate_relevance(embedding)
+        
+        # Filter by minimum score
+        filtered_grants = [
+            grant for grant in grants 
+            if grant["score"] >= filters.min_score
+        ]
+        
+        # Sort by score
+        filtered_grants.sort(key=lambda x: x["score"], reverse=True)
+        
+        return filtered_grants
 
     def _get_domain(self, source_name_or_url):
         """Extract domain name from a source name or URL."""

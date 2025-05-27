@@ -1,75 +1,42 @@
+import logging
 import os
-import logging.config
-from pathlib import Path
-
-# Create logs directory if it doesn't exist
-logs_dir = Path("logs")
-logs_dir.mkdir(exist_ok=True)
-
-LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        },
-        "simple": {
-            "format": "%(levelname)s - %(message)s"
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "level": "INFO",
-            "formatter": "simple",
-            "stream": "ext://sys.stdout",
-        },
-        "file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "level": "DEBUG",
-            "formatter": "default",
-            "filename": "logs/app.log",
-            "maxBytes": 10485760,  # 10MB
-            "backupCount": 5,
-            "encoding": "utf8"
-        },
-        "error_file": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "level": "ERROR",
-            "formatter": "default",
-            "filename": "logs/error.log",
-            "maxBytes": 10485760,  # 10MB
-            "backupCount": 5,
-            "encoding": "utf8"
-        },
-    },
-    "loggers": {
-        "": {  # Root logger
-            "handlers": ["console", "file"],
-            "level": os.getenv("LOG_LEVEL", "INFO").upper(),
-            "propagate": True
-        },
-        "grant_finder": {
-            "handlers": ["console", "file", "error_file"],
-            "level": "DEBUG",
-            "propagate": False
-        },
-        "grant_finder.api": {
-            "handlers": ["console", "file", "error_file"],
-            "level": "INFO",
-            "propagate": False
-        },
-        "grant_finder.database": {
-            "handlers": ["console", "file", "error_file"],
-            "level": "INFO",
-            "propagate": False
-        },
-    },
-}
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 def setup_logging():
-    """Configure logging settings"""
-    logging.config.dictConfig(LOGGING_CONFIG)
-    logger = logging.getLogger(__name__)
-    logger.debug("Logging configured successfully") 
+    """Configure logging for the application."""
+    # Create logs directory if it doesn't exist
+    log_dir = "logs"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    # Set up file handler with rotation
+    log_file = os.path.join(log_dir, "grant_finder.log")
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=5*1024*1024,  # 5MB
+        backupCount=5
+    )
+    
+    # Set up console handler
+    console_handler = logging.StreamHandler()
+    
+    # Define format
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    # Set specific levels for noisy libraries
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
+    
+    # Log startup
+    logging.info(f"Logging initialized at {datetime.now()}")
