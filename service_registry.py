@@ -1,1 +1,0 @@
-services = {}  # This dictionary will be populated by Home.py after service initialization 
