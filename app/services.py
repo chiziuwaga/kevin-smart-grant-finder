@@ -1,6 +1,6 @@
 import os
 from dataclasses import dataclass
-from utils.mongodb_client import MongoDBClient
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from utils.pinecone_client import PineconeClient
 from utils.perplexity_client import PerplexityClient
 from utils.notification_manager import NotificationManager
@@ -8,7 +8,8 @@ from config.settings import load_settings
 
 @dataclass
 class Services:
-    mongodb_client: MongoDBClient = None
+    db_engine: AsyncSession = None
+    db_sessionmaker: async_sessionmaker = None
     pinecone_client: PineconeClient = None
     perplexity_client: PerplexityClient = None
     notifier: NotificationManager = None
@@ -19,11 +20,16 @@ async def init_services():
     # Load settings
     settings = load_settings()
     
-    # Initialize MongoDB
-    services.mongodb_client = MongoDBClient(
-        uri=os.getenv("MONGODB_URI", settings.mongodb.uri)
+    # Initialize PostgreSQL
+    database_url = os.getenv("DATABASE_URL", settings.postgres.url)
+    if not database_url.startswith('postgresql+asyncpg://'):
+        database_url = f"postgresql+asyncpg://{database_url.split('://', 1)[1]}"
+    
+    services.db_engine = create_async_engine(database_url, echo=True)
+    services.db_sessionmaker = async_sessionmaker(
+        services.db_engine, 
+        expire_on_commit=False
     )
-    await services.mongodb_client.connect()
 
     # Initialize Pinecone
     services.pinecone_client = PineconeClient(

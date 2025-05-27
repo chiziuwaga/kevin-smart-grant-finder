@@ -8,10 +8,14 @@ from datetime import datetime, timedelta
 import re
 from urllib.parse import urlparse
 from typing import Dict, List, Any, Optional
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from utils.perplexity_client import PerplexityClient
-from utils.mongodb_client import MongoDBClient
 from utils.pinecone_client import PineconeClient
 from app.models import Grant, GrantFilter
+from database.models import Grant as DBGrant, Analysis
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +23,12 @@ class ResearchAgent:
     def __init__(
         self,
         perplexity_client: PerplexityClient,
-        mongodb_client: MongoDBClient,
+        db_session: AsyncSession,
         pinecone_client: PineconeClient
     ):
         """Initialize Research Agent."""
         self.perplexity = perplexity_client
-        self.mongodb = mongodb_client
+        self.db = db_session
         self.pinecone = pinecone_client
 
         # Initialize agent IDs (from the updated description)
@@ -144,6 +148,29 @@ class ResearchAgent:
         # Sort by score
         filtered_grants.sort(key=lambda x: x["score"], reverse=True)
         
+        # Store the grants in the database
+        for grant_data in filtered_grants:
+            grant = DBGrant(
+                title=grant_data["title"],
+                description=grant_data["description"],
+                funding_amount=grant_data.get("amount"),
+                deadline=grant_data["deadline"],
+                source=grant_data["source_name"],
+                source_url=grant_data["source_url"],
+                category=grant_data["category"],
+                eligibility=grant_data.get("eligibility", {}),
+                status="active"
+            )
+            self.db.add(grant)
+            
+            analysis = Analysis(
+                grant=grant,
+                score=grant_data["score"],
+                notes="Analyzed by ResearchAgent"
+            )
+            self.db.add(analysis)
+        
+        await self.db.commit()
         return filtered_grants
 
     def _get_domain(self, source_name_or_url):

@@ -3,7 +3,10 @@ fastapi>=0.68.0
 uvicorn[standard]>=0.15.0
 
 # Database
-motor>=3.0.0
+SQLAlchemy>=2.0.0
+alembic>=1.11.0
+psycopg2-binary>=2.9.6
+asyncpg>=0.27.0
 pinecone-client>=2.0.0
 
 # API Integration
@@ -11,7 +14,8 @@ aiohttp>=3.8.0
 python-dotenv>=0.19.0
 
 # Data Processing
-pydantic>=1.8.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
 python-dateutil>=2.8.2
 
 # Async Support

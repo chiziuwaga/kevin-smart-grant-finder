@@ -3,20 +3,22 @@ Analysis Agent for processing and evaluating grant opportunities.
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Set
 from datetime import datetime, timedelta
-from utils.mongodb_client import MongoDBClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from utils.pinecone_client import PineconeClient
+from database.models import Grant, Analysis
 
 logger = logging.getLogger(__name__)
 
 class AnalysisAgent:
     def __init__(
         self,
-        mongodb_client: MongoDBClient,
+        db_session: AsyncSession,
         pinecone_client: PineconeClient
     ):
-        self.mongodb = mongodb_client
+        self.db = db_session
         self.pinecone = pinecone_client
         
     async def analyze_grants(self, grants: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -42,10 +44,12 @@ class AnalysisAgent:
             logger.error(f"Error during grant analysis: {str(e)}", exc_info=True)
             return []
     
-    async def _get_existing_grant_titles(self) -> set:
+    async def _get_existing_grant_titles(self) -> Set[str]:
         """Get titles of existing grants to avoid duplicates."""
-        existing = await self.mongodb.grants.distinct("title")
-        return set(existing)
+        result = await self.db.execute(
+            select(Grant.title).distinct()
+        )
+        return set(result.scalars().all())
     
     async def _analyze_single_grant(self, grant: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a single grant for various factors."""
@@ -62,6 +66,29 @@ class AnalysisAgent:
                 (relevance_score * 0.4)
             )
             
+            # Store grant in database
+            db_grant = Grant(
+                title=grant["title"],
+                description=grant["description"],
+                funding_amount=grant.get("funding_amount"),
+                deadline=grant.get("deadline"),
+                source=grant.get("source"),
+                source_url=grant.get("source_url"),
+                category=grant.get("category"),
+                eligibility=grant.get("eligibility", {}),
+                status="active"
+            )
+            self.db.add(db_grant)
+            
+            # Store analysis results
+            db_analysis = Analysis(
+                grant=db_grant,
+                score=final_score,
+                notes=f"Deadline: {deadline_score:.2f}, Funding: {funding_score:.2f}, Relevance: {relevance_score:.2f}"
+            )
+            self.db.add(db_analysis)
+            await self.db.commit()
+            
             # Update grant with analysis
             grant.update({
                 "score": final_score,
@@ -77,6 +104,7 @@ class AnalysisAgent:
             
         except Exception as e:
             logger.error(f"Error analyzing grant: {str(e)}", exc_info=True)
+            await self.db.rollback()
             return None
     
     def _calculate_deadline_score(self, deadline: Any) -> float:
