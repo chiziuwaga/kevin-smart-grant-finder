@@ -23,7 +23,7 @@ class ResearchAgent:
     def __init__(
         self,
         perplexity_client: PerplexityClient,
-        db_sessionmaker: async_sessionmaker, # Changed from db_session: AsyncSession
+        db_sessionmaker: async_sessionmaker, # Correct: Changed from db_session: AsyncSession
         pinecone_client: PineconeClient
     ):
         """Initialize Research Agent."""
@@ -95,10 +95,6 @@ class ResearchAgent:
         # ...
         # The provided snippet doesn't show direct DB access in this top-level method
         # but sub-methods like store_grants_in_db do.
-        # ... (original logic) ...
-        # This method seems to be calling self.fetch_grants_from_sources, 
-        # self.process_grant_details, self.filter_grants, self.rank_grants
-        # these sub-methods need to be checked for direct db access.
         # For now, focusing on constructor and methods that clearly showed session usage.
         # ...
         # The core logic of searching and processing grants
@@ -153,50 +149,48 @@ class ResearchAgent:
     async def _score_and_filter_grants(
         self,
         grants: List[Dict[str, Any]],
-        filters: GrantFilter
+        filters: GrantFilter # Assuming GrantFilter is a Pydantic model or similar
     ) -> List[Dict[str, Any]]:
-        """Score grants using Pinecone and filter by criteria."""
+        """Score grants using Pinecone and filter by criteria. Does NOT store to DB."""
         if not grants:
             return []
             
         # Score grants using Pinecone
-        for grant in grants:
-            embedding = await self.pinecone.get_embedding(grant["description"])
-            grant["score"] = await self.pinecone.calculate_relevance(embedding)
+        for grant_data in grants: # Renamed grant to grant_data for clarity
+            embedding_text = grant_data.get("description", grant_data.get("title", ""))
+            if not embedding_text:
+                logger.warning(f"Grant missing description and title for embedding: {grant_data.get('source_url')}")
+                grant_data["score"] = 0.0
+                continue
+            
+            embedding = await self.pinecone.get_embedding(embedding_text)
+            # This relevance calculation might need more context (e.g., user profile, search query vector)
+            # For now, assuming it's a general relevance or quality score from Pinecone
+            grant_data["score"] = await self.pinecone.calculate_relevance(embedding) 
         
-        # Filter by minimum score
-        filtered_grants = [
-            grant for grant in grants 
-            if grant["score"] >= filters.min_score
+        # Filter by minimum score from GrantFilter
+        # Ensure filters.min_score is available and has a default if not provided
+        min_score_threshold = filters.min_score if hasattr(filters, 'min_score') and filters.min_score is not None else 0.0
+        
+        scored_and_filtered_grants = [
+            grant_data for grant_data in grants 
+            if grant_data.get("score", 0.0) >= min_score_threshold
         ]
         
         # Sort by score
-        filtered_grants.sort(key=lambda x: x["score"], reverse=True)
+        scored_and_filtered_grants.sort(key=lambda x: x.get("score", 0.0), reverse=True)
         
-        # Store the grants in the database
-        for grant_data in filtered_grants:
-            grant = DBGrant(
-                title=grant_data["title"],
-                description=grant_data["description"],
-                funding_amount=grant_data.get("amount"),
-                deadline=grant_data["deadline"],
-                source=grant_data["source_name"],
-                source_url=grant_data["source_url"],
-                category=grant_data["category"],
-                eligibility=grant_data.get("eligibility", {}),
-                status="active"
-            )
-            self.db.add(grant)
+        # DO NOT store in the database here. This will be handled by AnalysisAgent.
+        # async with self.db_sessionmaker() as session:
+        #     async with session.begin():
+        #         for grant_data_item in scored_and_filtered_grants:
+        #             db_grant = DBGrant(...)
+        #             session.add(db_grant)
+        #             analysis = Analysis(...)
+        #             session.add(analysis)
+        #     await session.commit()
             
-            analysis = Analysis(
-                grant=grant,
-                score=grant_data["score"],
-                notes="Analyzed by ResearchAgent"
-            )
-            self.db.add(analysis)
-        
-        await self.db.commit()
-        return filtered_grants
+        return scored_and_filtered_grants
 
     def _get_domain(self, source_name_or_url):
         """Extract domain name from a source name or URL."""
