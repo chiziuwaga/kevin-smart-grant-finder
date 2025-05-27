@@ -35,3 +35,6 @@ API.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Export the API instance as default while keeping named exports
+export default API;
