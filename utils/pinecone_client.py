@@ -46,7 +46,7 @@ class PineconeClient:
                 if index_description.dimension != self.expected_dimension:
                     logging.critical(
                         f"CRITICAL: Pinecone index '{self.index_name}' exists but has dimension {index_description.dimension}, "
-                        f"expected {self.expected_dimension} for model 'text-embedding-3-small'. "
+                        f"expected {self.expected_dimension} for model 'text-embedding-3-large'. "  # Corrected model name in log
                         f"Please ensure index name in .env (PINECONE_INDEX_NAME) matches an index with dimension {self.expected_dimension}, "
                         f"or update the embedding model and expected_dimension in pinecone_client.py."
                     )
@@ -79,7 +79,7 @@ class PineconeClient:
             return
         try:
             dimension = self.expected_dimension
-            region = "us-east-1" # As per user's existing grant-cluster index
+            region = "us-east-1" # As per user's existing grantcluster index # Corrected comment
             metric = "cosine"
             
             logging.info(f"Creating new Pinecone index: '{self.index_name}' in region '{region}' with dimension {dimension}, metric '{metric}'.")
