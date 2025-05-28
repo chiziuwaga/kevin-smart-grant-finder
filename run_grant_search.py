@@ -10,6 +10,7 @@ import logging
 import asyncio
 from dotenv import load_dotenv
 from typing import List, Dict, Any # Added import for type hints
+from app.models import GrantFilter # Import GrantFilter Pydantic model
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,12 +45,9 @@ async def main():
         )
         
         logger.info("Starting grant data retrieval...")
-        # research_agent.search_grants is expected to return a list of grant data dictionaries
-        # It should NOT store them in the DB itself, that's AnalysisAgent's job after full analysis.
-        # This might require adjusting ResearchAgent.search_grants and its sub-methods like _score_and_filter_grants
-        # to not commit to DB but rather return the data.
-        # For now, we proceed assuming search_grants returns List[Dict[str, Any]]
-        grant_data_list = await research_agent.search_grants({}) # Pass any necessary filters
+        # Instantiate GrantFilter, even if it's empty for a default broad search
+        initial_filters = GrantFilter() # Create an instance of GrantFilter
+        grant_data_list = await research_agent.search_grants(initial_filters) 
         
         logger.info(f"Retrieved {len(grant_data_list)} potential grants. Starting analysis and storage...")
         # analysis_agent.analyze_grants will handle scoring, deduplication, and DB storage (Grant & Analysis records)

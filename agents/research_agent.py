@@ -19,7 +19,78 @@ from database.models import Grant as DBGrant, Analysis
 
 logger = logging.getLogger(__name__)
 
+# Eligibility rules and site focus constants based on the persona and research document
+ELIGIBILITY_RULES = {
+    "sectors_primary_keywords": [ # Natchitoches focus
+        "telecommunications infrastructure Natchitoches Parish grants",
+        "broadband Natchitoches Parish grants",
+        "mesh networks Natchitoches Parish grants",
+        "event Wi-Fi Natchitoches Parish grants",
+        "women-owned nonprofit Natchitoches Parish 501c3 grants",
+        "community shelter Natchitoches Parish extreme weather grants"
+    ],
+    "sectors_secondary_keywords": [ # Statewide Louisiana
+        "telecommunications infrastructure Louisiana grants",
+        "broadband Louisiana grants",
+        "women-owned nonprofit Louisiana 501c3 grants",
+        "community shelter Louisiana extreme weather grants"
+    ],
+    "sectors_tertiary_keywords": [ # Federal
+        "federal telecommunications infrastructure grants",
+        "federal broadband grants",
+        "federal women-owned nonprofit grants 501c3",
+        "federal community shelter grants extreme weather"
+    ],
+    "funding_min": 5000,
+    "funding_max": 100000,
+    "deadline_lead_days": 30
+}
+
+# Example site focus lists (these would ideally be used by PerplexityClient if it supports site-specific searches)
+SITE_FOCUS_PRIMARY = [
+    "grants.gov", "rd.usda.gov", "natchitochesparishla.gov", 
+    "louisianabelieves.com", "opportunitylouisiana.com", "www.louisiana-arts.org", # Added LA arts
+    "www.lhc.la.gov" # LA Housing Corp
+]
+SITE_FOCUS_SECONDARY = [
+    "sba.gov", "ifundwomen.com", "ambergrantsforwomen.com", 
+    "foundationcenter.org", "candid.org", "techsoup.org" # Broader nonprofit/federal
+]
+SITE_FOCUS_TERTIARY = ["grants.gov", "sam.gov", "usda.gov/topics/farming/grants-and-loans"]
+
+
 class ResearchAgent:
+    # ELIGIBILITY CRITERIA FROM PERSONA
+    SECTOR_KEYWORDS = [
+        "telecommunications infrastructure", "broadband", "mesh networks", "event-Wi-Fi",
+        "women-owned nonprofit", "501(c)(3)", "community shelter conversions", "extreme weather"
+    ]
+    FUNDING_MIN = 5000
+    FUNDING_MAX = 100000
+    DEADLINE_MIN_LEAD_DAYS = 30
+    
+    # GEOGRAPHIC TIERS (Primary, Secondary, Tertiary)
+    SITE_FOCUS_PRIMARY = [
+        "grants.gov", "rd.usda.gov", "natchitochesparishla.gov", 
+        "louisianabelieves.com", "opportunitylouisiana.com", "www.louisiana-arts.org",
+        "www.lhc.la.gov"
+    ]
+    SITE_FOCUS_SECONDARY = [
+        "sba.gov", "ifundwomen.com", "ambergrantsforwomen.com", 
+        "foundationcenter.org", "candid.org", "techsoup.org"
+    ]
+    SITE_FOCUS_TERTIARY = [ # More general federal/broad sources
+        "grants.gov", "sam.gov", "usda.gov", "fcc.gov", "ntia.gov"
+    ]
+
+    GEO_TIERS = {
+        "primary": {"focus": "Natchitoches Parish, LA-08 district", "keywords_modifier": [], "sites": SITE_FOCUS_PRIMARY},
+        "secondary": {"focus": "Louisiana", "keywords_modifier": ["statewide"], "sites": SITE_FOCUS_SECONDARY},
+        "tertiary": {"focus": "Federal grants", "keywords_modifier": ["federal", "national"], "sites": SITE_FOCUS_TERTIARY}
+    }
+    
+    MIN_RESULTS_PER_TIER_TARGET = 3 # Aim for at least this many before broadening search (adjusted from 5 for testing)
+
     def __init__(
         self,
         perplexity_client: PerplexityClient,
@@ -83,122 +154,273 @@ class ResearchAgent:
 
         logging.info(f"Set up AgentQL search agents: Telecom ID={self.telecom_agent_id}, Nonprofit ID={self.nonprofit_agent_id}")
 
-    async def search_grants(self, grant_filter: GrantFilter) -> List[Grant]:
-        # This method seems to primarily use Perplexity and Pinecone, 
-        # but might need DB access for pre-filtering or post-processing.
-        # For now, ensure any direct self.db usage is replaced by a session.
-        logger.info(f"ResearchAgent searching with filter: {grant_filter}")
-        # ... (rest of the method, ensure self.db is not used directly)
-        # Example if it needed a session:
-        # async with self.db_sessionmaker() as session:
-        #     # do stuff with session
-        # ...
-        # The provided snippet doesn't show direct DB access in this top-level method
-        # but sub-methods like store_grants_in_db do.
-        # For now, focusing on constructor and methods that clearly showed session usage.
-        # ...
-        # The core logic of searching and processing grants
-        # This will involve calls to Perplexity, parsing, and then Pinecone for relevance
+    async def search_grants(self, grant_filter: GrantFilter) -> List[Dict[str, Any]]:
+        logger.info(f"ResearchAgent 'DualSector Explorer' starting search with initial filter: {grant_filter.model_dump_json(indent=2)}")
         
-        # Placeholder: actual grant fetching and processing logic
-        # This would call methods that use Perplexity, then Pinecone, then store in DB
-        # For example:
-        # raw_grants = await self._fetch_from_perplexity(grant_filter.keywords, grant_filter.category)
-        # processed_grants = await self._process_raw_grants(raw_grants)
-        # relevant_grants = await self._filter_by_relevance(processed_grants, grant_filter.min_relevance)
+        all_found_grants_map: Dict[str, Dict[str, Any]] = {} # Use URL or title as key to avoid duplicates
         
-        # For now, returning an empty list as the actual implementation is complex
-        # and the focus is on fixing the DI.
-        # The key is that any method within ResearchAgent that needs the DB
-        # must now use `async with self.db_sessionmaker() as session:`
+        # Tiered search logic
+        for tier_name, tier_config in self.GEO_TIERS.items():
+            logger.info(f"Executing search Tier: {tier_name} - Focus: {tier_config['focus']}")
+            
+            # Create specific filters for this tier, incorporating initial grant_filter if provided
+            tier_specific_filters = self._create_filters_for_tier(tier_name, tier_config, grant_filter)
+            
+            tier_results = await self._execute_search_tier(tier_specific_filters)
+            
+            for grant_data in tier_results:
+                # Use a unique identifier, e.g., source_url or a combination if URL is not always present
+                grant_key = grant_data.get("source_url") or grant_data.get("title", "").lower()
+                if grant_key and grant_key not in all_found_grants_map:
+                    all_found_grants_map[grant_key] = grant_data
+            
+            if len(all_found_grants_map) >= self.MIN_RESULTS_PER_TIER_TARGET and tier_name != list(self.GEO_TIERS.keys())[-1]:
+                logger.info(f"Sufficient results ({len(all_found_grants_map)}) found after tier '{tier_name}'. Optional: could stop early.")
+                # Consider breaking if a very high number of quality grants are found early
+        if not all_found_grants_map:
+            logger.info("No grants found after all search tiers.")
+            return []
         
-        # Simulating a call that might use the database for storing/checking
-        # This part is illustrative
-        # if processed_grants:
-        #    await self.store_grants_in_db(processed_grants) # store_grants_in_db uses the sessionmaker
+        # Convert map values to list for scoring
+        grants_to_score = list(all_found_grants_map.values())
+        logger.info(f"Found {len(grants_to_score)} unique potential grants across all tiers. Proceeding to scoring.")
+        
+        # Score and apply final relevance filter (min_score from initial grant_filter)
+        # The _score_and_filter_grants method already uses grant_filter.min_score
+        scored_grants = await self._score_and_filter_grants(grants_to_score, grant_filter)
+        
+        logger.info(f"Returning {len(scored_grants)} grants after scoring and final filtering.")
+        return scored_grants
 
-        return []
+    def _create_filters_for_tier(self, tier_name: str, tier_config: Dict, base_filter: GrantFilter) -> GrantFilter:
+        tier_keywords = list(self.SECTOR_KEYWORDS) # Start with core persona keywords
+        if tier_config.get("keywords_modifier"):
+            tier_keywords.extend(tier_config["keywords_modifier"])
+        if base_filter.keywords:
+            # Split base_filter.keywords if it's a comma-separated string, then extend
+            base_keywords_list = [k.strip() for k in base_filter.keywords.split(',') if k.strip()]
+            tier_keywords.extend(base_keywords_list)
+        
+        # Determine deadline_after: use base_filter if set, else default from persona
+        effective_deadline_after = base_filter.deadline_after
+        if effective_deadline_after is None and self.DEADLINE_MIN_LEAD_DAYS is not None:
+            effective_deadline_after = datetime.now() + timedelta(days=self.DEADLINE_MIN_LEAD_DAYS)
+            
+        # Get sites for the current tier
+        current_tier_sites = tier_config.get("sites", [])
+
+        # The GrantFilter Pydantic model needs a `sites_to_focus` field.
+        # Assuming it was added (if not, this will cause an error during GrantFilter instantiation).
+        # For now, I will proceed as if GrantFilter can accept `sites_to_focus`.
+        # If GrantFilter does not have this field, we'll need to add it or pass domains differently.
+
+        return GrantFilter(
+            keywords=", ".join(list(set(tier_keywords))), # Ensure unique keywords
+            categories=base_filter.categories, # Pass along if provided
+            min_score=base_filter.min_score, # This will be used after scoring
+            deadline_after=effective_deadline_after,
+            deadline_before=base_filter.deadline_before,
+            min_funding=self.FUNDING_MIN,
+            max_funding=self.FUNDING_MAX,
+            geographic_focus=tier_config["focus"],
+            sites_to_focus=current_tier_sites # Pass the sites for this tier
+        )
+
+    async def _execute_search_tier(self, filters: GrantFilter) -> List[Dict[str, Any]]:
+        query = self._build_search_query(filters) # _build_search_query might also use filters.sites_to_focus to embed in text if model doesn't support domain filter
+        logger.debug(f"Tiered search query for Perplexity: {query}")
+        
+        # Determine sites to pass to Perplexity client
+        search_domains_for_perplexity: Optional[List[str]] = None
+        if hasattr(filters, 'sites_to_focus') and filters.sites_to_focus:
+            search_domains_for_perplexity = filters.sites_to_focus
+
+        try:
+            logger.info(f"Calling Perplexity API for query: {filters.geographic_focus} - {filters.keywords[:50]}... Sites: {search_domains_for_perplexity}")
+            # Pass search_domains to the perplexity client's search method
+            raw_results = await self.perplexity.search(query, search_domains=search_domains_for_perplexity)
+            if not raw_results:
+                logger.info("Perplexity API returned empty or None result.")
+                return []
+            logger.debug(f"Perplexity raw response snippet: {raw_results[:500]}")
+        except Exception as e:
+            logger.error(f"Error calling Perplexity API: {e}", exc_info=True)
+            return []
+        
+        parsed_grants = self._parse_results(raw_results) 
+        
+        final_tier_grants = []
+        for grant_data in parsed_grants:
+            if not self._meets_funding_criteria(grant_data.get("funding_amount")):
+                logger.debug(f"Grant '{grant_data.get('title')}' rejected: funding out of range.")
+                continue
+            if not self._meets_deadline_criteria(grant_data.get("deadline")):
+                logger.debug(f"Grant '{grant_data.get('title')}' rejected: deadline too soon.")
+                continue
+            final_tier_grants.append(grant_data)
+        
+        logger.info(f"Tier returned {len(final_tier_grants)} grants after initial parsing and persona filtering.")
+        return final_tier_grants
+
+    def _meets_funding_criteria(self, funding_amount_str: Optional[Any]) -> bool:
+        if funding_amount_str is None: return True
+        try:
+            if isinstance(funding_amount_str, (int, float)): amount = funding_amount_str
+            else: amount = float(re.sub(r'[$,]', '', str(funding_amount_str)))
+            return self.FUNDING_MIN <= amount <= self.FUNDING_MAX
+        except ValueError:
+            logger.warning(f"Could not parse funding amount: {funding_amount_str}")
+            return False
+
+    def _meets_deadline_criteria(self, deadline_obj: Optional[Any]) -> bool:
+        if deadline_obj is None: return True 
+        try:
+            deadline_date: Optional[datetime] = None
+            if isinstance(deadline_obj, datetime): 
+                deadline_date = deadline_obj
+            elif isinstance(deadline_obj, str):
+                # Try parsing common date formats or relative terms like "in X days"
+                match_days = re.search(r'in\\s*(\\d+)\\s*days', deadline_obj, re.IGNORECASE)
+                if match_days:
+                    days = int(match_days.group(1))
+                    deadline_date = datetime.now() + timedelta(days=days)
+                else:
+                    # Attempt to parse absolute date strings
+                    # This list can be expanded with more formats
+                    date_formats = ["%Y-%m-%d", "%m/%d/%Y", "%b %d, %Y", "%d %b %Y"]
+                    for fmt in date_formats:
+                        try:
+                            deadline_date = datetime.strptime(deadline_obj, fmt)
+                            break
+                        except ValueError:
+                            continue
+                    if deadline_date is None:
+                        logger.warning(f"Could not parse deadline string: {deadline_obj} with known formats.")
+                        return True # Be lenient if unparseable, or False to be strict
+            else:
+                logger.warning(f"Unknown deadline format: {type(deadline_obj)}, value: {deadline_obj}")
+                return True # Be lenient
+            
+            if deadline_date is None: # Should not happen if parsing logic is complete
+                return True 
+
+            return deadline_date >= (datetime.now() + timedelta(days=self.DEADLINE_MIN_LEAD_DAYS))
+        except Exception as e:
+            logger.warning(f"Error parsing deadline: {deadline_obj}. Error: {e}")
+            return True
 
     def _build_search_query(self, filters: GrantFilter) -> str:
-        """Build a natural language query for Perplexity."""
-        query_parts = ["Find available grants"]
+        query_parts = [
+            f"Find grant opportunities for '{filters.geographic_focus}' focusing on: {filters.keywords}."
+        ]
         
-        if filters.categories:
-            query_parts.append(f"in categories: {', '.join(filters.categories)}")
+        # Persona-specific instructions for Perplexity
+        query_parts.append(
+            "Target sectors include telecommunications infrastructure (broadband, mesh networks, event-Wi-Fi), " \
+            "women-owned nonprofit initiatives (501c3), and community shelter conversions for extreme weather."
+        )
+        if filters.min_funding and filters.max_funding:
+            query_parts.append(f"Funding range should ideally be between ${filters.min_funding:,.0f} and ${filters.max_funding:,.0f}.")
         
-        if filters.keywords:
-            query_parts.append(f"matching keywords: {filters.keywords}")
-            
+        # Deadline information construction
+        deadline_info_parts = []
         if filters.deadline_after:
-            query_parts.append(f"with deadlines after {filters.deadline_after.strftime('%Y-%m-%d')}")
-            
-        if filters.deadline_before:
-            query_parts.append(f"with deadlines before {filters.deadline_before.strftime('%Y-%m-%d')}")
+            deadline_info_parts.append(f"application deadlines after {filters.deadline_after.strftime('%Y-%m-%d')}")
+        if self.DEADLINE_MIN_LEAD_DAYS is not None:
+            if not filters.deadline_after: # Add lead time info only if not already covered by deadline_after
+                deadline_info_parts.append(f"at least {self.DEADLINE_MIN_LEAD_DAYS} days lead time before the deadline")
+        if deadline_info_parts:
+            query_parts.append(f"Prefer grants with {' and '.join(deadline_info_parts)}, or rolling applications.")
+        else:
+            query_parts.append("Prioritize grants with rolling applications or significant lead time.")
+
+        # If search_domain_filter is not supported by the Perplexity model/tier, 
+        # or as a supplementary instruction, mention preferred sites in the query text.
+        if hasattr(filters, 'sites_to_focus') and filters.sites_to_focus:
+            # This is a fallback if the API parameter search_domain_filter is not used/effective
+            # Or can be used in conjunction.
+            sites_text = ", ".join(filters.sites_to_focus[:3]) # Mention a few key sites
+            query_parts.append(f"Pay special attention to sources like {sites_text} if relevant.")
+
+        if filters.categories:
+            query_parts.append(f"Consider categories such as: {', '.join(filters.categories)}.")
         
         query = " ".join(query_parts)
-        query += ". Include title, description, funding amount, deadline, and eligibility requirements."
+        query += " For each grant, provide title, a detailed description, funding amount, exact application deadline, eligibility criteria, and the direct source URL."
+        query += " Focus on publicly accessible information and avoid paywalled sources."
         
+        logger.debug(f"Constructed Perplexity Query: {query}")
         return query
 
     def _parse_results(self, raw_results: str) -> List[Dict[str, Any]]:
-        """Parse Perplexity results into structured grant data."""
-        # This would need proper implementation to parse the AI response
-        # For now, return a placeholder
-        return []
+        logger.warning("CRITICAL: _parse_results is using a placeholder implementation. " \
+                       "It needs a robust method to parse actual Perplexity API responses into structured grant data. " \
+                       "Current naive parsing will likely yield few or no results from real API output.")
+        grants = []
+        
+        # --- START OF VERY NAIVE PLACEHOLDER PARSING ---
+        # This is extremely basic and unlikely to work well with complex real responses.
+        # It's here just to prevent an immediate crash and to show where parsing happens.
+        # A real implementation would use NLP, regex tailored to expected formats, 
+        # or ideally, request structured output from Perplexity if available.
+        try:
+            # Example: try to split by a common delimiter if Perplexity uses one, or by grant titles.
+            # This is highly speculative.
+            potential_grant_sections = raw_results.split("--- Grant Separator ---") # Assuming a hypothetical separator
+            if len(potential_grant_sections) <= 1 and "Title:" in raw_results: # Try splitting by "Title:"
+                potential_grant_sections = ["Title:" + s for s in raw_results.split("Title:")[1:]]
 
-    async def _score_and_filter_grants(
-        self,
-        grants: List[Dict[str, Any]],
-        filters: GrantFilter # Assuming GrantFilter is a Pydantic model or similar
-    ) -> List[Dict[str, Any]]:
-        """Score grants using Pinecone and filter by criteria. Does NOT store to DB."""
-        if not grants:
-            return []
-            
-        # Score grants using Pinecone
-        for grant_data in grants: # Renamed grant to grant_data for clarity
-            embedding_text = grant_data.get("description", grant_data.get("title", ""))
-            if not embedding_text:
-                logger.warning(f"Grant missing description and title for embedding: {grant_data.get('source_url')}")
-                grant_data["score"] = 0.0
-                continue
-            
-            embedding = await self.pinecone.get_embedding(embedding_text)
-            # This relevance calculation might need more context (e.g., user profile, search query vector)
-            # For now, assuming it's a general relevance or quality score from Pinecone
-            grant_data["score"] = await self.pinecone.calculate_relevance(embedding) 
-        
-        # Filter by minimum score from GrantFilter
-        # Ensure filters.min_score is available and has a default if not provided
-        min_score_threshold = filters.min_score if hasattr(filters, 'min_score') and filters.min_score is not None else 0.0
-        
-        scored_and_filtered_grants = [
-            grant_data for grant_data in grants 
-            if grant_data.get("score", 0.0) >= min_score_threshold
-        ]
-        
-        # Sort by score
-        scored_and_filtered_grants.sort(key=lambda x: x.get("score", 0.0), reverse=True)
-        
-        # DO NOT store in the database here. This will be handled by AnalysisAgent.
-        # async with self.db_sessionmaker() as session:
-        #     async with session.begin():
-        #         for grant_data_item in scored_and_filtered_grants:
-        #             db_grant = DBGrant(...)
-        #             session.add(db_grant)
-        #             analysis = Analysis(...)
-        #             session.add(analysis)
-        #     await session.commit()
-            
-        return scored_and_filtered_grants
+            for section_text in potential_grant_sections:
+                if not section_text.strip(): continue
+                grant_data = {}
+                # Naively try to extract some fields using regex (very basic examples)
+                title_match = re.search(r"Title:(.*?)(Description:|Funding Amount:|Deadline:|Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
+                if title_match: grant_data["title"] = title_match.group(1).strip()
+                else: grant_data["title"] = "Unknown Title - Parse Error" # Default if not found
+                
+                desc_match = re.search(r"Description:(.*?)(Funding Amount:|Deadline:|Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
+                if desc_match: grant_data["description"] = desc_match.group(1).strip()
+                else: grant_data["description"] = section_text[:200].strip() + "... (parse error)" # Fallback
+
+                amount_match = re.search(r"Funding Amount:[\s$]*(.*?)(Deadline:|Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
+                if amount_match: grant_data["funding_amount"] = amount_match.group(1).strip()
+                
+                deadline_match = re.search(r"Deadline:(.*?)(Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
+                if deadline_match: grant_data["deadline"] = deadline_match.group(1).strip()
+
+                url_match = re.search(r"URL:(.*?)(Description:|Funding Amount:|Deadline:|Eligibility:|$)", section_text, re.IGNORECASE | re.DOTALL)
+                if url_match: grant_data["source_url"] = url_match.group(1).strip()
+                
+                eligibility_match = re.search(r"Eligibility:(.*?)(Description:|Funding Amount:|Deadline:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
+                if eligibility_match: grant_data["eligibility"] = eligibility_match.group(1).strip()
+
+                # Add a category placeholder if not found
+                grant_data.setdefault("category", "Uncategorized")
+
+                if grant_data.get("title") != "Unknown Title - Parse Error": # Only add if we got at least a title
+                    grants.append(grant_data)
+        except Exception as e:
+            logger.error(f"Error during naive parsing of Perplexity results: {e}", exc_info=True)
+        # --- END OF VERY NAIVE PLACEHOLDER PARSING ---
+        if grants:
+            logger.info(f"Naive parser attempted to extract {len(grants)} potential grants from raw results.")
+        else:
+            logger.info("Naive parser could not extract any grants from Perplexity response.")
+        return grants
+
+    async def _score_and_filter_grants(self, grants: List[Dict[str, Any]], grant_filter: GrantFilter) -> List[Dict[str, Any]]:
+        # Placeholder for scoring logic - currently just filters by min_score
+        min_score_threshold = grant_filter.min_score or 0
+        filtered_grants = [grant for grant in grants if grant.get("score", 0) >= min_score_threshold]
+        logger.info(f"Filtered grants down to {len(filtered_grants)} based on min_score={min_score_threshold}.")
+        return filtered_grants
 
     def _get_domain(self, source_name_or_url):
-        """Extract domain name from a source name or URL."""
+        """Extract or map domain from source name or URL."""
         try:
-            if source_name_or_url.startswith("http://") or source_name_or_url.startswith("https://"):
-                return urlparse(source_name_or_url).netloc
-            elif '.' in source_name_or_url:
-                return source_name_or_url.lower().replace(' ', '') # Assume it's a domain like grants.gov
+            if re.match(r'^(http|https)://', source_name_or_url):
+                parsed_url = urlparse(source_name_or_url)
+                return parsed_url.netloc.lower().replace('www.', '') # Assume it's a domain like grants.gov
             else:
                 # Map common names to domains (add more as needed)
                 domain_map = {

@@ -9,6 +9,10 @@ class GrantFilter(BaseModel):
     keywords: str = Field("", description="Search keywords")
     deadline_before: Optional[datetime] = Field(None, description="Filter by deadline before this date")
     deadline_after: Optional[datetime] = Field(None, description="Filter by deadline after this date")
+    min_funding: Optional[float] = Field(None, description="Minimum funding amount")
+    max_funding: Optional[float] = Field(None, description="Maximum funding amount")
+    geographic_focus: Optional[str] = Field(None, description="Geographic focus for the grant")
+    sites_to_focus: Optional[List[str]] = Field(None, description="List of sites to focus on")
 
 class Grant(BaseModel):
     """Model for grant data"""

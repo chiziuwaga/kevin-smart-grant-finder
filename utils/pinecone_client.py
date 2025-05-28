@@ -9,12 +9,14 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import random # For mock data
 
+logger = logging.getLogger(__name__)
+
 class PineconeClient:
     def __init__(self):
         """Initialize Pinecone client, with fallback to mock data if needed."""
         self.use_mock = False
-        self.index_name = os.getenv("PINECONE_INDEX_NAME", "grantcluster") # Using existing 3072-dim index
-        self.expected_dimension = 3072 # For text-embedding-3-large
+        self.index_name = os.getenv("PINECONE_INDEX_NAME", "grantcluster")
+        self.expected_dimension = 3072 
         self.mock_relevance_range = (70.0, 95.0)
         self.pc = None
         self.index = None
@@ -23,47 +25,74 @@ class PineconeClient:
         pinecone_api_key = os.getenv("PINECONE_API_KEY")
         openai_api_key = os.getenv("OPENAI_API_KEY")
 
+        logger.info(f"Attempting to initialize PineconeClient with index_name: '{self.index_name}' and dimension: {self.expected_dimension}")
+
         if not pinecone_api_key:
             logging.critical("CRITICAL: PINECONE_API_KEY is missing. Pinecone client cannot be initialized.")
-            self.use_mock = True # Fallback to mock if essential keys are missing
+            self.use_mock = True
             self._setup_mock()
             return
+        # else:
+            # logger.info(f"Pinecone API Key found (Key: ...{pinecone_api_key[-4:] if len(pinecone_api_key) > 4 else 'SHORT_KEY'})")
+            # Avoid logging the key directly, even partially, in most production scenarios unless for specific debugging.
+            # For now, just confirming its presence is enough.
+            # logger.info("Pinecone API Key is present.")
+
         if not openai_api_key:
             logging.critical("CRITICAL: OPENAI_API_KEY is missing. Pinecone client cannot generate embeddings.")
-            self.use_mock = True # Fallback to mock if essential keys are missing
+            self.use_mock = True
             self._setup_mock()
             return
+        # else:
+            # logger.info("OpenAI API Key is present.")
 
         try:
+            logger.info("Initializing OpenAI client...")
             self.openai_client = openai.OpenAI(api_key=openai_api_key)
-            self.pc = Pinecone(api_key=pinecone_api_key)
+            logger.info("OpenAI client initialized successfully.")
+
+            logger.info("Attempting to initialize Pinecone with API key...")
+            try:
+                self.pc = Pinecone(api_key=pinecone_api_key)
+                logger.info("Pinecone client library initialized successfully (Pinecone object created).")
+            except Exception as e_init:
+                # This is a critical point. If Pinecone() itself fails, it might be the source of the "Name" error.
+                logger.error(f"CRITICAL ERROR during Pinecone library initialization (Pinecone(api_key=...)): {str(e_init)}", exc_info=True)
+                logger.error("This often indicates an issue with the API key itself, or how the client library interacts with your Pinecone project/environment configuration before any index-specific operations.")
+                logger.error("Please verify your Pinecone Project Name on the dashboard for valid characters (lowercase alphanumeric, hyphens).")
+                self.use_mock = True
+                self._setup_mock()
+                return
 
             index_description = None
+            logger.info("Listing available Pinecone indexes...")
             available_indexes = self.pc.list_indexes().names()
+            logger.info(f"Available indexes: {available_indexes}")
+
             if self.index_name in available_indexes:
-                logging.info(f"Pinecone index '{self.index_name}' found. Describing index...")
+                logger.info(f"Pinecone index '{self.index_name}' found. Describing index...")
                 index_description = self.pc.describe_index(self.index_name)
+                logger.info(f"Description for index '{self.index_name}': {index_description}")
                 if index_description.dimension != self.expected_dimension:
                     logging.critical(
                         f"CRITICAL: Pinecone index '{self.index_name}' exists but has dimension {index_description.dimension}, "
-                        f"expected {self.expected_dimension} for model 'text-embedding-3-large'. "  # Corrected model name in log
+                        f"expected {self.expected_dimension} for model 'text-embedding-3-large'. "
                         f"Please ensure index name in .env (PINECONE_INDEX_NAME) matches an index with dimension {self.expected_dimension}, "
-                        f"or update the embedding model and expected_dimension in pinecone_client.py."
+                        f"or delete this index and let the client recreate it, or update the embedding model and expected_dimension."
                     )
-                    # Do not connect to this index, effectively disabling real Pinecone ops
                     self.use_mock = True
                     self._setup_mock()
                     return 
                 self.index = self.pc.Index(self.index_name)
-                logging.info(f"Successfully connected to Pinecone index: '{self.index_name}' with dimension {index_description.dimension}.")
+                logger.info(f"Successfully connected to Pinecone index: '{self.index_name}' with dimension {index_description.dimension}.")
             else:
-                logging.warning(f"Pinecone index '{self.index_name}' not found. Attempting to create it.")
-                self._create_index() # This might raise an exception if it fails
+                logger.warning(f"Pinecone index '{self.index_name}' not found in available list {available_indexes}. Attempting to create it.")
+                self._create_index() 
                 self.index = self.pc.Index(self.index_name)
-                logging.info(f"Successfully created and connected to Pinecone index: '{self.index_name}'.")
+                logger.info(f"Successfully created and connected to Pinecone index: '{self.index_name}'.")
 
         except Exception as e:
-            logging.error(f"Failed to initialize real Pinecone client: {str(e)}. Falling back to mock Pinecone client.", exc_info=True)
+            logger.error(f"Failed to initialize real Pinecone client during main try block: {str(e)}. Falling back to mock Pinecone client.", exc_info=True)
             self.use_mock = True
             self._setup_mock()
 
@@ -74,33 +103,43 @@ class PineconeClient:
 
     def _create_index(self):
         """Create Pinecone index if it doesn't exist."""
-        if self.use_mock: # Should not happen if we intend to create
+        if self.use_mock: 
             logging.debug("Mock mode: Skipping _create_index call.")
             return
         try:
             dimension = self.expected_dimension
-            region = "us-east-1" # As per user's existing grantcluster index # Corrected comment
+            # Pinecone has deprecated `environment` in Pinecone() init, region/cloud are in spec for serverless.
+            # For starter (free tier) indexes, they are serverless by default.
+            # Ensure your Pinecone project is on a serverless-compatible tier if creating new indexes.
+            # The region should ideally match where your app/other services are, or a default like "us-east-1".
+            region = os.getenv("PINECONE_REGION", "us-east-1") # Make region configurable
+            cloud = os.getenv("PINECONE_CLOUD", "aws") # Make cloud configurable
             metric = "cosine"
             
-            logging.info(f"Creating new Pinecone index: '{self.index_name}' in region '{region}' with dimension {dimension}, metric '{metric}'.")
+            logger.info(f"Creating new Pinecone index: '{self.index_name}' in cloud '{cloud}', region '{region}' with dimension {dimension}, metric '{metric}'.")
             self.pc.create_index(
                 name=self.index_name,
                 dimension=dimension,
                 metric=metric,
-                spec=ServerlessSpec(cloud="aws", region=region)
+                spec=ServerlessSpec(cloud=cloud, region=region)
             )
-            # Wait for index to be ready
-            while not self.pc.describe_index(self.index_name).status['ready']:
-                logging.info("Waiting for Pinecone index to be ready...")
+            logger.info("Waiting for Pinecone index to be ready (up to 60s)...")
+            # Wait for index to be ready - increased timeout slightly
+            for _ in range(12): # Check every 5 seconds for up to 60 seconds
+                if self.pc.describe_index(self.index_name).status['ready']:
+                    logger.info(f"Pinecone index '{self.index_name}' created and ready.")
+                    return
                 time.sleep(5)
-            logging.info(f"Pinecone index '{self.index_name}' created and ready.")
+            logger.error(f"Pinecone index '{self.index_name}' did not become ready in time.")
+            raise Exception(f"Index '{self.index_name}' not ready after timeout.")
+
         except Exception as e:
-            logging.error(f"Error creating Pinecone index '{self.index_name}': {str(e)}", exc_info=True)
+            logger.error(f"Error creating Pinecone index '{self.index_name}': {str(e)}", exc_info=True)
             # If creation fails, we must fallback to mock or signal critical failure
+            logger.warning("Falling back to mock mode due to index creation failure.")
             self.use_mock = True 
-            self._setup_mock() # Ensure mock setup is called on creation failure
-            raise # Re-raise the exception to make the failure clear during startup
-    
+            self._setup_mock()
+
     def calculate_relevance(self, grant_description, grant_title=None):
         """Calculate relevance score (real or mock)."""
         if self.use_mock:
@@ -263,7 +302,7 @@ class PineconeClient:
         
         Args:
             grant_id (str): Grant identifier
-            metadata (Dict[str, Any]): Updated metadata
+            metadata (Dict[str, Any): Updated metadata
             
         Returns:
             bool: True if successful, False otherwise
