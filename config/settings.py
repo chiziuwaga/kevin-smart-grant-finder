@@ -60,19 +60,31 @@ class Settings(BaseSettings):
 
     @property
     def db_url(self) -> str:
-        """Get the database URL, preferring DATABASE_URL if set."""
+        """Get the database URL, preferring DATABASE_URL if set, ensuring asyncpg format."""
         if self.database_url:
-            # For asyncpg, we need to modify the postgres:// to postgresql+asyncpg://
-            return self.database_url.replace("postgres://", "postgresql+asyncpg://")
-        
-        return DatabaseURL.build_connection_string(
-            user=self.db_user,
-            password=self.db_pass,
-            host=self.db_host,
-            port=self.db_port,
-            db=self.db_name,
-            async_driver=True
-        )
+            url = str(self.database_url)  # Ensure it's a string
+            if "postgresql+asyncpg://" in url:
+                return url
+            elif "postgres://" in url:  # Handles 'postgres://'
+                return url.replace("postgres://", "postgresql+asyncpg://")
+            elif "postgresql://" in url:  # Handles 'postgresql://'
+                return url.replace("postgresql://", "postgresql+asyncpg://")
+            else:
+                # This case implies an unsupported or malformed DATABASE_URL for asyncpg conversion
+                raise ValueError(
+                    f"DATABASE_URL ('{url}') is not in a recognized format to be converted to asyncpg. "
+                    "Expected 'postgres://', 'postgresql://', or already async 'postgresql+asyncpg://'."
+                )
+        else:
+            # Build from components if DATABASE_URL is not set
+            return DatabaseURL.build_connection_string(
+                user=self.db_user,
+                password=self.db_pass,
+                host=self.db_host,
+                port=self.db_port,
+                db=self.db_name,
+                async_driver=True
+            )
 
 @lru_cache()
 def get_settings() -> Settings:
