@@ -21,8 +21,7 @@ import {
     Dialog,
     DialogTitle,
     DialogContent,
-    DialogActions,
-    Link,
+    DialogActions
 } from '@mui/material';
 import {
     FilterList as FilterListIcon,
@@ -34,7 +33,7 @@ import {
 } from '@mui/icons-material';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import React, { useEffect, useState } from 'react';
-import API from '../api/apiClient';
+import { getGrants } from '../api/apiClient';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
 import TableSkeleton from '../components/common/TableSkeleton';
@@ -57,7 +56,7 @@ const GrantsPage = () => {
     try {
       const params = { ...filters };
       if (filters.category === 'All') delete params.category;
-      const data = await API.getGrants(params);
+      const data = await getGrants(params);
       setGrants(data);
     } catch (e) {
       console.error(e);

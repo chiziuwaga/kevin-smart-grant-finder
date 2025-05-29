@@ -94,4 +94,22 @@ export const getRunHistory = () => API.get('/system/run-history');
 export const getUserSettings = () => API.get('/user/settings');
 export const updateUserSettings = (settings) => API.put('/user/settings', settings);
 
-export default API;
+// Add named exports to default export to support both import styles
+const APIWithMethods = {
+  ...API,
+  getDashboardStats,
+  getDistribution,
+  getGrants,
+  searchGrants,
+  getGrantById,
+  getSavedGrants,
+  saveGrant,
+  unsaveGrant,
+  runSearch,
+  getLastRun,
+  getRunHistory,
+  getUserSettings,
+  updateUserSettings
+};
+
+export default APIWithMethods;

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useRef } from 'react';
 import { Backdrop, CircularProgress } from '@mui/material';
 
 const LoadingContext = createContext({
@@ -11,14 +11,11 @@ export const useLoading = () => useContext(LoadingContext);
 
 export const LoadingProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingCount, setLoadingCount] = useState(0);
+  const countRef = useRef(0);
 
   const setLoading = (loading) => {
-    setLoadingCount(prev => {
-      const next = loading ? prev + 1 : prev - 1;
-      setIsLoading(next > 0);
-      return next;
-    });
+    countRef.current = loading ? countRef.current + 1 : Math.max(0, countRef.current - 1);
+    setIsLoading(countRef.current > 0);
   };
 
   const withLoading = async (callback) => {

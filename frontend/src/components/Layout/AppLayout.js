@@ -45,16 +45,18 @@ const AppLayout = () => {
   useEffect(() => {
     const fetchLastRun = async () => {
       try {
-        const apiModule = await import('../../api/apiClient');
-        const data = await apiModule.getLastRun();
+        const { getLastRun } = await import('../../api/apiClient');
+        const data = await getLastRun();
         if(data.status!=='none'){
           document.getElementById('last-run-time').innerText = new Date(data.end || data.start).toLocaleString();
         }
-      }catch(e){console.error(e);}
+      } catch(e) {
+        console.error(e);
+      }
     };
     fetchLastRun();
     const interval = setInterval(fetchLastRun, 60000);
-    return ()=>clearInterval(interval);
+    return () => clearInterval(interval);
   },[]);
 
   const menuItems = [

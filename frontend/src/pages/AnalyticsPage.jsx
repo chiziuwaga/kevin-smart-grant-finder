@@ -25,7 +25,7 @@ import {
     XAxis, 
     YAxis 
 } from 'recharts';
-import API from '../api/apiClient';
+import { getDistribution } from '../api/apiClient';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
 
@@ -52,7 +52,7 @@ const AnalyticsPage = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const data = await API.getDistribution();
+        const data = await getDistribution();
         setDistribution(data);
       } catch (e) {
         console.error(e);

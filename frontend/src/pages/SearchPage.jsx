@@ -26,7 +26,7 @@ import {
 } from '@mui/icons-material';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import React, { useState } from 'react';
-import API from '../api/apiClient';
+import { searchGrants } from '../api/apiClient';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
 import TableSkeleton from '../components/common/TableSkeleton';
@@ -48,7 +48,7 @@ const SearchPage = () => {
     setHasSearched(true);
     try {
       const body = { query, category: category === 'All' ? undefined : category, min_score: minScore };
-      const data = await API.searchGrants(body);
+      const data = await searchGrants(body);
       setResults(data);
     } catch (e) {
       console.error(e);

@@ -19,8 +19,8 @@ import {
 } from '@mui/material';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { useSnackbar } from 'notistack';
-import React, { useEffect, useState } from 'react';
-import API from '../api/apiClient';
+import React, { useEffect, useState, useCallback } from 'react';
+import { getSavedGrants, unsaveGrant } from '../api/apiClient';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
 import TableSkeleton from '../components/common/TableSkeleton';
@@ -31,26 +31,26 @@ const SavedGrantsPage = () => {
   const [loading, setLoading] = useState(true);
   const [grants, setGrants] = useState([]);
 
-  const fetchSaved = async () => {
+  const fetchSaved = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await API.getSavedGrants();
+      const data = await getSavedGrants();
       setGrants(data);
-    } catch (e) {
+    } catch(e) {
       console.error(e);
-      enqueueSnackbar('Failed to load saved grants', { variant: 'error' });
+      enqueueSnackbar('Failed to fetch saved grants', { variant: 'error' });
     } finally {
       setLoading(false);
     }
-  };
+  }, [enqueueSnackbar]);
 
   useEffect(() => { 
     fetchSaved(); 
-  }, []);
+  }, [fetchSaved]);
 
   const handleUnsave = async (id) => {
     try {
-      await API.unsaveGrant(id);
+      await unsaveGrant(id);
       setGrants(prev => prev.filter(g => g.id !== id));
       enqueueSnackbar('Grant removed from saved items', { variant: 'success' });
     } catch(e) {
