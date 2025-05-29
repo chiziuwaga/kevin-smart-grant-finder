@@ -154,9 +154,23 @@ class ResearchAgent:
 
         logging.info(f"Set up AgentQL search agents: Telecom ID={self.telecom_agent_id}, Nonprofit ID={self.nonprofit_agent_id}")
 
-    async def search_grants(self, grant_filter: GrantFilter) -> List[Dict[str, Any]]:
-        logger.info(f"ResearchAgent 'DualSector Explorer' starting search with initial filter: {grant_filter.model_dump_json(indent=2)}")
+    async def search_grants(self, grant_filter: Dict[str, Any] | GrantFilter) -> List[Dict[str, Any]]:
+        # Convert dict to GrantFilter if needed
+        if isinstance(grant_filter, dict):
+            grant_filter = GrantFilter(**grant_filter)
         
+        try:
+            filter_json = grant_filter.model_dump_json(indent=2)
+        except AttributeError:
+            # Fallback for older Pydantic versions
+            try:
+                filter_json = grant_filter.json(indent=2)
+            except AttributeError:
+                import json
+                filter_json = json.dumps(grant_filter.dict(), indent=2)
+        
+        logger.info(f"ResearchAgent 'DualSector Explorer' starting search with initial filter: {filter_json}")
+
         all_found_grants_map: Dict[str, Dict[str, Any]] = {} # Use URL or title as key to avoid duplicates
         
         # Tiered search logic
