@@ -5,24 +5,19 @@ import {
     Save as SaveIcon,
 } from '@mui/icons-material';
 import {
-    Alert,
     Box,
     Button,
     Card,
     CardContent,
-    Divider,
     FormControl,
     FormControlLabel,
     Grid,
     InputLabel,
     MenuItem,
     Select,
-    Snackbar,
     Switch,
     TextField,
     Typography,
-    alpha,
-    useTheme,
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useEffect, useState } from 'react';
@@ -36,7 +31,6 @@ const SCHEDULE_OPTIONS = [
 ];
 
 const SettingsPage = () => {
-  const theme = useTheme();
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
