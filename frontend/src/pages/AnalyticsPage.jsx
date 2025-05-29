@@ -25,7 +25,7 @@ import {
     XAxis, 
     YAxis 
 } from 'recharts';
-import { getDistribution } from '../api/apiClient.ts';
+import { getDistribution } from '../api/apiClient';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
 

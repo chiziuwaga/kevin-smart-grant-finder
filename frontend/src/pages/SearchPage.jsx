@@ -26,7 +26,7 @@ import {
 } from '@mui/icons-material';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import React, { useState, useCallback } from 'react';
-import { searchGrants } from '../api/apiClient.ts';
+import { searchGrants } from '../api/apiClient';
 import { useLoading } from '../components/common/LoadingProvider';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';

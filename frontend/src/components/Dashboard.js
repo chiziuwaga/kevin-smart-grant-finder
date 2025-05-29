@@ -48,7 +48,7 @@ import {
   getGrants,
   getDistribution,
   runSearch
-} from '../api/apiClient.ts';
+} from '../api/apiClient';
 
 const Dashboard = () => {
   const theme = useTheme();
