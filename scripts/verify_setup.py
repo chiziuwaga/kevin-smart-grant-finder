@@ -93,11 +93,16 @@ def check_database_connection():
         return False
         
     try:
-        # Try SQLAlchemy connection
-        engine = create_engine(database_url.replace('postgresql+asyncpg', 'postgresql'))
+        # Convert asyncpg URL to psycopg2 format for sync connection test
+        if "postgresql+asyncpg://" in database_url:
+            database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+        elif "postgres://" in database_url:
+            database_url = database_url.replace("postgres://", "postgresql://")
+        
+        engine = create_engine(database_url)
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
-        print("✅ Successfully connected to PostgreSQL database")
+            result = conn.execute("SELECT version()").scalar()
+            print(f"✅ Successfully connected to PostgreSQL: {result.split()[1]}")
         return True
     except Exception as e:
         print(f"❌ Failed to connect to PostgreSQL database: {str(e)}")
