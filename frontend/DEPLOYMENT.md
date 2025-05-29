@@ -1,30 +1,30 @@
 # Deployment Guide for Smart Grant Finder
 
-This guide provides instructions for deploying both the backend and frontend components of the Smart Grant Finder application.
-
 ## Backend (Heroku)
 
-The backend is a Streamlit application that provides the API for the frontend.
+The backend is a FastAPI application that provides the REST API for the frontend, with PostgreSQL for data persistence and background worker processes for grant searching and analysis.
 
 ### Prerequisites
 
 - Heroku CLI installed
 - Git
-- Python 3.11+
-- MongoDB Atlas account
+- Python 3.8+
+- PostgreSQL database (via Heroku addon)
 - Pinecone account and API key
+- OpenAI API key
+- Perplexity API key (optional)
 
 ### Deployment Steps
 
 1. **Set up environment variables in Heroku**
 
    ```bash
-   # MongoDB connection
-   heroku config:set MONGODB_URI="mongodb+srv://kevinaitester:YOUR_PASSWORD@grantcluster.fidxu.mongodb.net/SmartGrantFinder?retryWrites=true&w=majority"
+   # PostgreSQL connection
+   heroku config:set DATABASE_URL="postgres://username:password@hostname:port/dbname"
    
    # API keys
    heroku config:set PINECONE_API_KEY="your_pinecone_api_key"
-   heroku config:set AGENTQL_API_KEY="your_agentql_api_key"  
+   heroku config:set OPENAI_API_KEY="your_openai_api_key"
    heroku config:set PERPLEXITY_API_KEY="your_perplexity_api_key"
    
    # Notification settings (optional)
@@ -97,15 +97,15 @@ The frontend is a React application that connects to the backend API.
    curl https://your-heroku-app.herokuapp.com/api/system/status
    ```
 
-2. **MongoDB Connection**
+2. **PostgreSQL Connection**
 
-   Check if the backend is connecting to MongoDB:
+   Check if the backend is connecting to PostgreSQL:
    
    ```bash
    heroku logs --tail
    ```
    
-   Look for successful MongoDB connection messages.
+   Look for successful PostgreSQL connection messages.
 
 3. **Frontend-Backend Integration**
 
@@ -115,9 +115,9 @@ The frontend is a React application that connects to the backend API.
 
 ### Backend Issues
 
-- **MongoDB Connection Errors**
+- **PostgreSQL Connection Errors**
   
-  Check the MongoDB URI format in environment variables and ensure MongoDB Atlas network access settings allow connections from Heroku.
+  Check the PostgreSQL URI format in environment variables and ensure the database is accessible from Heroku.
 
 - **API Errors**
   
@@ -157,4 +157,4 @@ The frontend is a React application that connects to the backend API.
    cd frontend
    npm run build
    vercel --prod
-   ``` 
+   ```

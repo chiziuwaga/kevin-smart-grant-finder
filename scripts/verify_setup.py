@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 
 from pkg_resources import working_set
+import psycopg2
+from sqlalchemy import create_engine
+from dotenv import load_dotenv
 
 
 def check_python_version():
@@ -34,11 +37,18 @@ def check_venv():
 def check_dependencies():
     """Check if required packages are installed"""
     required_packages = {
-        'streamlit': 'streamlit',
-        'pinecone-client': 'pinecone_client',
-        'pymongo': 'pymongo',
-        'requests': 'requests',
-        'beautifulsoup4': 'bs4'
+        'fastapi': 'fastapi',
+        'uvicorn': 'uvicorn',
+        'sqlalchemy': 'sqlalchemy',
+        'alembic': 'alembic',
+        'psycopg2-binary': 'psycopg2',
+        'asyncpg': 'asyncpg',
+        'pinecone': 'pinecone',
+        'aiohttp': 'aiohttp',
+        'python-dotenv': 'dotenv',
+        'openai': 'openai',
+        'pydantic': 'pydantic',
+        'PyYAML': 'yaml'
     }
     
     installed_packages = {pkg.key: pkg.version for pkg in working_set}
@@ -58,7 +68,7 @@ def check_project_structure():
     required_dirs = [
         'agents',
         'config',
-        'dashboard',
+        'app',
         'database',
         'tests',
         'utils'
@@ -73,17 +83,24 @@ def check_project_structure():
             print(f"✅ {directory}/ directory exists")
     return all_exist
 
-def check_mongodb_connection():
-    """Check if MongoDB is reachable using the MongoDBClient class."""
+def check_database_connection():
+    """Check if PostgreSQL database is reachable."""
+    load_dotenv()
+    database_url = os.getenv("DATABASE_URL")
+    
+    if not database_url:
+        print("❌ DATABASE_URL not found in environment")
+        return False
+        
     try:
-        from database.mongodb_client import MongoDBClient
-        client = MongoDBClient()
-        # ping the server to verify
-        client.client.admin.command('ping')
-        print("✅ MongoDB ping successful")
+        # Try SQLAlchemy connection
+        engine = create_engine(database_url.replace('postgresql+asyncpg', 'postgresql'))
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+        print("✅ Successfully connected to PostgreSQL database")
         return True
     except Exception as e:
-        print(f"❌ MongoDB connectivity check failed: {e}")
+        print(f"❌ Failed to connect to PostgreSQL database: {str(e)}")
         return False
 
 def main():
@@ -95,7 +112,7 @@ def main():
         ("Virtual Environment", check_venv()),
         ("Dependencies", check_dependencies()),
         ("Project Structure", check_project_structure()),
-        ("MongoDB Connection", check_mongodb_connection())
+        ("Database Connection", check_database_connection())
     ]
     
     print("\n📋 Summary:")
