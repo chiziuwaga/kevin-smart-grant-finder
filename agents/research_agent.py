@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import re
 from urllib.parse import urlparse
 from typing import Dict, List, Any, Optional
+import json # Added import for JSON handling
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker # Added async_sessionmaker
@@ -161,16 +162,14 @@ class ResearchAgent:
         # Convert dict to GrantFilter if needed
         if isinstance(grant_filter, dict):
             grant_filter = GrantFilter(**grant_filter)
-        
+            
+        # Use the model_dump method which is the new recommended way in Pydantic v2
         try:
-            filter_json = grant_filter.model_dump_json(indent=2)
+            filter_json = json.dumps(grant_filter.model_dump(), indent=2)
         except AttributeError:
-            try:
-                filter_json = grant_filter.json(indent=2)
-            except AttributeError:
-                import json
-                filter_json = json.dumps(grant_filter.dict(), indent=2)
-        
+            # Fallback for older Pydantic versions
+            filter_json = json.dumps(grant_filter.dict(), indent=2)
+            
         logger.info(f"ResearchAgent 'DualSector Explorer' starting search with initial filter: {filter_json}")
         
         all_found_grants_map: Dict[str, Dict[str, Any]] = {}
@@ -204,9 +203,21 @@ class ResearchAgent:
             logger.info("Insufficient results, initiating deep research fallback")
             fallback_start = time.time()
             
-            enhanced_query = self._build_enhanced_query(grant_filter)
+            # Create specialized filters for deep research
+            deep_research_filters = GrantFilter(
+                keywords=grant_filter.keywords,
+                categories=grant_filter.categories,
+                min_score=grant_filter.min_score,
+                deadline_after=grant_filter.deadline_after,
+                deadline_before=grant_filter.deadline_before,
+                min_funding=grant_filter.min_funding,
+                max_funding=grant_filter.max_funding,
+                geographic_focus=grant_filter.geographic_focus,
+                sites_to_focus=grant_filter.sites_to_focus
+            )
+            
             fallback_results = await self._execute_search_tier(
-                enhanced_query,
+                deep_research_filters,
                 model="sonar-deep-research",
                 structured_output=True
             )
@@ -304,13 +315,15 @@ class ResearchAgent:
             List of grant data dictionaries
         """
         query = self._build_search_query(filters)
-        logger.info(f"Calling Perplexity API for query: {query[:100]}... Sites: {filters.get('sites_to_focus', [])}")
+        # Access Pydantic model fields directly, using None as fallback for Optional fields
+        sites_to_focus = filters.sites_to_focus or []
+        logger.info(f"Calling Perplexity API for query: {query[:100]}... Sites: {sites_to_focus}")
         
         try:
             raw_results = await self.perplexity._execute_search(
                 query=query,
                 model=model,
-                search_domain_filter=filters.get('sites_to_focus'),
+                search_domain_filter=sites_to_focus,
                 structured_output=structured_output
             )
             
@@ -384,6 +397,8 @@ class ResearchAgent:
             "Target sectors include telecommunications infrastructure (broadband, mesh networks, event-Wi-Fi), " \
             "women-owned nonprofit initiatives (501c3), and community shelter conversions for extreme weather."
         )
+        
+        # Handle funding range
         if filters.min_funding and filters.max_funding:
             query_parts.append(f"Funding range should ideally be between ${filters.min_funding:,.0f} and ${filters.max_funding:,.0f}.")
         
@@ -391,20 +406,17 @@ class ResearchAgent:
         deadline_info_parts = []
         if filters.deadline_after:
             deadline_info_parts.append(f"application deadlines after {filters.deadline_after.strftime('%Y-%m-%d')}")
-        if self.DEADLINE_MIN_LEAD_DAYS is not None:
-            if not filters.deadline_after: # Add lead time info only if not already covered by deadline_after
-                deadline_info_parts.append(f"at least {self.DEADLINE_MIN_LEAD_DAYS} days lead time before the deadline")
+        if self.DEADLINE_MIN_LEAD_DAYS is not None and not filters.deadline_after:
+            deadline_info_parts.append(f"at least {self.DEADLINE_MIN_LEAD_DAYS} days lead time before the deadline")
+            
         if deadline_info_parts:
             query_parts.append(f"Prefer grants with {' and '.join(deadline_info_parts)}, or rolling applications.")
         else:
             query_parts.append("Prioritize grants with rolling applications or significant lead time.")
 
-        # If search_domain_filter is not supported by the Perplexity model/tier, 
-        # or as a supplementary instruction, mention preferred sites in the query text.
-        if hasattr(filters, 'sites_to_focus') and filters.sites_to_focus:
-            # This is a fallback if the API parameter search_domain_filter is not used/effective
-            # Or can be used in conjunction.
-            sites_text = ", ".join(filters.sites_to_focus[:3]) # Mention a few key sites
+        # Handle site focus - now using proper Pydantic model access
+        if filters.sites_to_focus:
+            sites_text = ", ".join(filters.sites_to_focus[:3])  # Mention first 3 sites
             query_parts.append(f"Pay special attention to sources like {sites_text} if relevant.")
 
         if filters.categories:
