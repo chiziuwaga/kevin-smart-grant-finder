@@ -92,6 +92,9 @@ class ResearchAgent:
     
     MIN_RESULTS_PER_TIER_TARGET = 3 # Aim for at least this many before broadening search (adjusted from 5 for testing)
 
+    SONAR_PRIMARY_MODEL = "sonar-pro"
+    SONAR_DEEP_MODEL = "sonar-deep-research"
+
     def __init__(
         self,
         perplexity_client: PerplexityClient,
@@ -182,7 +185,10 @@ class ResearchAgent:
             
             # Create specific filters for this tier
             tier_specific_filters = self._create_filters_for_tier(tier_name, tier_config, grant_filter)
-            tier_results = await self._execute_search_tier(tier_specific_filters, model="sonar-reasoning-pro")
+            tier_results = await self._execute_search_tier(
+                tier_specific_filters,
+                model=self.SONAR_PRIMARY_MODEL
+            )
             
             # Track stats for this tier
             tier_stats[tier_name] = {
@@ -218,7 +224,7 @@ class ResearchAgent:
             
             fallback_results = await self._execute_search_tier(
                 deep_research_filters,
-                model="sonar-deep-research",
+                model=self.SONAR_DEEP_MODEL,
                 structured_output=True
             )
             
@@ -430,55 +436,48 @@ class ResearchAgent:
         return query
 
     def _parse_results(self, raw_results: str) -> List[Dict[str, Any]]:
-        logger.warning("CRITICAL: _parse_results is using a placeholder implementation. " \
-                       "It needs a robust method to parse actual Perplexity API responses into structured grant data. " \
+        logger.warning("CRITICAL: _parse_results is using a placeholder implementation. "
+                       "It needs a robust method to parse actual Perplexity API responses into structured grant data. "
                        "Current naive parsing will likely yield few or no results from real API output.")
         grants = []
-        
-        # --- START OF VERY NAIVE PLACEHOLDER PARSING ---
-        # This is extremely basic and unlikely to work well with complex real responses.
-        # It's here just to prevent an immediate crash and to show where parsing happens.
-        # A real implementation would use NLP, regex tailored to expected formats, 
-        # or ideally, request structured output from Perplexity if available.
         try:
-            # Example: try to split by a common delimiter if Perplexity uses one, or by grant titles.
-            # This is highly speculative.
-            potential_grant_sections = raw_results.split("--- Grant Separator ---") # Assuming a hypothetical separator
-            if len(potential_grant_sections) <= 1 and "Title:" in raw_results: # Try splitting by "Title:"
-                potential_grant_sections = ["Title:" + s for s in raw_results.split("Title:")[1:]]
-
+            # If raw_results is a dict, try to extract a text field
+            if isinstance(raw_results, dict):
+                # Try common Perplexity API keys
+                content = raw_results.get('choices', [{}])[0].get('message', {}).get('content', '')
+                if not content:
+                    content = raw_results.get('result', '')
+                result_text = content if isinstance(content, str) else ''
+            elif isinstance(raw_results, str):
+                result_text = raw_results
+            else:
+                result_text = ''
+            potential_grant_sections = result_text.split("--- Grant Separator ---")
+            if len(potential_grant_sections) <= 1 and "Title:" in result_text:
+                potential_grant_sections = ["Title:" + s for s in result_text.split("Title:")[1:]]
             for section_text in potential_grant_sections:
                 if not section_text.strip(): continue
                 grant_data = {}
                 # Naively try to extract some fields using regex (very basic examples)
                 title_match = re.search(r"Title:(.*?)(Description:|Funding Amount:|Deadline:|Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
                 if title_match: grant_data["title"] = title_match.group(1).strip()
-                else: grant_data["title"] = "Unknown Title - Parse Error" # Default if not found
-                
+                else: grant_data["title"] = "Unknown Title - Parse Error"
                 desc_match = re.search(r"Description:(.*?)(Funding Amount:|Deadline:|Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
                 if desc_match: grant_data["description"] = desc_match.group(1).strip()
-                else: grant_data["description"] = section_text[:200].strip() + "... (parse error)" # Fallback
-
+                else: grant_data["description"] = section_text[:200].strip() + "... (parse error)"
                 amount_match = re.search(r"Funding Amount:[\s$]*(.*?)(Deadline:|Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
                 if amount_match: grant_data["funding_amount"] = amount_match.group(1).strip()
-                
                 deadline_match = re.search(r"Deadline:(.*?)(Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
                 if deadline_match: grant_data["deadline"] = deadline_match.group(1).strip()
-
                 url_match = re.search(r"URL:(.*?)(Description:|Funding Amount:|Deadline:|Eligibility:|$)", section_text, re.IGNORECASE | re.DOTALL)
                 if url_match: grant_data["source_url"] = url_match.group(1).strip()
-                
                 eligibility_match = re.search(r"Eligibility:(.*?)(Description:|Funding Amount:|Deadline:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
                 if eligibility_match: grant_data["eligibility"] = eligibility_match.group(1).strip()
-
-                # Add a category placeholder if not found
                 grant_data.setdefault("category", "Uncategorized")
-
-                if grant_data.get("title") != "Unknown Title - Parse Error": # Only add if we got at least a title
+                if grant_data.get("title") != "Unknown Title - Parse Error":
                     grants.append(grant_data)
         except Exception as e:
             logger.error(f"Error during naive parsing of Perplexity results: {e}", exc_info=True)
-        # --- END OF VERY NAIVE PLACEHOLDER PARSING ---
         if grants:
             logger.info(f"Naive parser attempted to extract {len(grants)} potential grants from raw results.")
         else:

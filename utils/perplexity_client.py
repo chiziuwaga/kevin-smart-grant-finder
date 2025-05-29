@@ -26,28 +26,21 @@ class PerplexityClient:
             self._setup_mock_data()
             logger.info("Using mock Perplexity for development")
             return
-            
+        # Ensure API key is loaded from environment or passed
         self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
         if not self.api_key:
             logger.warning("Perplexity API key not found. Falling back to mock data. Please set PERPLEXITY_API_KEY.")
             self.use_mock = True # Force mock if no key
             self._setup_mock_data()
             return
-        
         self.base_url = "https://api.perplexity.ai"
         self.retry_attempts = 3
         self.models = {
-            "sonar-reasoning-pro": {
-                "rpm": 50,
-                "features": ["images", "search_domain_filter"]
-            },
-            "sonar-deep-research": {
-                "rpm": 5,
-                "features": ["related_questions", "structured_outputs"]
-            }
+            "sonar-pro": {"rpm": 50, "features": ["images", "search_domain_filter"]},
+            "sonar-reasoning-pro": {"rpm": 50, "features": ["images", "search_domain_filter"]},
+            "sonar-deep-research": {"rpm": 5, "features": ["related_questions", "structured_outputs"]}
         }
-        self.default_model = "sonar-reasoning-pro" # Default to a model supporting search_domain_filter
-        
+        self.default_model = "sonar-pro" # Default to sonar-pro for speed
         logger.info(f"Perplexity client initialized with models: {list(self.models.keys())}")
 
     def _setup_mock_data(self):

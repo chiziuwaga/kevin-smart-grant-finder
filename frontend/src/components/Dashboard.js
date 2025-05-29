@@ -68,24 +68,19 @@ const Dashboard = () => {
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
-        const statsResponse = await getDashboardStats(); // Use directly imported function
-        const highPriorityResponse = await getGrants({ min_score: 85, limit: 5 }); // Use directly imported function
-        const deadlineSoonResponse = await getGrants({ days_to_deadline: 7, limit: 5 }); // Use directly imported function
-        // const savedGrantsResponse = await getSavedGrants(); // TODO: Implement or import getSavedGrants
-        const distributionResponse = await getDistribution(); // Use directly imported function
+        const statsResponse = await getDashboardStats();
+        const highPriorityResponse = await getGrants({ min_score: 85, limit: 5 });
+        const deadlineSoonResponse = await getGrants({ days_to_deadline: 7, limit: 5 });
+        const distributionResponse = await getDistribution();
 
-        setStats(statsResponse.data);
-        setHighPriorityGrants(highPriorityResponse.data);
-        setDeadlineSoonGrants(deadlineSoonResponse.data);
-        // if (savedGrantsResponse && savedGrantsResponse.data) { // TODO: Uncomment when getSavedGrants is available
-        //   setSavedGrants(new Set(savedGrantsResponse.data.map(g => g.id)));
-        // }
-
-        if (distributionResponse && distributionResponse.data) {
+        setStats(statsResponse);
+        setHighPriorityGrants(highPriorityResponse);
+        setDeadlineSoonGrants(deadlineSoonResponse);
+        if (distributionResponse) {
           setChartData({
-            deadlines: distributionResponse.data.deadlines || [],
-            categories: distributionResponse.data.categories || [],
-            relevanceDistribution: distributionResponse.data.relevanceDistribution || []
+            deadlines: distributionResponse.deadlines || [],
+            categories: distributionResponse.categories || [],
+            relevanceDistribution: distributionResponse.relevanceDistribution || []
           });
         }
 

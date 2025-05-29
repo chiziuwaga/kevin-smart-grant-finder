@@ -44,11 +44,14 @@ const AppLayout = () => {
 
   useEffect(() => {
     const fetchLastRun = async () => {
-      try { const data = await (await import('../../api/apiClient')).default.getLastRun();
+      try {
+        const apiModule = await import('../../api/apiClient');
+        const data = await apiModule.default.getLastRun();
         if(data.status!=='none'){
           document.getElementById('last-run-time').innerText = new Date(data.end || data.start).toLocaleString();
         }
-      }catch(e){console.error(e);}  };
+      }catch(e){console.error(e);}
+    };
     fetchLastRun();
     const interval = setInterval(fetchLastRun, 60000);
     return ()=>clearInterval(interval);
