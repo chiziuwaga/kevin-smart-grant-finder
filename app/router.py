@@ -98,4 +98,7 @@ async def trigger_search(
     else:
         return {"status": "success", "new_grants_found": len(high_priority_grants), "notification_status": "Notifier not available or no grants to notify."}
 
-# ... (any other routes) ...
+@api_router.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy"}

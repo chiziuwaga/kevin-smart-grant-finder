@@ -185,10 +185,13 @@ class ResearchAgent:
             
             # Create specific filters for this tier
             tier_specific_filters = self._create_filters_for_tier(tier_name, tier_config, grant_filter)
-            tier_results = await self._execute_search_tier(
-                tier_specific_filters,
-                model=self.SONAR_PRIMARY_MODEL
+            raw_results = await self.perplexity._execute_search(
+                query=self._build_search_query(tier_specific_filters),
+                model=self.SONAR_PRIMARY_MODEL,
+                search_domain_filter=tier_specific_filters.sites_to_focus,
+                structured_output=True
             )
+            tier_results = await self._parse_and_validate(raw_results)
             
             # Track stats for this tier
             tier_stats[tier_name] = {
@@ -221,12 +224,13 @@ class ResearchAgent:
                 geographic_focus=grant_filter.geographic_focus,
                 sites_to_focus=grant_filter.sites_to_focus
             )
-            
-            fallback_results = await self._execute_search_tier(
-                deep_research_filters,
+            raw_fallback_results = await self.perplexity._execute_search(
+                query=self._build_search_query(deep_research_filters),
                 model=self.SONAR_DEEP_MODEL,
+                search_domain_filter=deep_research_filters.sites_to_focus,
                 structured_output=True
             )
+            fallback_results = await self._parse_and_validate(raw_fallback_results)
             
             # Track fallback stats
             tier_stats["deep_research_fallback"] = {
@@ -397,299 +401,363 @@ class ResearchAgent:
         query_parts = [
             f"Find grant opportunities for '{filters.geographic_focus}' focusing on: {filters.keywords}."
         ]
-        
         # Persona-specific instructions for Perplexity
         query_parts.append(
-            "Target sectors include telecommunications infrastructure (broadband, mesh networks, event-Wi-Fi), " \
+            "Target sectors include telecommunications infrastructure (broadband, mesh networks, event-Wi-Fi), "
             "women-owned nonprofit initiatives (501c3), and community shelter conversions for extreme weather."
         )
-        
         # Handle funding range
         if filters.min_funding and filters.max_funding:
             query_parts.append(f"Funding range should ideally be between ${filters.min_funding:,.0f} and ${filters.max_funding:,.0f}.")
-        
         # Deadline information construction
         deadline_info_parts = []
         if filters.deadline_after:
             deadline_info_parts.append(f"application deadlines after {filters.deadline_after.strftime('%Y-%m-%d')}")
         if self.DEADLINE_MIN_LEAD_DAYS is not None and not filters.deadline_after:
             deadline_info_parts.append(f"at least {self.DEADLINE_MIN_LEAD_DAYS} days lead time before the deadline")
-            
         if deadline_info_parts:
             query_parts.append(f"Prefer grants with {' and '.join(deadline_info_parts)}, or rolling applications.")
         else:
             query_parts.append("Prioritize grants with rolling applications or significant lead time.")
-
-        # Handle site focus - now using proper Pydantic model access
+        # Handle site focus
         if filters.sites_to_focus:
-            sites_text = ", ".join(filters.sites_to_focus[:3])  # Mention first 3 sites
+            sites_text = ", ".join(filters.sites_to_focus[:3])
             query_parts.append(f"Pay special attention to sources like {sites_text} if relevant.")
-
         if filters.categories:
             query_parts.append(f"Consider categories such as: {', '.join(filters.categories)}.")
-        
+        # Enforce structured output
+        query_parts.append(
+            "Return the results as a JSON array. Each grant must include: title, funding_amount, deadline, category, url, and description."
+        )
         query = " ".join(query_parts)
         query += " For each grant, provide title, a detailed description, funding amount, exact application deadline, eligibility criteria, and the direct source URL."
         query += " Focus on publicly accessible information and avoid paywalled sources."
-        
         logger.debug(f"Constructed Perplexity Query: {query}")
         return query
 
-    def _parse_results(self, raw_results: str) -> List[Dict[str, Any]]:
-        logger.warning("CRITICAL: _parse_results is using a placeholder implementation. "
-                       "It needs a robust method to parse actual Perplexity API responses into structured grant data. "
-                       "Current naive parsing will likely yield few or no results from real API output.")
-        grants = []
-        try:
-            # If raw_results is a dict, try to extract a text field
-            if isinstance(raw_results, dict):
-                # Try common Perplexity API keys
-                content = raw_results.get('choices', [{}])[0].get('message', {}).get('content', '')
-                if not content:
-                    content = raw_results.get('result', '')
-                result_text = content if isinstance(content, str) else ''
-            elif isinstance(raw_results, str):
-                result_text = raw_results
-            else:
-                result_text = ''
-            potential_grant_sections = result_text.split("--- Grant Separator ---")
-            if len(potential_grant_sections) <= 1 and "Title:" in result_text:
-                potential_grant_sections = ["Title:" + s for s in result_text.split("Title:")[1:]]
-            for section_text in potential_grant_sections:
-                if not section_text.strip(): continue
-                grant_data = {}
-                # Naively try to extract some fields using regex (very basic examples)
-                title_match = re.search(r"Title:(.*?)(Description:|Funding Amount:|Deadline:|Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
-                if title_match: grant_data["title"] = title_match.group(1).strip()
-                else: grant_data["title"] = "Unknown Title - Parse Error"
-                desc_match = re.search(r"Description:(.*?)(Funding Amount:|Deadline:|Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
-                if desc_match: grant_data["description"] = desc_match.group(1).strip()
-                else: grant_data["description"] = section_text[:200].strip() + "... (parse error)"
-                amount_match = re.search(r"Funding Amount:[\s$]*(.*?)(Deadline:|Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
-                if amount_match: grant_data["funding_amount"] = amount_match.group(1).strip()
-                deadline_match = re.search(r"Deadline:(.*?)(Eligibility:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
-                if deadline_match: grant_data["deadline"] = deadline_match.group(1).strip()
-                url_match = re.search(r"URL:(.*?)(Description:|Funding Amount:|Deadline:|Eligibility:|$)", section_text, re.IGNORECASE | re.DOTALL)
-                if url_match: grant_data["source_url"] = url_match.group(1).strip()
-                eligibility_match = re.search(r"Eligibility:(.*?)(Description:|Funding Amount:|Deadline:|URL:|$)", section_text, re.IGNORECASE | re.DOTALL)
-                if eligibility_match: grant_data["eligibility"] = eligibility_match.group(1).strip()
-                grant_data.setdefault("category", "Uncategorized")
-                if grant_data.get("title") != "Unknown Title - Parse Error":
-                    grants.append(grant_data)
-        except Exception as e:
-            logger.error(f"Error during naive parsing of Perplexity results: {e}", exc_info=True)
-        if grants:
-            logger.info(f"Naive parser attempted to extract {len(grants)} potential grants from raw results.")
-        else:
-            logger.info("Naive parser could not extract any grants from Perplexity response.")
-        return grants
+    async def _parse_and_validate(self, raw_response, retries=3):
+        for attempt in range(retries):
+            try:
+                grants = json.loads(raw_response)
+                missing = [
+                    g for g in grants
+                    if not all(k in g and g[k] for k in ["title", "funding_amount", "deadline", "category", "url", "description"])
+                ]
+                if not missing:
+                    return grants
+                # If missing fields, re-prompt
+                prompt = (
+                    f"Some grants are missing fields: {missing}. "
+                    "Please provide all required fields for each grant."
+                )
+                raw_response = await self.perplexity.search(prompt)
+            except Exception:
+                # If not valid JSON, re-prompt for correct JSON
+                prompt = (
+                    "The previous response was not valid JSON. "
+                    "Please return the grants as a JSON array with all required fields."
+                )
+                raw_response = await self.perplexity.search(prompt)
+        return []  # Return empty if still incomplete after retries
 
-    def _parse_structured_results(self, raw_results: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Parse structured results from deep research queries.
+    async def search_grants(self, grant_filter: Dict[str, Any] | GrantFilter) -> List[Dict[str, Any]]:
+        """Execute tiered grant search with fallback to deep research for comprehensive results."""
+        start_time = time.time()
+        
+        # Convert dict to GrantFilter if needed
+        if isinstance(grant_filter, dict):
+            grant_filter = GrantFilter(**grant_filter)
+            
+        # Use the model_dump method which is the new recommended way in Pydantic v2
+        try:
+            filter_json = json.dumps(grant_filter.model_dump(), indent=2)
+        except AttributeError:
+            # Fallback for older Pydantic versions
+            filter_json = json.dumps(grant_filter.dict(), indent=2)
+            
+        logger.info(f"ResearchAgent 'DualSector Explorer' starting search with initial filter: {filter_json}")
+        
+        all_found_grants_map: Dict[str, Dict[str, Any]] = {}
+        tier_stats = {}
+        
+        # Primary search with sonar-reasoning-pro
+        for tier_name, tier_config in self.GEO_TIERS.items():
+            logger.info(f"Executing search Tier: {tier_name} - Focus: {tier_config['focus']}")
+            tier_start = time.time()
+            
+            # Create specific filters for this tier
+            tier_specific_filters = self._create_filters_for_tier(tier_name, tier_config, grant_filter)
+            raw_results = await self.perplexity._execute_search(
+                query=self._build_search_query(tier_specific_filters),
+                model=self.SONAR_PRIMARY_MODEL,
+                search_domain_filter=tier_specific_filters.sites_to_focus,
+                structured_output=True
+            )
+            tier_results = await self._parse_and_validate(raw_results)
+            
+            # Track stats for this tier
+            tier_stats[tier_name] = {
+                "duration": time.time() - tier_start,
+                "results_found": len(tier_results)
+            }
+            
+            for grant_data in tier_results:
+                grant_key = grant_data.get("source_url") or grant_data.get("title", "").lower()
+                if grant_key and grant_key not in all_found_grants_map:
+                    all_found_grants_map[grant_key] = grant_data
+        
+        initial_results_count = len(all_found_grants_map)
+        logger.info(f"Initial search found {initial_results_count} grants")
+        
+        # If we have less than 2 results, try deep research fallback
+        if initial_results_count < 2:
+            logger.info("Insufficient results, initiating deep research fallback")
+            fallback_start = time.time()
+            
+            # Create specialized filters for deep research
+            deep_research_filters = GrantFilter(
+                keywords=grant_filter.keywords,
+                categories=grant_filter.categories,
+                min_score=grant_filter.min_score,
+                deadline_after=grant_filter.deadline_after,
+                deadline_before=grant_filter.deadline_before,
+                min_funding=grant_filter.min_funding,
+                max_funding=grant_filter.max_funding,
+                geographic_focus=grant_filter.geographic_focus,
+                sites_to_focus=grant_filter.sites_to_focus
+            )
+            raw_fallback_results = await self.perplexity._execute_search(
+                query=self._build_search_query(deep_research_filters),
+                model=self.SONAR_DEEP_MODEL,
+                search_domain_filter=deep_research_filters.sites_to_focus,
+                structured_output=True
+            )
+            fallback_results = await self._parse_and_validate(raw_fallback_results)
+            
+            # Track fallback stats
+            tier_stats["deep_research_fallback"] = {
+                "duration": time.time() - fallback_start,
+                "results_found": len(fallback_results)
+            }
+            
+            # Merge fallback results
+            for grant_data in fallback_results:
+                grant_key = grant_data.get("source_url") or grant_data.get("title", "").lower()
+                if grant_key and grant_key not in all_found_grants_map:
+                    all_found_grants_map[grant_key] = grant_data
+        
+        # Final processing
+        grants_to_score = list(all_found_grants_map.values())
+        total_duration = time.time() - start_time
+        
+        logger.info(
+            f"Search complete in {total_duration:.2f}s. "
+            f"Found {len(grants_to_score)} unique grants. "
+            f"Tier stats: {json.dumps(tier_stats, indent=2)}"
+        )
+        
+        # Score and return results
+        scored_grants = await self._score_and_filter_grants(grants_to_score, grant_filter)
+        return scored_grants
+
+    def _build_enhanced_query(self, grant_filter: GrantFilter) -> str:
+        """Build a comprehensive query for deep research fallback."""
+        base_query = (
+            "Analyze and identify innovative grant opportunities with detailed "
+            "funding information, eligibility criteria, and deadlines. "
+            "Focus on comprehensive structured data including:\n"
+            "- Exact funding amounts and ranges\n"
+            "- Specific eligibility requirements\n"
+            "- Clear application deadlines\n"
+            "- Direct source URLs\n"
+            "- Program objectives and priorities\n"
+        )
+        
+        if grant_filter.keywords:
+            base_query += f"\nSpecific focus areas: {grant_filter.keywords}"
+        
+        if grant_filter.geographic_focus:
+            base_query += f"\nGeographic focus: {grant_filter.geographic_focus}"
+        
+        return base_query
+
+    def _create_filters_for_tier(self, tier_name: str, tier_config: Dict, base_filter: GrantFilter) -> GrantFilter:
+        tier_keywords = list(self.SECTOR_KEYWORDS) # Start with core persona keywords
+        if tier_config.get("keywords_modifier"):
+            tier_keywords.extend(tier_config["keywords_modifier"])
+        if base_filter.keywords:
+            # Split base_filter.keywords if it's a comma-separated string, then extend
+            base_keywords_list = [k.strip() for k in base_filter.keywords.split(',') if k.strip()]
+            tier_keywords.extend(base_keywords_list)
+        
+        # Determine deadline_after: use base_filter if set, else default from persona
+        effective_deadline_after = base_filter.deadline_after
+        if effective_deadline_after is None and self.DEADLINE_MIN_LEAD_DAYS is not None:
+            effective_deadline_after = datetime.now() + timedelta(days=self.DEADLINE_MIN_LEAD_DAYS)
+            
+        # Get sites for the current tier
+        current_tier_sites = tier_config.get("sites", [])
+
+        # The GrantFilter Pydantic model needs a `sites_to_focus` field.
+        # Assuming it was added (if not, this will cause an error during GrantFilter instantiation).
+        # For now, I will proceed as if GrantFilter can accept `sites_to_focus`.
+        # If GrantFilter does not have this field, we'll need to add it or pass domains differently.
+
+        return GrantFilter(
+            keywords=", ".join(list(set(tier_keywords))), # Ensure unique keywords
+            categories=base_filter.categories, # Pass along if provided
+            min_score=base_filter.min_score, # This will be used after scoring
+            deadline_after=effective_deadline_after,
+            deadline_before=base_filter.deadline_before,
+            min_funding=self.FUNDING_MIN,
+            max_funding=self.FUNDING_MAX,
+            geographic_focus=tier_config["focus"],
+            sites_to_focus=current_tier_sites # Pass the sites for this tier
+        )
+
+    async def _execute_search_tier(self, filters: dict, model: str = None, structured_output: bool = False) -> List[Dict[str, Any]]:
+        """Execute search for a specific tier with model selection and output formatting.
         
         Args:
-            raw_results: Raw API response from Perplexity
-            
+            filters: Search filters for this tier
+            model: Perplexity model to use (sonar-reasoning-pro or sonar-deep-research)
+            structured_output: Whether to request structured output format
+        
         Returns:
-            List of parsed grant dictionaries
+            List of grant data dictionaries
         """
+        query = self._build_search_query(filters)
+        # Access Pydantic model fields directly, using None as fallback for Optional fields
+        sites_to_focus = filters.sites_to_focus or []
+        logger.info(f"Calling Perplexity API for query: {query[:100]}... Sites: {sites_to_focus}")
+        
         try:
-            content = raw_results.get('choices', [{}])[0].get('message', {}).get('content', '')
-            if not content:
-                logger.info("No content in structured results")
-                return []
+            raw_results = await self.perplexity._execute_search(
+                query=query,
+                model=model,
+                search_domain_filter=sites_to_focus,
+                structured_output=structured_output
+            )
             
-            grants = []
-            current_grant = {}
+            # Parse results based on the model and format
+            if structured_output:
+                parsed_grants = self._parse_structured_results(raw_results)
+            else:
+                parsed_grants = self._parse_results(raw_results)
             
-            # Split content into grant blocks
-            blocks = re.split(r'\n\s*(?=Title:|Grant:)', content)
-            
-            for block in blocks:
-                if not block.strip():
-                    continue
-                    
-                grant_data = {}
-                
-                # Extract structured fields
-                patterns = {
-                    'title': r'(?i)Title:\s*(.+?)(?=\n|$)',
-                    'description': r'(?i)Description:\s*(.+?)(?=\n|$)',
-                    'funding_amount': r'(?i)Funding.?Amount:\s*([^\n]+)',
-                    'deadline': r'(?i)Deadline:\s*(.+?)(?=\n|$)',
-                    'eligibility': r'(?i)Eligibility:\s*(.+?)(?=\n|$)',
-                    'source_url': r'(?i)(?:Source.?URL|URL|Link):\s*(\S+)'
-                }
-                
-                for field, pattern in patterns.items():
-                    match = re.search(pattern, block, re.MULTILINE | re.IGNORECASE)
-                    if match:
-                        grant_data[field] = match.group(1).strip()
-                
-                # Only include grants with required fields
-                if grant_data.get('title') and (grant_data.get('description') or grant_data.get('funding_amount')):
-                    grants.append(grant_data)
-            
-            logger.info(f"Parsed {len(grants)} structured grants from content")
-            return grants
+            logger.info(f"Retrieved {len(parsed_grants)} potential grants from tier search")
+            return parsed_grants
             
         except Exception as e:
-            logger.error(f"Error parsing structured results: {str(e)}")
+            logger.error(f"Error executing tier search: {str(e)}")
             return []
 
-    async def _score_and_filter_grants(self, grants: List[Dict[str, Any]], grant_filter: GrantFilter) -> List[Dict[str, Any]]:
-        # Placeholder for scoring logic - currently just filters by min_score
-        min_score_threshold = grant_filter.min_score or 0
-        filtered_grants = [grant for grant in grants if grant.get("score", 0) >= min_score_threshold]
-        logger.info(f"Filtered grants down to {len(filtered_grants)} based on min_score={min_score_threshold}.")
-        return filtered_grants
-
-    def _get_domain(self, source_name_or_url):
-        """Extract or map domain from source name or URL."""
+    def _meets_funding_criteria(self, funding_amount_str: Optional[Any]) -> bool:
+        if funding_amount_str is None: return True
         try:
-            if re.match(r'^(http|https)://', source_name_or_url):
-                parsed_url = urlparse(source_name_or_url)
-                return parsed_url.netloc.lower().replace('www.', '') # Assume it's a domain like grants.gov
+            if isinstance(funding_amount_str, (int, float)): amount = funding_amount_str
+            else: amount = float(re.sub(r'[$,]', '', str(funding_amount_str)))
+            return self.FUNDING_MIN <= amount <= self.FUNDING_MAX
+        except ValueError:
+            logger.warning(f"Could not parse funding amount: {funding_amount_str}")
+            return False
+
+    def _meets_deadline_criteria(self, deadline_obj: Optional[Any]) -> bool:
+        if deadline_obj is None: return True 
+        try:
+            deadline_date: Optional[datetime] = None
+            if isinstance(deadline_obj, datetime): 
+                deadline_date = deadline_obj
+            elif isinstance(deadline_obj, str):
+                # Try parsing common date formats or relative terms like "in X days"
+                match_days = re.search(r'in\\s*(\\d+)\\s*days', deadline_obj, re.IGNORECASE)
+                if match_days:
+                    days = int(match_days.group(1))
+                    deadline_date = datetime.now() + timedelta(days=days)
+                else:
+                    # Attempt to parse absolute date strings
+                    # This list can be expanded with more formats
+                    date_formats = ["%Y-%m-%d", "%m/%d/%Y", "%b %d, %Y", "%d %b %Y"]
+                    for fmt in date_formats:
+                        try:
+                            deadline_date = datetime.strptime(deadline_obj, fmt)
+                            break
+                        except ValueError:
+                            continue
+                    if deadline_date is None:
+                        logger.warning(f"Could not parse deadline string: {deadline_obj} with known formats.")
+                        return True # Be lenient if unparseable, or False to be strict
             else:
-                # Map common names to domains (add more as needed)
-                domain_map = {
-                    "grants.gov": "grants.gov",
-                    "usda": "rd.usda.gov",
-                    "fcc": "fcc.gov",
-                    "sba": "sba.gov",
-                    "ifundwomen": "ifundwomen.com",
-                    "amber grants": "ambergrantsforwomen.com"
-                }
-                return domain_map.get(source_name_or_url.lower())
-        except Exception:
-            return None
+                logger.warning(f"Unknown deadline format: {type(deadline_obj)}, value: {deadline_obj}")
+                return True # Be lenient
+            
+            if deadline_date is None: # Should not happen if parsing logic is complete
+                return True 
 
-    def _get_source_url(self, source_name):
-        """Retrieve URL for a specific source name."""
-        # Simplified - expand with actual lookups or config
-        domain = self._get_domain(source_name)
-        return f"https://{domain}" if domain else f"https://{source_name.lower().replace(' ', '')}.com"
+            return deadline_date >= (datetime.now() + timedelta(days=self.DEADLINE_MIN_LEAD_DAYS))
+        except Exception as e:
+            logger.warning(f"Error parsing deadline: {deadline_obj}. Error: {e}")
+            return True
 
-    def _deduplicate_and_process(self, grants, category):
-        """Deduplicate results and process grant data."""
-        processed_grants = []
-        seen_urls = set()
-        seen_hashes = set()
-
-        for grant in grants:
-            try:
-                if not grant or not isinstance(grant, dict) or not grant.get("title") or not grant.get("description"):
-                    logging.debug(f"Skipping invalid grant data: {grant}")
-                    continue
-
-                # Normalize URL if present
-                url = grant.get("source_url", "").strip().rstrip('/')
-                if url and url in seen_urls:
-                    logging.debug(f"Skipping duplicate grant by URL: {grant.get('title')}")
-                    continue
-
-                # Create hash for content-based deduplication if URL is missing/generic
-                content_hash = hash(grant["title"].strip().lower() + grant["description"].strip().lower()[:100]) # Hash title + start of desc
-                if not url or "unknown_source" in url or "perplexity_extract" in url:
-                    if content_hash in seen_hashes:
-                        logging.debug(f"Skipping duplicate grant by content hash: {grant.get('title')}")
-                        continue
-                    seen_hashes.add(content_hash)
-                elif url:
-                    seen_urls.add(url)
-
-                # --- Process Grant --- 
-                processed = {
-                    "title": grant["title"].strip(),
-                    "description": grant["description"].strip(),
-                    "source_url": url if url else f"generated_id_{content_hash}",
-                    "source_name": grant.get("source_name", self._extract_source_name(url) if url else "Unknown"),
-                    "category": category,
-                    "amount": grant.get("amount", "Unknown"),
-                    "eligibility": grant.get("eligibility", "See grant details"),
-                    # Add other fields as available
-                }
-
-                # Process deadline (with robust parsing)
-                deadline = None
-                deadline_str = grant.get("deadline")
-                if deadline_str:
-                    try:
-                        deadline = self._parse_deadline(str(deadline_str))
-                    except ValueError:
-                        deadline = self._extract_deadline_from_text(processed["description"])
-
-                # Set default deadline if still None
-                processed["deadline"] = deadline if deadline else datetime.utcnow() + timedelta(days=90) # Default 90 days out
-
-                processed_grants.append(processed)
-
-            except Exception as e:
-                logging.error(f"Error processing grant: {grant.get('title', 'N/A')} - {str(e)}", exc_info=True)
-
-        logging.info(f"Processed {len(processed_grants)} unique grants after deduplication.")
-        return processed_grants
-
-    def _parse_deadline(self, deadline_str):
-        """Parse deadline string into datetime object (more robust)."""
-        from dateutil import parser
-        try:
-            # Try flexible parsing first
-            # Set dayfirst=False as US formats are common
-            dt = parser.parse(deadline_str, dayfirst=False, fuzzy=True)
-            # If year is missing, assume current or next year
-            if dt.year == 1900 or dt.year < datetime.now().year - 1 : # dateutil might default to 1900 or past year
-                 current_year = datetime.now().year
-                 dt = dt.replace(year=current_year)
-                 if dt < datetime.now(): # If replacing makes it past, assume next year
-                     dt = dt.replace(year=current_year + 1)
-            return dt
-        except (ValueError, OverflowError, TypeError) as e:
-            logging.debug(f"Could not parse deadline '{deadline_str}' with dateutil: {e}")
-            # Fallback to regex or simpler formats if needed, but dateutil is quite good
-            raise ValueError(f"Could not parse deadline: {deadline_str}")
-
-    def _extract_deadline_from_text(self, text):
-        """Extract deadline from text description using regex patterns."""
-        # Regex patterns (simplified for clarity, expand as needed)
-        patterns = [
-            r'(?:deadline|due by|closes on|applications due)[:\s]+([A-Za-z]+\s+\d{1,2},?\s+\d{4})', # Month D, YYYY
-            r'(?:deadline|due by|closes on|applications due)[:\s]+(\d{1,2}/\d{1,2}/\d{4})',       # MM/DD/YYYY
-            r'(?:deadline|due by|closes on|applications due)[:\s]+(\d{4}-\d{2}-\d{2})',          # YYYY-MM-DD
+    def _build_search_query(self, filters: GrantFilter) -> str:
+        query_parts = [
+            f"Find grant opportunities for '{filters.geographic_focus}' focusing on: {filters.keywords}."
         ]
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                try:
-                    return self._parse_deadline(match.group(1))
-                except ValueError:
-                    continue
-        return None
+        # Persona-specific instructions for Perplexity
+        query_parts.append(
+            "Target sectors include telecommunications infrastructure (broadband, mesh networks, event-Wi-Fi), "
+            "women-owned nonprofit initiatives (501c3), and community shelter conversions for extreme weather."
+        )
+        # Handle funding range
+        if filters.min_funding and filters.max_funding:
+            query_parts.append(f"Funding range should ideally be between ${filters.min_funding:,.0f} and ${filters.max_funding:,.0f}.")
+        # Deadline information construction
+        deadline_info_parts = []
+        if filters.deadline_after:
+            deadline_info_parts.append(f"application deadlines after {filters.deadline_after.strftime('%Y-%m-%d')}")
+        if self.DEADLINE_MIN_LEAD_DAYS is not None and not filters.deadline_after:
+            deadline_info_parts.append(f"at least {self.DEADLINE_MIN_LEAD_DAYS} days lead time before the deadline")
+        if deadline_info_parts:
+            query_parts.append(f"Prefer grants with {' and '.join(deadline_info_parts)}, or rolling applications.")
+        else:
+            query_parts.append("Prioritize grants with rolling applications or significant lead time.")
+        # Handle site focus
+        if filters.sites_to_focus:
+            sites_text = ", ".join(filters.sites_to_focus[:3])
+            query_parts.append(f"Pay special attention to sources like {sites_text} if relevant.")
+        if filters.categories:
+            query_parts.append(f"Consider categories such as: {', '.join(filters.categories)}.")
+        # Enforce structured output
+        query_parts.append(
+            "Return the results as a JSON array. Each grant must include: title, funding_amount, deadline, category, url, and description."
+        )
+        query = " ".join(query_parts)
+        query += " For each grant, provide title, a detailed description, funding amount, exact application deadline, eligibility criteria, and the direct source URL."
+        query += " Focus on publicly accessible information and avoid paywalled sources."
+        logger.debug(f"Constructed Perplexity Query: {query}")
+        return query
 
-    def _extract_source_name(self, url):
-        """Extract source name from URL."""
-        if not url or not url.startswith("http"):
-            return "Unknown Source"
-        try:
-            domain = urlparse(url).netloc
-            domain = re.sub(r'^www\.', '', domain)
-            parts = domain.split('.')
-            # Return the part before the TLD (e.g., 'grants' from 'grants.gov')
-            return parts[-2].capitalize() if len(parts) >= 2 else domain.capitalize()
-        except Exception:
-            return "Unknown Source"
-
-# Alias for backward compatibility
-GrantResearchAgent = ResearchAgent
-
-# Example Usage (requires instances of clients)
-# research_agent = ResearchAgent(perplexity_client, agentql_client, mongodb_client)
-# params = {
-#     "category": "telecom",
-#     "search_terms": ["rural broadband"],
-#     "sources": ["grants.gov", "usda"],
-#     "funding_type": ["Grant"],
-#     "eligible_entities": ["Nonprofits"],
-#     "geo_restrictions": "LA-08"
-# }
-# grants = research_agent.search_grants(params)
+    async def _parse_and_validate(self, raw_response, retries=3):
+        for attempt in range(retries):
+            try:
+                grants = json.loads(raw_response)
+                missing = [
+                    g for g in grants
+                    if not all(k in g and g[k] for k in ["title", "funding_amount", "deadline", "category", "url", "description"])
+                ]
+                if not missing:
+                    return grants
+                # If missing fields, re-prompt
+                prompt = (
+                    f"Some grants are missing fields: {missing}. "
+                    "Please provide all required fields for each grant."
+                )
+                raw_response = await self.perplexity.search(prompt)
+            except Exception:
+                # If not valid JSON, re-prompt for correct JSON
+                prompt = (
+                    "The previous response was not valid JSON. "
+                    "Please return the grants as a JSON array with all required fields."
+                )
+                raw_response = await self.perplexity.search(prompt)
+        return []  # Return empty if still incomplete after retries

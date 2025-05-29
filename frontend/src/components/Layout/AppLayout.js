@@ -46,7 +46,7 @@ const AppLayout = () => {
     const fetchLastRun = async () => {
       try {
         const apiModule = await import('../../api/apiClient');
-        const data = await apiModule.default.getLastRun();
+        const data = await apiModule.getLastRun();
         if(data.status!=='none'){
           document.getElementById('last-run-time').innerText = new Date(data.end || data.start).toLocaleString();
         }
