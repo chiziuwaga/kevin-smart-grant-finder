@@ -292,41 +292,40 @@ class ResearchAgent:
             sites_to_focus=current_tier_sites # Pass the sites for this tier
         )
 
-    async def _execute_search_tier(self, filters: GrantFilter) -> List[Dict[str, Any]]:
-        query = self._build_search_query(filters) # _build_search_query might also use filters.sites_to_focus to embed in text if model doesn't support domain filter
-        logger.debug(f"Tiered search query for Perplexity: {query}")
+    async def _execute_search_tier(self, filters: dict, model: str = None, structured_output: bool = False) -> List[Dict[str, Any]]:
+        """Execute search for a specific tier with model selection and output formatting.
         
-        # Determine sites to pass to Perplexity client
-        search_domains_for_perplexity: Optional[List[str]] = None
-        if hasattr(filters, 'sites_to_focus') and filters.sites_to_focus:
-            search_domains_for_perplexity = filters.sites_to_focus
-
+        Args:
+            filters: Search filters for this tier
+            model: Perplexity model to use (sonar-reasoning-pro or sonar-deep-research)
+            structured_output: Whether to request structured output format
+        
+        Returns:
+            List of grant data dictionaries
+        """
+        query = self._build_search_query(filters)
+        logger.info(f"Calling Perplexity API for query: {query[:100]}... Sites: {filters.get('sites_to_focus', [])}")
+        
         try:
-            logger.info(f"Calling Perplexity API for query: {filters.geographic_focus} - {filters.keywords[:50]}... Sites: {search_domains_for_perplexity}")
-            # Pass search_domains to the perplexity client's search method
-            raw_results = await self.perplexity.search(query, search_domains=search_domains_for_perplexity)
-            if not raw_results:
-                logger.info("Perplexity API returned empty or None result.")
-                return []
-            logger.debug(f"Perplexity raw response snippet: {raw_results[:500]}")
+            raw_results = await self.perplexity._execute_search(
+                query=query,
+                model=model,
+                search_domain_filter=filters.get('sites_to_focus'),
+                structured_output=structured_output
+            )
+            
+            # Parse results based on the model and format
+            if structured_output:
+                parsed_grants = self._parse_structured_results(raw_results)
+            else:
+                parsed_grants = self._parse_results(raw_results)
+            
+            logger.info(f"Retrieved {len(parsed_grants)} potential grants from tier search")
+            return parsed_grants
+            
         except Exception as e:
-            logger.error(f"Error calling Perplexity API: {e}", exc_info=True)
+            logger.error(f"Error executing tier search: {str(e)}")
             return []
-        
-        parsed_grants = self._parse_results(raw_results) 
-        
-        final_tier_grants = []
-        for grant_data in parsed_grants:
-            if not self._meets_funding_criteria(grant_data.get("funding_amount")):
-                logger.debug(f"Grant '{grant_data.get('title')}' rejected: funding out of range.")
-                continue
-            if not self._meets_deadline_criteria(grant_data.get("deadline")):
-                logger.debug(f"Grant '{grant_data.get('title')}' rejected: deadline too soon.")
-                continue
-            final_tier_grants.append(grant_data)
-        
-        logger.info(f"Tier returned {len(final_tier_grants)} grants after initial parsing and persona filtering.")
-        return final_tier_grants
 
     def _meets_funding_criteria(self, funding_amount_str: Optional[Any]) -> bool:
         if funding_amount_str is None: return True
@@ -473,6 +472,59 @@ class ResearchAgent:
         else:
             logger.info("Naive parser could not extract any grants from Perplexity response.")
         return grants
+
+    def _parse_structured_results(self, raw_results: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Parse structured results from deep research queries.
+        
+        Args:
+            raw_results: Raw API response from Perplexity
+            
+        Returns:
+            List of parsed grant dictionaries
+        """
+        try:
+            content = raw_results.get('choices', [{}])[0].get('message', {}).get('content', '')
+            if not content:
+                logger.info("No content in structured results")
+                return []
+            
+            grants = []
+            current_grant = {}
+            
+            # Split content into grant blocks
+            blocks = re.split(r'\n\s*(?=Title:|Grant:)', content)
+            
+            for block in blocks:
+                if not block.strip():
+                    continue
+                    
+                grant_data = {}
+                
+                # Extract structured fields
+                patterns = {
+                    'title': r'(?i)Title:\s*(.+?)(?=\n|$)',
+                    'description': r'(?i)Description:\s*(.+?)(?=\n|$)',
+                    'funding_amount': r'(?i)Funding.?Amount:\s*([^\n]+)',
+                    'deadline': r'(?i)Deadline:\s*(.+?)(?=\n|$)',
+                    'eligibility': r'(?i)Eligibility:\s*(.+?)(?=\n|$)',
+                    'source_url': r'(?i)(?:Source.?URL|URL|Link):\s*(\S+)'
+                }
+                
+                for field, pattern in patterns.items():
+                    match = re.search(pattern, block, re.MULTILINE | re.IGNORECASE)
+                    if match:
+                        grant_data[field] = match.group(1).strip()
+                
+                # Only include grants with required fields
+                if grant_data.get('title') and (grant_data.get('description') or grant_data.get('funding_amount')):
+                    grants.append(grant_data)
+            
+            logger.info(f"Parsed {len(grants)} structured grants from content")
+            return grants
+            
+        except Exception as e:
+            logger.error(f"Error parsing structured results: {str(e)}")
+            return []
 
     async def _score_and_filter_grants(self, grants: List[Dict[str, Any]], grant_filter: GrantFilter) -> List[Dict[str, Any]]:
         # Placeholder for scoring logic - currently just filters by min_score
