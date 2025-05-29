@@ -26,22 +26,46 @@ class PerplexityClient:
             self._setup_mock_data()
             logger.info("Using mock Perplexity for development")
             return
+
         # Ensure API key is loaded from environment or passed
         self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
         if not self.api_key:
             logger.warning("Perplexity API key not found. Falling back to mock data. Please set PERPLEXITY_API_KEY.")
-            self.use_mock = True # Force mock if no key
+            self.use_mock = True  # Force mock if no key
             self._setup_mock_data()
             return
+
         self.base_url = "https://api.perplexity.ai"
         self.retry_attempts = 3
+        self._last_request_time = 0
+        
+        # Updated models configuration with clear capabilities
         self.models = {
-            "sonar-pro": {"rpm": 50, "features": ["images", "search_domain_filter"]},
-            "sonar-reasoning-pro": {"rpm": 50, "features": ["images", "search_domain_filter"]},
-            "sonar-deep-research": {"rpm": 5, "features": ["related_questions", "structured_outputs"]}
+            "sonar-pro": {
+                "rpm": 50,  # Requests per minute
+                "features": ["search_domain_filter", "structured_output"],
+                "timeout": 60.0,  # Default timeout in seconds
+                "is_default": True
+            },
+            "sonar-medium-online": {
+                "rpm": 100,
+                "features": ["search_domain_filter"],
+                "timeout": 30.0
+            },
+            "sonar-small-online": {
+                "rpm": 200,
+                "features": ["search_domain_filter"],
+                "timeout": 15.0
+            }
         }
-        self.default_model = "sonar-pro" # Default to sonar-pro for speed
-        logger.info(f"Perplexity client initialized with models: {list(self.models.keys())}")
+        
+        self.default_model = "sonar-pro"  # Best for complex tasks like grant analysis
+        self._rate_limiters = {
+            model: self._create_rate_limiter(config["rpm"])
+            for model, config in self.models.items()
+        }
+        
+        logger.info(f"Perplexity client initialized with default model: {self.default_model}")
 
     def _setup_mock_data(self):
         """Set up mock data for development."""
@@ -67,47 +91,44 @@ class PerplexityClient:
         ]
 
     async def search(self, query: str, model: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """
-        Execute a search with rate limiting based on model.
+        """Execute a search query against the Perplexity API with rate limiting and retries.
         
         Args:
-            query: The search query
-            model: The model to use (sonar-reasoning-pro or sonar-deep-research)
-            **kwargs: Additional parameters like search_domain_filter
-        """
-        model = model or self.default_model
-        if model not in self.models:
-            logger.warning(f"Unknown model {model}, falling back to {self.default_model}")
-            model = self.default_model
+            query: The search query text
+            model: Optional model override (defaults to self.default_model)
+            **kwargs: Additional parameters to pass to the API
             
-        # Rate limiting based on model RPM
-        rpm = self.models[model]["rpm"]
-        min_interval = 60.0 / rpm  # Minimum seconds between requests
+        Returns:
+            Dict containing the API response
+        """
+        if self.use_mock:
+            # Simulate API delay
+            await asyncio.sleep(0.01)
+            if hasattr(self, 'mock_results') and self.mock_results.get("choices"):
+                return self.mock_results["choices"][0]["message"]["content"]
+            return "Mock Perplexity response: No grants found for this query."
+
+        current_model = model or self.default_model
+        model_config = self.models.get(current_model, self.models[self.default_model])
         
+        # Apply rate limiting
         now = time.time()
-        if hasattr(self, '_last_request_time'):
-            time_since_last = now - self._last_request_time
-            if time_since_last < min_interval:
-                wait_time = min_interval - time_since_last
-                logger.info(f"Rate limiting: waiting {wait_time:.2f}s for {model}")
-                await asyncio.sleep(wait_time)
+        min_delay = self._rate_limiters[current_model]
+        elapsed = now - self._last_request_time
+        if elapsed < min_delay:
+            wait_time = min_delay - elapsed
+            logger.info(f"Rate limiting: waiting {wait_time:.2f}s for {current_model}")
+            await asyncio.sleep(wait_time)
         
         self._last_request_time = time.time()
-        
-        if self.use_mock:
-            # await asyncio.sleep(0.01) 
-            if hasattr(self, 'mock_results') and self.mock_results.get("choices"): 
-                return self.mock_results["choices"][0]["message"]["content"]
-            return "Mock Perplexity response: No specific grants found for this mock query."
-            
-        current_model = model or self.default_model
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            "Accept": "application/json"
         }
         
+        # Build the request payload
         payload = {
             "model": current_model,
             "messages": [
@@ -115,8 +136,15 @@ class PerplexityClient:
                     "role": "system",
                     "content": (
                         "You are a specialized grant search assistant. Your task is to find detailed "
-                        "information about grant opportunities based on the user query. Focus on extracting and presenting "
-                        "key details like title, description, funding amount, deadline, eligibility, and source URL."
+                        "information about grant opportunities based on the user query. Focus on extracting "
+                        "and presenting key details in a structured JSON format including:\n"
+                        "- title: Grant name/title\n"
+                        "- description: Detailed description of the grant\n"
+                        "- funding_amount: Dollar amount or range\n"
+                        "- deadline: Application deadline\n"
+                        "- eligibility: Who can apply\n"
+                        "- category: Grant category/type\n"
+                        "- url: Direct source URL\n"
                     )
                 },
                 {
@@ -126,45 +154,59 @@ class PerplexityClient:
             ]
         }
 
+        # Handle search domain filtering
         search_domains = kwargs.get('search_domain_filter')
-        if search_domains and current_model != "sonar-deep-research":
+        if search_domains and "search_domain_filter" in model_config["features"]:
             payload["search_domain_filter"] = search_domains
             logger.info(f"Using search_domain_filter: {search_domains} with model {current_model}")
-        elif search_domains and current_model == "sonar-deep-research":
-            logger.warning(f"Model {current_model} does not support search_domain_filter. Domains will be ignored by API. Consider embedding in query text.")
         
+        # Handle structured output flag
+        if kwargs.get('structured_output') and "structured_output" in model_config["features"]:
+            payload["structured_output"] = True
+
         async with httpx.AsyncClient() as client:
             for attempt in range(self.retry_attempts):
                 try:
-                    logger.debug(f"Attempt {attempt+1} to call Perplexity API. Payload: {json.dumps(payload, indent=2)}")
+                    logger.debug(f"Attempt {attempt+1} to call Perplexity API with {current_model}")
                     response = await client.post(
                         f"{self.base_url}/chat/completions",
                         headers=headers,
                         json=payload,
-                        timeout=60.0 
+                        timeout=model_config["timeout"]
                     )
                     response.raise_for_status()
                     response_data = response.json()
-                    logger.info(f"Perplexity search successful (model: {current_model}). Query: {query[:100]}...")
                     
-                    if response_data.get("choices") and response_data["choices"][0].get("message"): 
-                        return response_data["choices"][0]["message"].get("content")
+                    if response_data.get("choices") and response_data["choices"][0].get("message"):
+                        result = response_data["choices"][0]["message"].get("content")
+                        if result:
+                            logger.info(f"Perplexity search successful with {current_model}")
+                            return result
+                        logger.warning("Empty content in Perplexity response")
                     else:
-                        logger.warning(f"Perplexity response missing expected content structure: {response_data}")
-                        return None
+                        logger.warning(f"Unexpected Perplexity response structure: {response_data}")
+                    
+                    if attempt < self.retry_attempts - 1:
+                        wait_time = min(2 ** attempt, 8)
+                        await asyncio.sleep(wait_time)
+                        continue
+                        
                 except httpx.HTTPStatusError as e:
-                    logger.error(f"HTTP error calling Perplexity API (attempt {attempt+1}/{self.retry_attempts}): {e.response.status_code} - {e.response.text}")
-                    if attempt == self.retry_attempts - 1: return None
-                    await asyncio.sleep(2 ** attempt)
-                except httpx.RequestError as e:
-                    logger.error(f"Request error calling Perplexity API (attempt {attempt+1}/{self.retry_attempts}): {e}")
-                    if attempt == self.retry_attempts - 1: return None
-                    await asyncio.sleep(2 ** attempt)
+                    if e.response.status_code == 429:  # Rate limit
+                        if attempt < self.retry_attempts - 1:
+                            wait_time = min(2 ** attempt, 8)
+                            logger.info(f"Rate limited. Waiting {wait_time}s before retry...")
+                            await asyncio.sleep(wait_time)
+                            continue
+                    logger.error(f"HTTP error from Perplexity API: {e.response.status_code} - {e.response.text}")
                 except Exception as e:
-                    logger.error(f"Unexpected error in Perplexity search (attempt {attempt+1}/{self.retry_attempts}): {e}", exc_info=True)
-                    if attempt == self.retry_attempts - 1: return None
-                    await asyncio.sleep(2 ** attempt)
-        return None
+                    logger.error(f"Error calling Perplexity API: {str(e)}")
+                    if attempt < self.retry_attempts - 1:
+                        wait_time = min(2 ** attempt, 8)
+                        await asyncio.sleep(wait_time)
+                        continue
+
+        return None  # Return None if all attempts failed
 
     async def extract_grant_data(self, raw_perplexity_content: Optional[str]) -> List[Dict[str, Any]]:
         """Extract structured grant data from Perplexity search results using OpenAI."""
