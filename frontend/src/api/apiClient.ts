@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 import type { 
   Grant, 
   GrantSearchFilters,
@@ -9,10 +9,31 @@ import type {
   PaginatedResponse
 } from './types';
 
+interface CircuitBreaker {
+  failures: number;
+  lastFailure: number | null;
+  threshold: number;
+  resetTimeout: number;
+  recordFailure(): void;
+  isOpen(): boolean;
+  reset(): void;
+}
+
+interface EnhancedError extends Error {
+  status?: number;
+  data?: any;
+  type: 'timeout' | 'network' | 'auth' | 'forbidden' | 'not_found' | 'server' | 'unknown';
+}
+
+interface ErrorResponseData {
+  message?: string;
+  detail?: string;
+}
+
 // Circuit breaker implementation
-const circuitBreaker = {
+const circuitBreaker: CircuitBreaker = {
   failures: 0,
-  lastFailure: null as number | null,
+  lastFailure: null,
   threshold: 5,
   resetTimeout: 60000,
   
@@ -21,7 +42,7 @@ const circuitBreaker = {
     this.lastFailure = Date.now();
   },
   
-  isOpen() {
+  isOpen(): boolean {
     if (this.failures >= this.threshold && this.lastFailure) {
       const timeSinceLastFailure = Date.now() - this.lastFailure;
       if (timeSinceLastFailure < this.resetTimeout) {
@@ -39,49 +60,47 @@ const circuitBreaker = {
 };
 
 // Create axios instance with base API URL and default headers
-const API = axios.create({
+const API: AxiosInstance = axios.create({
   baseURL: process.env.REACT_APP_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000, // Increased to 15 seconds for slower connections
-  retry: 3,
-  retryDelay: (retryCount) => {
-    return Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff capped at 10s
-  }
+  timeout: 15000 // Increased to 15 seconds for slower connections
 });
 
 // Error categorization helper
-function categorizeError(error: any): Error {
+function categorizeError(error: AxiosError | Error): EnhancedError {
+  const axiosError = error as AxiosError<ErrorResponseData>;
   const enhancedError = new Error(
-    error.response?.data?.message || 
-    error.response?.data?.detail ||
+    axiosError.response?.data?.message || 
+    axiosError.response?.data?.detail ||
     error.message ||
     'An unexpected error occurred'
-  );
+  ) as EnhancedError;
   
-  (enhancedError as any).status = error.response?.status;
-  (enhancedError as any).data = error.response?.data;
+  Object.assign(enhancedError, {
+    status: axiosError.response?.status,
+    data: axiosError.response?.data,
+    type: 'unknown' as const
+  });
   
-  if (error.code === 'ECONNABORTED') {
-    (enhancedError as any).type = 'timeout';
+  if (axiosError.code === 'ECONNABORTED') {
+    enhancedError.type = 'timeout';
     enhancedError.message = 'Request timed out. Please check your connection and try again.';
-  } else if (!error.response) {
-    (enhancedError as any).type = 'network';
+  } else if (!axiosError.response) {
+    enhancedError.type = 'network';
     enhancedError.message = 'Network error. Please check your connection.';
-  } else if (error.response.status === 401) {
-    (enhancedError as any).type = 'auth';
+  } else if (axiosError.response.status === 401) {
+    enhancedError.type = 'auth';
     enhancedError.message = 'Session expired. Please login again.';
-    localStorage.removeItem('authOK');
-    window.location.reload();
-  } else if (error.response.status === 403) {
-    (enhancedError as any).type = 'forbidden';
+  } else if (axiosError.response.status === 403) {
+    enhancedError.type = 'forbidden';
     enhancedError.message = 'You do not have permission to perform this action.';
-  } else if (error.response.status === 404) {
-    (enhancedError as any).type = 'not_found';
+  } else if (axiosError.response.status === 404) {
+    enhancedError.type = 'not_found';
     enhancedError.message = 'The requested resource was not found.';
-  } else if (error.response.status >= 500) {
-    (enhancedError as any).type = 'server';
+  } else if (axiosError.response.status >= 500) {
+    enhancedError.type = 'server';
     enhancedError.message = 'Server error. Please try again later.';
   }
 
@@ -246,6 +265,34 @@ export const runSearch = async (): Promise<APIResponse<void>> => {
   }
 };
 
+export const getLastRun = async (): Promise<APIResponse<{ timestamp: string; status: string }>> => {
+  if (circuitBreaker.isOpen()) {
+    throw new Error('Service temporarily unavailable');
+  }
+  try {
+    const response = await API.get<APIResponse<{ timestamp: string; status: string }>>('/system/last-run');
+    circuitBreaker.reset();
+    return response.data;
+  } catch (error) {
+    circuitBreaker.recordFailure();
+    throw categorizeError(error);
+  }
+};
+
+export const getRunHistory = async (): Promise<APIResponse<Array<{ timestamp: string; status: string; results: number }>>> => {
+  if (circuitBreaker.isOpen()) {
+    throw new Error('Service temporarily unavailable');
+  }
+  try {
+    const response = await API.get<APIResponse<Array<{ timestamp: string; status: string; results: number }>>>('/system/run-history');
+    circuitBreaker.reset();
+    return response.data;
+  } catch (error) {
+    circuitBreaker.recordFailure();
+    throw categorizeError(error);
+  }
+};
+
 // Add named exports to default export to support both import styles
 const APIWithMethods = {
   ...API,
@@ -258,6 +305,8 @@ const APIWithMethods = {
   saveGrant,
   unsaveGrant,
   runSearch,
+  getLastRun,
+  getRunHistory,
   getUserSettings,
   updateUserSettings
 };
