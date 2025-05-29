@@ -155,6 +155,9 @@ class ResearchAgent:
         logging.info(f"Set up AgentQL search agents: Telecom ID={self.telecom_agent_id}, Nonprofit ID={self.nonprofit_agent_id}")
 
     async def search_grants(self, grant_filter: Dict[str, Any] | GrantFilter) -> List[Dict[str, Any]]:
+        """Execute tiered grant search with fallback to deep research for comprehensive results."""
+        start_time = time.time()
+        
         # Convert dict to GrantFilter if needed
         if isinstance(grant_filter, dict):
             grant_filter = GrantFilter(**grant_filter)
@@ -162,7 +165,6 @@ class ResearchAgent:
         try:
             filter_json = grant_filter.model_dump_json(indent=2)
         except AttributeError:
-            # Fallback for older Pydantic versions
             try:
                 filter_json = grant_filter.json(indent=2)
             except AttributeError:
@@ -170,41 +172,91 @@ class ResearchAgent:
                 filter_json = json.dumps(grant_filter.dict(), indent=2)
         
         logger.info(f"ResearchAgent 'DualSector Explorer' starting search with initial filter: {filter_json}")
-
-        all_found_grants_map: Dict[str, Dict[str, Any]] = {} # Use URL or title as key to avoid duplicates
         
-        # Tiered search logic
+        all_found_grants_map: Dict[str, Dict[str, Any]] = {}
+        tier_stats = {}
+        
+        # Primary search with sonar-reasoning-pro
         for tier_name, tier_config in self.GEO_TIERS.items():
             logger.info(f"Executing search Tier: {tier_name} - Focus: {tier_config['focus']}")
+            tier_start = time.time()
             
-            # Create specific filters for this tier, incorporating initial grant_filter if provided
+            # Create specific filters for this tier
             tier_specific_filters = self._create_filters_for_tier(tier_name, tier_config, grant_filter)
+            tier_results = await self._execute_search_tier(tier_specific_filters, model="sonar-reasoning-pro")
             
-            tier_results = await self._execute_search_tier(tier_specific_filters)
+            # Track stats for this tier
+            tier_stats[tier_name] = {
+                "duration": time.time() - tier_start,
+                "results_found": len(tier_results)
+            }
             
             for grant_data in tier_results:
-                # Use a unique identifier, e.g., source_url or a combination if URL is not always present
                 grant_key = grant_data.get("source_url") or grant_data.get("title", "").lower()
                 if grant_key and grant_key not in all_found_grants_map:
                     all_found_grants_map[grant_key] = grant_data
+        
+        initial_results_count = len(all_found_grants_map)
+        logger.info(f"Initial search found {initial_results_count} grants")
+        
+        # If we have less than 2 results, try deep research fallback
+        if initial_results_count < 2:
+            logger.info("Insufficient results, initiating deep research fallback")
+            fallback_start = time.time()
             
-            if len(all_found_grants_map) >= self.MIN_RESULTS_PER_TIER_TARGET and tier_name != list(self.GEO_TIERS.keys())[-1]:
-                logger.info(f"Sufficient results ({len(all_found_grants_map)}) found after tier '{tier_name}'. Optional: could stop early.")
-                # Consider breaking if a very high number of quality grants are found early
-        if not all_found_grants_map:
-            logger.info("No grants found after all search tiers.")
-            return []
+            enhanced_query = self._build_enhanced_query(grant_filter)
+            fallback_results = await self._execute_search_tier(
+                enhanced_query,
+                model="sonar-deep-research",
+                structured_output=True
+            )
+            
+            # Track fallback stats
+            tier_stats["deep_research_fallback"] = {
+                "duration": time.time() - fallback_start,
+                "results_found": len(fallback_results)
+            }
+            
+            # Merge fallback results
+            for grant_data in fallback_results:
+                grant_key = grant_data.get("source_url") or grant_data.get("title", "").lower()
+                if grant_key and grant_key not in all_found_grants_map:
+                    all_found_grants_map[grant_key] = grant_data
         
-        # Convert map values to list for scoring
+        # Final processing
         grants_to_score = list(all_found_grants_map.values())
-        logger.info(f"Found {len(grants_to_score)} unique potential grants across all tiers. Proceeding to scoring.")
+        total_duration = time.time() - start_time
         
-        # Score and apply final relevance filter (min_score from initial grant_filter)
-        # The _score_and_filter_grants method already uses grant_filter.min_score
+        logger.info(
+            f"Search complete in {total_duration:.2f}s. "
+            f"Found {len(grants_to_score)} unique grants. "
+            f"Tier stats: {json.dumps(tier_stats, indent=2)}"
+        )
+        
+        # Score and return results
         scored_grants = await self._score_and_filter_grants(grants_to_score, grant_filter)
-        
-        logger.info(f"Returning {len(scored_grants)} grants after scoring and final filtering.")
         return scored_grants
+
+    def _build_enhanced_query(self, grant_filter: GrantFilter) -> str:
+        """Build a comprehensive query for deep research fallback."""
+        base_query = (
+            "Analyze and identify innovative grant opportunities with detailed "
+            "funding information, eligibility criteria, and deadlines. "
+            "Focus on comprehensive structured data including:\n"
+            "- Exact funding amounts and ranges\n"
+            "- Specific eligibility requirements\n"
+            "- Clear application deadlines\n"
+            "- Direct source URLs\n"
+            "- Program objectives and priorities\n"
+        )
+        
+        if grant_filter.keywords:
+            base_query += f"\nSpecific focus areas: {grant_filter.keywords}"
+        
+        if grant_filter.geographic_focus:
+            base_query += f"\nGeographic focus: {grant_filter.geographic_focus}"
+        
+        return base_query
 
     def _create_filters_for_tier(self, tier_name: str, tier_config: Dict, base_filter: GrantFilter) -> GrantFilter:
         tier_keywords = list(self.SECTOR_KEYWORDS) # Start with core persona keywords

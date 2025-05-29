@@ -36,9 +36,19 @@ class PerplexityClient:
         
         self.base_url = "https://api.perplexity.ai"
         self.retry_attempts = 3
-        self.default_model = "sonar-pro" # Default to a model supporting search_domain_filter
+        self.models = {
+            "sonar-reasoning-pro": {
+                "rpm": 50,
+                "features": ["images", "search_domain_filter"]
+            },
+            "sonar-deep-research": {
+                "rpm": 5,
+                "features": ["related_questions", "structured_outputs"]
+            }
+        }
+        self.default_model = "sonar-reasoning-pro" # Default to a model supporting search_domain_filter
         
-        logger.info(f"Perplexity client initialized for live API calls with default model: {self.default_model}")
+        logger.info(f"Perplexity client initialized with models: {list(self.models.keys())}")
 
     def _setup_mock_data(self):
         """Set up mock data for development."""
@@ -63,15 +73,41 @@ class PerplexityClient:
             }
         ]
 
-    async def search(self, query: str, model_name: Optional[str] = None, search_domains: Optional[List[str]] = None) -> Optional[str]:
-        """Perform a search using Perplexity API. Returns the raw content string or None."""
+    async def search(self, query: str, model: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+        """
+        Execute a search with rate limiting based on model.
+        
+        Args:
+            query: The search query
+            model: The model to use (sonar-reasoning-pro or sonar-deep-research)
+            **kwargs: Additional parameters like search_domain_filter
+        """
+        model = model or self.default_model
+        if model not in self.models:
+            logger.warning(f"Unknown model {model}, falling back to {self.default_model}")
+            model = self.default_model
+            
+        # Rate limiting based on model RPM
+        rpm = self.models[model]["rpm"]
+        min_interval = 60.0 / rpm  # Minimum seconds between requests
+        
+        now = time.time()
+        if hasattr(self, '_last_request_time'):
+            time_since_last = now - self._last_request_time
+            if time_since_last < min_interval:
+                wait_time = min_interval - time_since_last
+                logger.info(f"Rate limiting: waiting {wait_time:.2f}s for {model}")
+                await asyncio.sleep(wait_time)
+        
+        self._last_request_time = time.time()
+        
         if self.use_mock:
             # await asyncio.sleep(0.01) 
             if hasattr(self, 'mock_results') and self.mock_results.get("choices"): 
                 return self.mock_results["choices"][0]["message"]["content"]
             return "Mock Perplexity response: No specific grants found for this mock query."
             
-        current_model = model_name or self.default_model
+        current_model = model or self.default_model
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -97,6 +133,7 @@ class PerplexityClient:
             ]
         }
 
+        search_domains = kwargs.get('search_domain_filter')
         if search_domains and current_model != "sonar-deep-research":
             payload["search_domain_filter"] = search_domains
             logger.info(f"Using search_domain_filter: {search_domains} with model {current_model}")
@@ -268,4 +305,122 @@ class PerplexityClient:
 
         if grants:
             logger.info(f"Basic regex fallback extracted {len(grants)} potential grants.")
+        return grants
+
+    async def _execute_search(self, query: str, model: str = None, **kwargs) -> Dict[str, Any]:
+        """Execute search with proper model handling and retries."""
+        if self.use_mock:
+            return self.mock_results
+            
+        current_model = model or self.default_model
+        search_domain_filter = kwargs.get('search_domain_filter')
+        structured_output = kwargs.get('structured_output', False)
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": current_model,
+            "messages": [{
+                "role": "user",
+                "content": query
+            }]
+        }
+        
+        # Add model-specific parameters
+        if current_model == "sonar-reasoning-pro" and search_domain_filter:
+            payload["search_domain_filter"] = search_domain_filter
+            logger.info(f"Using search_domain_filter: {search_domain_filter} with model {current_model}")
+        
+        if current_model == "sonar-deep-research" and structured_output:
+            # Enhance query for structured output
+            payload["messages"][0]["content"] = f"{query}\n\nPlease provide results in a structured format including:\n- Title\n- Description\n- Funding Amount\n- Deadline\n- Eligibility\n- Source URL"
+            
+        for attempt in range(self.retry_attempts):
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=30.0
+                    )
+                    
+                    if response.status_code == 200:
+                        logger.info(f"Perplexity search successful (model: {current_model}). Query: {query[:100]}...")
+                        return response.json()
+                    else:
+                        logger.error(f"HTTP error calling Perplexity API (attempt {attempt + 1}/{self.retry_attempts}): {response.status_code} - {response.text}")
+                        
+                        if response.status_code == 429:  # Rate limit
+                            wait_time = min(2 ** attempt, 8)  # Exponential backoff
+                            logger.info(f"Rate limited. Waiting {wait_time}s before retry...")
+                            await asyncio.sleep(wait_time)
+                            continue
+                            
+            except Exception as e:
+                logger.error(f"Error calling Perplexity API (attempt {attempt + 1}/{self.retry_attempts}): {str(e)}")
+                
+            if attempt < self.retry_attempts - 1:
+                wait_time = min(2 ** attempt, 8)
+                await asyncio.sleep(wait_time)
+                
+        logger.error("All attempts to call Perplexity API failed")
+        return {"choices": [{"message": {"content": ""}}]}
+
+    def _parse_grant_data(self, content: str) -> List[Dict[str, Any]]:
+        """Parse grant data from API response with robust field extraction."""
+        grants = []
+        current_grant = {}
+        
+        # Common patterns for grant fields
+        patterns = {
+            "title": r"(?i)title:\s*(.+?)(?=\n|$)",
+            "description": r"(?i)description:\s*(.+?)(?=\n|$)",
+            "funding_amount": r"(?i)funding.?amount:\s*([^\n]+)",
+            "deadline": r"(?i)deadline:\s*(.+?)(?=\n|$)",
+            "eligibility": r"(?i)eligibility:\s*(.+?)(?=\n|$)",
+            "source_url": r"(?i)(?:source.?url|url|link):\s*(\S+)"
+        }
+        
+        # Split content into individual grant blocks
+        grant_blocks = re.split(r'\n\s*\n|(?=Title:)', content)
+        
+        for block in grant_blocks:
+            if not block.strip():
+                continue
+                
+            grant_data = {}
+            
+            # Extract fields using patterns
+            for field, pattern in patterns.items():
+                match = re.search(pattern, block, re.MULTILINE | re.IGNORECASE)
+                if match:
+                    grant_data[field] = match.group(1).strip()
+            
+            # Only include grants that have at least title and one other field
+            if grant_data.get('title') and len(grant_data) > 1:
+                # Clean and normalize data
+                if 'funding_amount' in grant_data:
+                    # Extract numeric amount and range
+                    amount_str = grant_data['funding_amount']
+                    amount_match = re.search(r'[\d,]+', amount_str)
+                    if amount_match:
+                        grant_data['funding_amount'] = float(amount_match.group().replace(',', ''))
+                        
+                if 'deadline' in grant_data:
+                    # Try to parse and normalize date
+                    try:
+                        date_str = grant_data['deadline']
+                        # Add various date format parsing here
+                        parsed_date = datetime.strptime(date_str, '%Y-%m-%d')
+                        grant_data['deadline'] = parsed_date.isoformat()
+                    except ValueError:
+                        # Keep original if parsing fails
+                        pass
+                
+                grants.append(grant_data)
+        
         return grants

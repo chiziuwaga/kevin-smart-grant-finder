@@ -62,11 +62,13 @@ async def fetch_distribution(db: AsyncSession) -> Dict[str, Any]:
     category_query = select(
         Grant.category,
         func.count(Grant.id).label('count')
-    ).group_by(Grant.category).order_by(text('count DESC'))
+    ).filter(Grant.category.isnot(None))\
+    .group_by(Grant.category)\
+    .order_by(text('count DESC'))
     
     category_result = await db.execute(category_query)
     categories = [
-        {"_id": cat, "count": count}
+        {"_id": cat or "Uncategorized", "count": count}
         for cat, count in category_result.all()
     ]
 
@@ -74,17 +76,19 @@ async def fetch_distribution(db: AsyncSession) -> Dict[str, Any]:
     deadline_query = select(
         func.date_trunc('month', Grant.deadline).label('month'),
         func.count(Grant.id).label('count')
-    ).group_by(text('month')).order_by(text('month'))
+    ).filter(Grant.deadline.isnot(None))\
+    .group_by(text('month'))\
+    .order_by(text('month'))
     
     deadline_result = await db.execute(deadline_query)
     deadlines = [
-        {"_id": month.strftime("%Y-%m"), "count": count}
+        {"_id": month.strftime("%Y-%m") if month else "No Deadline", "count": count}
         for month, count in deadline_result.all()
     ]
 
     return {
-        "categories": categories,
-        "deadlines": deadlines
+        "categories": categories or [],
+        "deadlines": deadlines or []
     }
 
 async def save_user_settings(db: AsyncSession, settings_data: Dict[str, Any]) -> Dict[str, Any]:
