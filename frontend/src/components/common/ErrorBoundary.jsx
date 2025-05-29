@@ -32,7 +32,7 @@ class ErrorBoundary extends React.Component {
         >
           <ErrorIcon sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
           <Typography variant="h5" color="error" gutterBottom>
-            Something went wrong
+            Something went wrong (Boundary v2)
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 2 }}>
             {this.state.error?.message || 'An unexpected error occurred'}
