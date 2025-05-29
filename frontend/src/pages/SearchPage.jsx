@@ -25,8 +25,9 @@ import {
     Clear as ClearIcon,
 } from '@mui/icons-material';
 import { format, parseISO, differenceInDays } from 'date-fns';
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { searchGrants } from '../api/apiClient';
+import { useLoading } from '../components/common/LoadingProvider';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
 import TableSkeleton from '../components/common/TableSkeleton';
@@ -35,41 +36,63 @@ const CATEGORIES = ['All', 'Research', 'Education', 'Community', 'Healthcare', '
 
 const SearchPage = () => {
   const theme = useTheme();
+  const { startLoading, stopLoading, showError } = useLoading();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
   const [minScore, setMinScore] = useState(70);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchError, setSearchError] = useState(null);
 
-  const handleSearch = async () => {
-    if (!query.trim()) return;
+  const handleSearch = useCallback(async () => {
+    if (!query.trim()) {
+      showError('Please enter a search query');
+      return;
+    }
+
     setLoading(true);
+    setSearchError(null);
     setHasSearched(true);
+    startLoading();
+
     try {
-      const body = { query, category: category === 'All' ? undefined : category, min_score: minScore };
+      const body = { 
+        query: query.trim(), 
+        category: category === 'All' ? undefined : category, 
+        min_score: minScore 
+      };
       const data = await searchGrants(body);
-      setResults(data);
-    } catch (e) {
-      console.error(e);
+      setResults(Array.isArray(data) ? data : []);
+      
+      if (Array.isArray(data) && data.length === 0) {
+        setSearchError('No grants found matching your criteria');
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchError(error.message || 'Failed to search grants. Please try again.');
+      showError('An error occurred while searching. Please try again.');
+      setResults([]);
     } finally {
       setLoading(false);
+      stopLoading();
     }
-  };
+  }, [query, category, minScore, showError, startLoading, stopLoading]);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setQuery('');
     setCategory('All');
     setMinScore(70);
     setResults([]);
     setHasSearched(false);
-  };
+    setSearchError(null);
+  }, []);
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter') {
+  const handleKeyPress = useCallback((e) => {
+    if (e.key === 'Enter' && query.trim()) {
       handleSearch();
     }
-  };
+  }, [query, handleSearch]);
 
   const getRelevanceColor = (score) => {
     if (score >= 90) return theme.palette.success.main;
@@ -264,7 +287,7 @@ const SearchPage = () => {
             </TableContainer>
           ) : (
             <EmptyState 
-              message="No grants found matching your search criteria"
+              message={searchError || "No grants found matching your search criteria"}
               action={true}
               actionLabel="Reset Search"
               onAction={handleReset}
@@ -282,8 +305,17 @@ const SearchPage = () => {
               Enter your search criteria above to find grants
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              You can search by keywords, categories, or specific requirements
+              Try searching by keywords, categories, or specific requirements
             </Typography>
+            {searchError && (
+              <Typography 
+                variant="body2" 
+                color="error" 
+                sx={{ mt: 2, fontWeight: 500 }}
+              >
+                {searchError}
+              </Typography>
+            )}
           </Box>
         )}
       </LoaderOverlay>

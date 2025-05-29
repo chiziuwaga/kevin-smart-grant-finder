@@ -133,18 +133,21 @@ class PerplexityClient:
             "model": current_model,
             "messages": [
                 {
-                    "role": "system",
-                    "content": (
-                        "You are a specialized grant search assistant. Your task is to find detailed "
-                        "information about grant opportunities based on the user query. Focus on extracting "
-                        "and presenting key details in a structured JSON format including:\n"
-                        "- title: Grant name/title\n"
-                        "- description: Detailed description of the grant\n"
-                        "- funding_amount: Dollar amount or range\n"
-                        "- deadline: Application deadline\n"
-                        "- eligibility: Who can apply\n"
-                        "- category: Grant category/type\n"
-                        "- url: Direct source URL\n"
+                    "role": "system",                    "content": (
+                        "You are a specialized grant search assistant. Your task is to find and format grant "
+                        "opportunities based on the user's query. For each grant, provide:\n\n"
+                        "- title: Clear, specific grant name (required)\n"
+                        "- description: Detailed overview of purpose and requirements (required)\n"
+                        "- funding_amount: Numeric amount in USD (max value for ranges, no currency symbols)\n"
+                        "- deadline: Date in YYYY-MM-DD format (future dates only)\n"
+                        "- eligibility_criteria: Detailed eligibility requirements\n"
+                        "- category: Specific category (e.g., research, education, nonprofit)\n"
+                        "- source_url: Complete URL starting with http(s)://\n"
+                        "- source_name: Name of granting organization\n"
+                        "- score: Relevance score (0-100 if applicable)\n\n"
+                        "Present information in a clear, structured format. Ensure all monetary values are "
+                        "positive numbers and dates are properly formatted. Include complete URLs for verification.\n"
+                        "If any required field is unavailable, use null. Skip optional fields if not found."
                     )
                 },
                 {
@@ -187,15 +190,23 @@ class PerplexityClient:
                         logger.warning(f"Unexpected Perplexity response structure: {response_data}")
                     
                     if attempt < self.retry_attempts - 1:
-                        wait_time = min(2 ** attempt, 8)
+                        wait_time = min(2 ** attempt * 1.5, 10) # Increased backoff and max wait
+                        logger.info(f"Retrying in {wait_time}s...")
                         await asyncio.sleep(wait_time)
                         continue
                         
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 429:  # Rate limit
+                        retry_after = e.response.headers.get('retry-after')
+                        wait_time = float(retry_after) if retry_after else min(2 ** attempt * 2, 15)
+                        logger.warning(f"Rate limited. Waiting {wait_time}s before retry...")
+                        await asyncio.sleep(wait_time)
                         if attempt < self.retry_attempts - 1:
-                            wait_time = min(2 ** attempt, 8)
-                            logger.info(f"Rate limited. Waiting {wait_time}s before retry...")
+                            continue
+                    elif e.response.status_code >= 500:  # Server errors
+                        if attempt < self.retry_attempts - 1:
+                            wait_time = min(2 ** attempt * 1.5, 10)
+                            logger.warning(f"Server error. Retrying in {wait_time}s...")
                             await asyncio.sleep(wait_time)
                             continue
                     logger.error(f"HTTP error from Perplexity API: {e.response.status_code} - {e.response.text}")
@@ -228,15 +239,22 @@ class PerplexityClient:
             "model": "gpt-4o", 
             "messages": [
                 {
-                    "role": "system",
-                    "content": (
+                    "role": "system",                    "content": (
                         "You are a grant data extraction assistant. Extract all grant opportunities from the "
-                        "provided text. For each grant, include: title (string), description (string), "
-                        "deadline (string, YYYY-MM-DD if possible, otherwise as found), "
-                        "funding_amount (string, e.g., \"$10,000\" or \"Up to $50,000\"), "
-                        "eligibility_criteria (string), source_url (string, a valid URL), and source_name (string, e.g., \"Grants.gov\"). "
-                        "Format the response as a JSON object containing a single key \"grants\" which is a list of grant objects. "
-                        "If a field is not available, omit it or use null. If no grants are found, return {\"grants\": []}."
+                        "provided text. For each grant, format the data as follows:\n\n"
+                        "- title (string): Required. Clear, concise title without trailing periods.\n"
+                        "- description (string): Required. Detailed description of the grant purpose and requirements.\n"
+                        "- deadline (string): Format as YYYY-MM-DD. If not exact date, use the latest possible date mentioned.\n"
+                        "- funding_amount (number): Convert to numeric value, use maximum for ranges. Omit currency symbols.\n"
+                        "- eligibility_criteria (string): Who can apply, requirements, and restrictions.\n"
+                        "- category (string): Grant type (e.g., 'research', 'education', 'nonprofit').\n"
+                        "- source_url (string): Must be a valid, complete URL starting with http(s)://.\n"
+                        "- source_name (string): Name of the granting organization or platform.\n"
+                        "- score (number, optional): If relevance score available, provide as 0-100 float.\n\n"
+                        "Format response as JSON: {\"grants\": [...]}\n"
+                        "For missing required fields, use null. Omit optional fields if not found.\n"
+                        "Ensure all dates are future dates or null if past.\n"
+                        "Ensure funding amounts are positive numbers or null if unclear."
                     )
                 },
                 {
@@ -324,13 +342,42 @@ class PerplexityClient:
                 deadline_match = re.search(r"Deadline(?:s)?:\s*([^\n]+)", block_text, re.IGNORECASE)
                 amount_match = re.search(r"(?:Funding Amount|Amount):\s*([^\n]+)", block_text, re.IGNORECASE)
                 url_match = re.search(r"(?:URL|Link|Website|Source URL):\s*(https?://[^\s]+)", block_text, re.IGNORECASE)
-                eligibility_match = re.search(r"Eligibility(?: Criteria)?:\s*([^\n]+)(?:\n|$)", block_text, re.IGNORECASE)
+                eligibility_match = re.search(r"Eligibility(?: Criteria)?:\s*([^\n]+)(?:\n|$)", block_text, re.IGNORECASE)                # Process funding amount
+                funding_amount = None
+                if amount_match:
+                    amount_str = amount_match.group(1).strip()
+                    # Handle ranges and normalize amount
+                    range_match = re.search(r'(?:[\$£€]?\s*)([\d,]+(?:\.\d+)?)\s*(?:-|to)\s*([\d,]+(?:\.\d+)?)', amount_str)
+                    if range_match:
+                        amount1 = float(range_match.group(1).replace(',', ''))
+                        amount2 = float(range_match.group(2).replace(',', ''))
+                        funding_amount = max(amount1, amount2)
+                    else:
+                        amount_match = re.search(r'(?:[\$£€]?\s*)([\d,]+(?:\.\d+)?)', amount_str)
+                        if amount_match:
+                            funding_amount = float(amount_match.group(1).replace(',', ''))
+
+                # Process deadline
+                deadline = None
+                if deadline_match:
+                    try:
+                        date_str = deadline_match.group(1).strip()
+                        for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%B %d, %Y', '%b %d, %Y']:
+                            try:
+                                parsed_date = datetime.strptime(date_str, fmt)
+                                if parsed_date > datetime.now():
+                                    deadline = parsed_date.isoformat()
+                                    break
+                            except ValueError:
+                                continue
+                    except Exception as e:
+                        logger.warning(f"Error parsing deadline in regex fallback: {e}")
 
                 grants.append({
                     "title": title,
                     "description": description,
-                    "deadline": deadline_match.group(1).strip() if deadline_match else None,
-                    "funding_amount": amount_match.group(1).strip() if amount_match else None,
+                    "deadline": deadline,
+                    "funding_amount": funding_amount,
                     "source_url": url_match.group(1).strip() if url_match else None,
                     "eligibility_criteria": eligibility_match.group(1).strip() if eligibility_match else "See source for details",
                     "source_name": "Perplexity Extraction Fallback"
@@ -438,24 +485,96 @@ class PerplexityClient:
             # Only include grants that have at least title and one other field
             if grant_data.get('title') and len(grant_data) > 1:
                 # Clean and normalize data
-                if 'funding_amount' in grant_data:
-                    # Extract numeric amount and range
+                if 'funding_amount' in grant_data:                    # Extract and normalize funding amount
                     amount_str = grant_data['funding_amount']
-                    amount_match = re.search(r'[\d,]+', amount_str)
-                    if amount_match:
-                        grant_data['funding_amount'] = float(amount_match.group().replace(',', ''))
-                        
+                    # Handle ranges like "10,000 - 50,000" or "Up to 50,000"
+                    range_match = re.search(r'(?:[\$£€]?\s*)([\d,]+(?:\.\d+)?)\s*(?:-|to)\s*([\d,]+(?:\.\d+)?)', amount_str)
+                    if range_match:
+                        # For ranges, use the maximum amount
+                        amount1 = float(range_match.group(1).replace(',', ''))
+                        amount2 = float(range_match.group(2).replace(',', ''))
+                        grant_data['funding_amount'] = max(amount1, amount2)
+                    else:
+                        # Handle single amounts
+                        amount_match = re.search(r'(?:[\$£€]?\s*)([\d,]+(?:\.\d+)?)', amount_str)
+                        if amount_match:
+                            grant_data['funding_amount'] = float(amount_match.group(1).replace(',', ''))
+                          # Validate amount is positive
+                    if grant_data.get('funding_amount', 0) < 0:
+                        logger.warning(f"Invalid negative funding amount found: {amount_str}")
+                        grant_data['funding_amount'] = None
+
                 if 'deadline' in grant_data:
-                    # Try to parse and normalize date
+                    # Try to parse and normalize date with multiple format support
                     try:
                         date_str = grant_data['deadline']
-                        # Add various date format parsing here
-                        parsed_date = datetime.strptime(date_str, '%Y-%m-%d')
-                        grant_data['deadline'] = parsed_date.isoformat()
-                    except ValueError:
-                        # Keep original if parsing fails
-                        pass
+                        # Common date formats to try
+                        date_formats = [
+                            '%Y-%m-%d',           # 2023-12-31
+                            '%m/%d/%Y',           # 12/31/2023
+                            '%d/%m/%Y',           # 31/12/2023
+                            '%B %d, %Y',          # December 31, 2023
+                            '%b %d, %Y',          # Dec 31, 2023
+                            '%d %B %Y',           # 31 December 2023
+                            '%d %b %Y',           # 31 Dec 2023
+                            '%m-%d-%Y',           # 12-31-2023
+                            '%Y/%m/%d'            # 2023/12/31
+                        ]
+                        
+                        parsed_date = None
+                        for fmt in date_formats:
+                            try:
+                                parsed_date = datetime.strptime(date_str, fmt)
+                                break
+                            except ValueError:
+                                continue
+                                  if parsed_date:
+                            # Only use future dates
+                            if parsed_date > datetime.now():
+                                # Use ISO format for consistent API responses
+                                grant_data['deadline'] = parsed_date.isoformat()
+                            else:
+                                logger.warning(f"Skipping past deadline: {date_str}")
+                                grant_data['deadline'] = None
+                        else:
+                            # If no format matched, try to extract using regex
+                            date_match = re.search(r'(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4})', date_str)
+                            if date_match:
+                                date_str_normalized = date_match.group(1)
+                                try:
+                                    # Attempt to parse the regex match with common formats
+                                    for fmt in ['%Y/%m/%d', '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y']:
+                                        try:
+                                            parsed_date = datetime.strptime(date_str_normalized, fmt)
+                                            if parsed_date > datetime.now():
+                                                grant_data['deadline'] = parsed_date.isoformat()
+                                                break
+                                        except ValueError:
+                                            continue
+                                except Exception:
+                                    logger.warning(f"Failed to normalize date from regex match: {date_str_normalized}")
+                            else:
+                                logger.warning(f"Could not parse date format: {date_str}")
+                                grant_data['deadline'] = None
+                    except Exception as e:
+                        logger.warning(f"Error parsing deadline date: {e}")
+                        grant_data['deadline'] = None
                 
                 grants.append(grant_data)
         
         return grants
+
+    def _create_rate_limiter(self, rpm: int) -> float:
+        """
+        Create a rate limiter for a specific model based on its RPM limit.
+        
+        Args:
+            rpm: Requests per minute limit for the model
+            
+        Returns:
+            float: Minimum delay between requests in seconds
+        """
+        # Convert RPM to minimum delay between requests
+        min_delay = 60.0 / float(rpm)  # Ensure float division
+        logger.debug(f"Creating rate limiter with {rpm} RPM (min delay: {min_delay:.2f}s)")
+        return min_delay

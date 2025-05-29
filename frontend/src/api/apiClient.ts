@@ -12,7 +12,7 @@ import type {
 // Circuit breaker implementation
 const circuitBreaker = {
   failures: 0,
-  lastFailure: null,
+  lastFailure: null as number | null,
   threshold: 5,
   resetTimeout: 60000,
   
@@ -22,7 +22,7 @@ const circuitBreaker = {
   },
   
   isOpen() {
-    if (this.failures >= this.threshold) {
+    if (this.failures >= this.threshold && this.lastFailure) {
       const timeSinceLastFailure = Date.now() - this.lastFailure;
       if (timeSinceLastFailure < this.resetTimeout) {
         return true;
@@ -51,64 +51,8 @@ const API = axios.create({
   }
 });
 
-// Request interceptor
-API.interceptors.request.use(
-  (config) => {
-    // Add request timestamp for timeout tracking
-    config.metadata = { startTime: new Date() };
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Add retry logic with improved error categorization
-API.interceptors.response.use(
-  (response) => {
-    // Calculate request duration
-    const duration = new Date() - response.config.metadata.startTime;
-    if (duration > 5000) { // Log slow requests (>5s)
-      console.warn(`Slow API call to ${response.config.url}: ${duration}ms`);
-    }
-    return response.data;
-  },
-  async (err) => {
-    const { config } = err;
-    
-    // Don't retry if we don't have a config, or if explicitly told not to
-    if (!config || config.noRetry) {
-      return Promise.reject(err);
-    }
-
-    // Track retry count
-    config.__retryCount = config.__retryCount || 0;
-    
-    // Check if we've maxed out retries
-    if (config.__retryCount >= (config.retry || 3)) {
-      // Enhanced error categorization
-      const enhancedError = categorizeError(err);
-      return Promise.reject(enhancedError);
-    }
-    
-    // Increment retry count
-    config.__retryCount += 1;
-    
-    // Exponential backoff with jitter
-    const backoffDelay = config.retryDelay(config.__retryCount);
-    const jitter = Math.random() * 100; // Add randomness to prevent thundering herd
-    
-    // Log retry attempt
-    console.warn(`Retrying request to ${config.url} (attempt ${config.__retryCount}/${config.retry})`);
-    
-    // Delay and retry request
-    await new Promise(resolve => setTimeout(resolve, backoffDelay + jitter));
-    return API(config);
-  }
-);
-
 // Error categorization helper
-function categorizeError(error) {
+function categorizeError(error: any): Error {
   const enhancedError = new Error(
     error.response?.data?.message || 
     error.response?.data?.detail ||
@@ -116,29 +60,28 @@ function categorizeError(error) {
     'An unexpected error occurred'
   );
   
-  enhancedError.status = error.response?.status;
-  enhancedError.data = error.response?.data;
+  (enhancedError as any).status = error.response?.status;
+  (enhancedError as any).data = error.response?.data;
   
-  // Add specific error types
   if (error.code === 'ECONNABORTED') {
-    enhancedError.type = 'timeout';
+    (enhancedError as any).type = 'timeout';
     enhancedError.message = 'Request timed out. Please check your connection and try again.';
   } else if (!error.response) {
-    enhancedError.type = 'network';
+    (enhancedError as any).type = 'network';
     enhancedError.message = 'Network error. Please check your connection.';
   } else if (error.response.status === 401) {
-    enhancedError.type = 'auth';
+    (enhancedError as any).type = 'auth';
     enhancedError.message = 'Session expired. Please login again.';
     localStorage.removeItem('authOK');
     window.location.reload();
   } else if (error.response.status === 403) {
-    enhancedError.type = 'forbidden';
+    (enhancedError as any).type = 'forbidden';
     enhancedError.message = 'You do not have permission to perform this action.';
   } else if (error.response.status === 404) {
-    enhancedError.type = 'not_found';
+    (enhancedError as any).type = 'not_found';
     enhancedError.message = 'The requested resource was not found.';
   } else if (error.response.status >= 500) {
-    enhancedError.type = 'server';
+    (enhancedError as any).type = 'server';
     enhancedError.message = 'Server error. Please try again later.';
   }
 
@@ -259,14 +202,49 @@ export const unsaveGrant = async (id: string): Promise<APIResponse<void>> => {
   }
 };
 
-// System endpoints
-export const runSearch = () => API.post('/system/run-search');
-export const getLastRun = () => API.get('/system/last-run');
-export const getRunHistory = () => API.get('/system/run-history');
+// User settings endpoints
+export const getUserSettings = async (): Promise<APIResponse<UserSettings>> => {
+  if (circuitBreaker.isOpen()) {
+    throw new Error('Service temporarily unavailable');
+  }
+  try {
+    const response = await API.get<APIResponse<UserSettings>>('/user/settings');
+    circuitBreaker.reset();
+    return response.data;
+  } catch (error) {
+    circuitBreaker.recordFailure();
+    throw categorizeError(error);
+  }
+};
 
-// User settings
-export const getUserSettings = () => API.get('/user/settings');
-export const updateUserSettings = (settings) => API.put('/user/settings', settings);
+export const updateUserSettings = async (settings: Partial<UserSettings>): Promise<APIResponse<UserSettings>> => {
+  if (circuitBreaker.isOpen()) {
+    throw new Error('Service temporarily unavailable');
+  }
+  try {
+    const response = await API.put<APIResponse<UserSettings>>('/user/settings', settings);
+    circuitBreaker.reset();
+    return response.data;
+  } catch (error) {
+    circuitBreaker.recordFailure();
+    throw categorizeError(error);
+  }
+};
+
+// System endpoints
+export const runSearch = async (): Promise<APIResponse<void>> => {
+  if (circuitBreaker.isOpen()) {
+    throw new Error('Service temporarily unavailable');
+  }
+  try {
+    const response = await API.post<APIResponse<void>>('/system/run-search');
+    circuitBreaker.reset();
+    return response.data;
+  } catch (error) {
+    circuitBreaker.recordFailure();
+    throw categorizeError(error);
+  }
+};
 
 // Add named exports to default export to support both import styles
 const APIWithMethods = {
@@ -280,8 +258,6 @@ const APIWithMethods = {
   saveGrant,
   unsaveGrant,
   runSearch,
-  getLastRun,
-  getRunHistory,
   getUserSettings,
   updateUserSettings
 };

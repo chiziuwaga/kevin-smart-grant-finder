@@ -32,8 +32,9 @@ import {
     AttachMoney as AttachMoneyIcon,
 } from '@mui/icons-material';
 import { format, parseISO, differenceInDays } from 'date-fns';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { getGrants } from '../api/apiClient';
+import { useLoading } from '../components/common/LoadingProvider';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
 import TableSkeleton from '../components/common/TableSkeleton';
@@ -42,63 +43,82 @@ const CATEGORIES = ['All', 'Research', 'Education', 'Community', 'Healthcare', '
 
 const GrantsPage = () => {
   const theme = useTheme();
+  const { startLoading, stopLoading, showError } = useLoading();
   const [loading, setLoading] = useState(false);
   const [grants, setGrants] = useState([]);
   const [selectedGrant, setSelectedGrant] = useState(null);
+  const [fetchError, setFetchError] = useState(null);
   const [filters, setFilters] = useState({
     min_score: 0,
     days_to_deadline: 90,
     category: 'All'
   });
 
-  const fetchGrants = async () => {
+  const fetchGrants = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
+    startLoading();
+
     try {
       const params = { ...filters };
       if (filters.category === 'All') delete params.category;
+      
       const data = await getGrants(params);
-      setGrants(data);
-    } catch (e) {
-      console.error(e);
+      if (Array.isArray(data)) {
+        setGrants(data);
+        if (data.length === 0) {
+          setFetchError('No grants found matching your criteria');
+        }
+      } else {
+        throw new Error('Invalid response format from server');
+      }
+    } catch (error) {
+      console.error('Error fetching grants:', error);
+      setFetchError(error.message || 'Failed to fetch grants. Please try again.');
+      showError('An error occurred while fetching grants');
+      setGrants([]);
     } finally {
       setLoading(false);
+      stopLoading();
     }
-  };
+  }, [filters, showError, startLoading, stopLoading]);
 
   useEffect(() => {
     fetchGrants();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchGrants]);
+
+  const handleChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
   }, []);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFilters((prev) => ({ ...prev, [name]: value }));
-  };
+  const handleApply = useCallback(() => {
+    fetchGrants();
+  }, [fetchGrants]);
 
-  const handleApply = () => fetchGrants();
-
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setFilters({
       min_score: 0,
       days_to_deadline: 90,
       category: 'All'
     });
+    setFetchError(null);
     fetchGrants();
-  };
+  }, [fetchGrants]);
+
+  const handleGrantClick = useCallback((grant) => {
+    setSelectedGrant(grant);
+  }, []);
+
+  const handleCloseDetail = useCallback(() => {
+    setSelectedGrant(null);
+  }, []);
 
   const getRelevanceColor = (score) => {
     if (score >= 90) return theme.palette.success.main;
     if (score >= 80) return theme.palette.info.main;
     if (score >= 70) return theme.palette.warning.main;
     return theme.palette.error.main;
-  };
-
-  const handleGrantClick = (grant) => {
-    setSelectedGrant(grant);
-  };
-
-  const handleCloseDetail = () => {
-    setSelectedGrant(null);
   };
 
   return (
@@ -375,12 +395,12 @@ const GrantsPage = () => {
               )}
             </Dialog>
           </>
-        ) : (
-          <EmptyState 
-            message="No grants found matching your criteria"
+        ) : (          <EmptyState 
+            message={fetchError || "No grants found matching your criteria"}
             action={true}
             actionLabel="Reset Filters"
             onAction={handleReset}
+            error={Boolean(fetchError)}
           />
         )}
       </LoaderOverlay>
