@@ -33,7 +33,7 @@ import {
 } from '@mui/icons-material';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import React, { useEffect, useState, useCallback } from 'react';
-import { getGrants } from '../api/apiClient';
+import { getGrants } from '../api/apiClient.ts';
 import { useLoading } from '../components/common/LoadingProvider';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';

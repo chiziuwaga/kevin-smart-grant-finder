@@ -20,7 +20,7 @@ import {
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { useSnackbar } from 'notistack';
 import React, { useEffect, useState, useCallback } from 'react';
-import { getSavedGrants, unsaveGrant } from '../api/apiClient';
+import { getSavedGrants, unsaveGrant } from '../api/apiClient.ts';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
 import TableSkeleton from '../components/common/TableSkeleton';
