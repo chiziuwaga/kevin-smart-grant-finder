@@ -60,8 +60,8 @@ class APIResponse(BaseModel, Generic[T]):
     message: Optional[str] = None
     data: Optional[T] = None
 
-class PaginatedResponse(BaseModel):
-    items: List[Any]
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: List[T]
     total: int
     page: int
     page_size: int = Field(..., alias="pageSize")
