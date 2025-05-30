@@ -20,7 +20,7 @@ async def fetch_grants(
     Returns a tuple of (grants_list, total_count).
     """
     query = select(Grant).join(Analysis)
-      if min_score > 0:
+    if min_score > 0:
         query = query.filter(Analysis.score >= min_score)
     if category:
         query = query.filter(Grant.category == category)
