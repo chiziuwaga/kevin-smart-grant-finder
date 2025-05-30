@@ -44,6 +44,7 @@ def get_allowed_origins() -> List[str]:
         ]
 
 # Create FastAPI app
+print("DEBUG: Creating FastAPI app...")
 app = FastAPI(
     title="Kevin Smart Grant Finder",
     description="AI-powered grant search and analysis system",
@@ -52,6 +53,8 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json"
 )
+print(f"DEBUG: FastAPI app created successfully: {app}")
+print(f"DEBUG: App routes before middleware: {[route.path for route in app.routes]}")
 
 # Enhanced CORS middleware
 app.add_middleware(
@@ -83,6 +86,8 @@ async def root():
 @app.get("/test")
 async def test_route():
     return {"message": "Test route working", "timestamp": datetime.utcnow()}
+
+print(f"DEBUG: App routes after adding root routes: {[route.path for route in app.routes]}")
 
 # Initialize services on startup
 @app.on_event("startup")
@@ -130,10 +135,15 @@ async def shutdown_event():
 
 # Add routes
 try:
+    print("DEBUG: Including API router...")
     app.include_router(api_router, prefix="/api")
     logger.info("API router included successfully")
+    print(f"DEBUG: App routes after including API router: {[route.path for route in app.routes]}")
 except Exception as e:
     logger.error(f"Failed to include API router: {e}", exc_info=True)
+    print(f"DEBUG: Failed to include API router: {e}")
+
+print(f"DEBUG: Final route list: {[route.path for route in app.routes]}")
 
 # Enhanced health check moved here after router inclusion
 
