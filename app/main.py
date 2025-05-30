@@ -120,7 +120,20 @@ async def shutdown_event():
         logger.error(f"Error during shutdown: {str(e)}", exc_info=True)
 
 # Add routes
-app.include_router(api_router, prefix="/api")
+try:
+    app.include_router(api_router, prefix="/api")
+    logger.info("API router included successfully")
+except Exception as e:
+    logger.error(f"Failed to include API router: {e}", exc_info=True)
+
+# Add a simple test route at root level to verify routing works
+@app.get("/")
+async def root():
+    return {"message": "Kevin Smart Grant Finder API", "status": "online"}
+
+@app.get("/test")
+async def test_route():
+    return {"message": "Test route working", "timestamp": datetime.utcnow()}
 
 # Enhanced health check
 @app.get("/health")
