@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta
 import re
 from urllib.parse import urlparse
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Set
 import json # Added import for JSON handling
 
 from sqlalchemy import select
@@ -110,15 +110,28 @@ class ResearchAgent:
     async def _get_db_session(self) -> AsyncSession: # Helper to get a session
         return self.db_sessionmaker()
 
-    async def get_existing_grant_titles(self, grant_source_url: str) -> List[str]:
-        async with self.db_sessionmaker() as session: # Use sessionmaker
-            # ... existing code ...
-            pass  # Placeholder for the actual implementation
+    async def get_existing_grant_titles(self) -> Set[str]:
+        """Return set of existing grant titles to avoid duplicates."""
+        async with self.db_sessionmaker() as session:
+            result = await session.execute(select(DBGrant.title))
+            return set(result.scalars().all())
 
     async def store_grants_in_db(self, grants_data: List[Dict[str, Any]]):
-        async with self.db_sessionmaker() as session: # Use sessionmaker
-            # ... existing code ...
-            pass  # Placeholder for the actual implementation
+        """Store list of grant dicts into the database if not existing."""
+        async with self.db_sessionmaker() as session:
+            for data in grants_data:
+                grant = DBGrant(
+                    title=data.get('title'),
+                    description=data.get('description'),
+                    funding_amount=data.get('funding_amount'),
+                    deadline=data.get('deadline'),
+                    source=data.get('source_name'),
+                    source_url=data.get('source_url'),
+                    category=data.get('category'),
+                    eligibility=data.get('eligibility_criteria')
+                )  # status defaults to ACTIVE via model default
+                session.add(grant)
+            await session.commit()
 
     def setup_search_agents(self):
         """Set up AgentQL search agents for both domains."""
@@ -185,7 +198,7 @@ class ResearchAgent:
             
             # Create specific filters for this tier
             tier_specific_filters = self._create_filters_for_tier(tier_name, tier_config, grant_filter)
-            raw_results = await self.perplexity._execute_search(
+            raw_results = await self.perplexity.search(
                 query=self._build_search_query(tier_specific_filters),
                 model=self.SONAR_PRIMARY_MODEL,
                 search_domain_filter=tier_specific_filters.sites_to_focus,

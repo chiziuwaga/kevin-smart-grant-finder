@@ -52,7 +52,6 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "https://smartgrantfinder.herokuapp.com",
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=8.0.0"

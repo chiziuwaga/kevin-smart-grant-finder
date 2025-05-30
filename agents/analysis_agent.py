@@ -186,7 +186,7 @@ class AnalysisAgent:
         """Calculate score based on deadline proximity."""
         deadline_dt = self._parse_deadline_to_datetime(deadline_input)
         if not deadline_dt:
-            return 0.5  # Middle score for unknown/unparsable deadlines
+            return 0.0  # Treat unknown/unparsable deadlines as expired
             
         try:
             days_until = (deadline_dt - datetime.now()).days

@@ -79,26 +79,33 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """Initialize services and verify connections on startup"""
+    logger.info("Starting service initialization steps...")
     try:
-        logger.info("Initializing services...")
+        logger.info("Initializing core services via init_services()...")
         await init_services()
-        
-        # Verify database connection
+        logger.info("init_services() completed successfully")
+    except Exception as e:
+        logger.error(f"init_services() failed: {e}", exc_info=True)
+
+    # Verify database connectivity
+    try:
         from database.session import engine
         async with engine.connect() as conn:
             await conn.execute("SELECT 1")
         logger.info("Database connection verified")
-        
-        # Verify Pinecone connection
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}", exc_info=True)
+
+    # Verify Pinecone connectivity
+    try:
         from utils.pinecone_client import PineconeClient
         pinecone_client = PineconeClient()
         await pinecone_client.verify_connection()
         logger.info("Pinecone connection verified")
-        
-        logger.info("All services initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize services: {str(e)}", exc_info=True)
-        # Don't raise here - let the app start but in degraded mode
+        logger.error(f"Pinecone health check failed: {e}", exc_info=True)
+
+    logger.info("Service initialization steps completed")
 
 @app.on_event("shutdown")
 async def shutdown_event():

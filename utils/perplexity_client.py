@@ -19,25 +19,16 @@ logger = logging.getLogger(__name__)
 # Ensure logging is configured in your main application entry point or logging_config.py
 
 class PerplexityClient:
-    def __init__(self, use_mock: bool = False, api_key: Optional[str] = None):
-        """Initialize Perplexity API client."""
-        self.use_mock = use_mock
-        if self.use_mock:
-            self._setup_mock_data()
-            logger.info("Using mock Perplexity for development")
-            return
-
+    def __init__(self, api_key: Optional[str] = None):
+        """Initialize Perplexity API client with live API calls only."""
         # Ensure API key is loaded from environment or passed
         self.api_key = api_key or os.getenv("PERPLEXITY_API_KEY")
         if not self.api_key:
-            logger.warning("Perplexity API key not found. Falling back to mock data. Please set PERPLEXITY_API_KEY.")
-            self.use_mock = True  # Force mock if no key
-            self._setup_mock_data()
-            return
+            raise ValueError("Perplexity API key not found. Please set PERPLEXITY_API_KEY environment variable.")
 
-        self.base_url = "https://api.perplexity.ai"
-        self.retry_attempts = 3
-        self._last_request_time = 0
+     self.base_url = "https://api.perplexity.ai"
+     self.retry_attempts = 3
+     self._last_request_time = 0
         
         # Updated models configuration with clear capabilities
         self.models = {
@@ -67,29 +58,6 @@ class PerplexityClient:
         
         logger.info(f"Perplexity client initialized with default model: {self.default_model}")
 
-    def _setup_mock_data(self):
-        """Set up mock data for development."""
-        self.mock_results = {
-            "choices": [
-                {
-                    "message": {
-                        "content": """Mock Perplexity Response:\nTitle: Mock Grant Alpha\nDescription: A mock grant for testing.\nFunding Amount: $10,000\nDeadline: 2025-12-31\nURL: http://example.com/mockalpha\nEligibility: Mock eligibility criteria.\n\nTitle: Mock Grant Beta\nDescription: Another mock grant for women-owned nonprofits.\nFunding Amount: $25,000\nDeadline: 2026-03-15\nURL: http://example.com/mockbeta\nEligibility: Must be a women-owned nonprofit."""
-                    }
-                }
-            ]
-        }
-        self.mock_extracted_grants = [
-            {
-                "title": "Mock Grant Alpha",
-                "description": "A mock grant for testing.",
-                "deadline": "2025-12-31",
-                "funding_amount": "$10,000",
-                "eligibility_criteria": "Mock eligibility criteria.",
-                "source_url": "http://example.com/mockalpha",
-                "source_name": "MockSource"
-            }
-        ]
-
     async def search(self, query: str, model: Optional[str] = None, **kwargs) -> Dict[str, Any]:
         """Execute a search query against the Perplexity API with rate limiting and retries.
         
@@ -101,130 +69,10 @@ class PerplexityClient:
         Returns:
             Dict containing the API response
         """
-        if self.use_mock:
-            # Simulate API delay
-            await asyncio.sleep(0.01)
-            if hasattr(self, 'mock_results') and self.mock_results.get("choices"):
-                return self.mock_results["choices"][0]["message"]["content"]
-            return "Mock Perplexity response: No grants found for this query."
-
-        current_model = model or self.default_model
-        model_config = self.models.get(current_model, self.models[self.default_model])
-        
-        # Apply rate limiting
-        now = time.time()
-        min_delay = self._rate_limiters[current_model]
-        elapsed = now - self._last_request_time
-        if elapsed < min_delay:
-            wait_time = min_delay - elapsed
-            logger.info(f"Rate limiting: waiting {wait_time:.2f}s for {current_model}")
-            await asyncio.sleep(wait_time)
-        
-        self._last_request_time = time.time()
-        
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
-        
-        # Build the request payload
-        payload = {
-            "model": current_model,
-            "messages": [
-                {
-                    "role": "system",                    "content": (
-                        "You are a specialized grant search assistant. Your task is to find and format grant "
-                        "opportunities based on the user's query. For each grant, provide:\n\n"
-                        "- title: Clear, specific grant name (required)\n"
-                        "- description: Detailed overview of purpose and requirements (required)\n"
-                        "- funding_amount: Numeric amount in USD (max value for ranges, no currency symbols)\n"
-                        "- deadline: Date in YYYY-MM-DD format (future dates only)\n"
-                        "- eligibility_criteria: Detailed eligibility requirements\n"
-                        "- category: Specific category (e.g., research, education, nonprofit)\n"
-                        "- source_url: Complete URL starting with http(s)://\n"
-                        "- source_name: Name of granting organization\n"
-                        "- score: Relevance score (0-100 if applicable)\n\n"
-                        "Present information in a clear, structured format. Ensure all monetary values are "
-                        "positive numbers and dates are properly formatted. Include complete URLs for verification.\n"
-                        "If any required field is unavailable, use null. Skip optional fields if not found."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": query
-                }
-            ]
-        }
-
-        # Handle search domain filtering
-        search_domains = kwargs.get('search_domain_filter')
-        if search_domains and "search_domain_filter" in model_config["features"]:
-            payload["search_domain_filter"] = search_domains
-            logger.info(f"Using search_domain_filter: {search_domains} with model {current_model}")
-        
-        # Handle structured output flag
-        if kwargs.get('structured_output') and "structured_output" in model_config["features"]:
-            payload["structured_output"] = True
-
-        async with httpx.AsyncClient() as client:
-            for attempt in range(self.retry_attempts):
-                try:
-                    logger.debug(f"Attempt {attempt+1} to call Perplexity API with {current_model}")
-                    response = await client.post(
-                        f"{self.base_url}/chat/completions",
-                        headers=headers,
-                        json=payload,
-                        timeout=model_config["timeout"]
-                    )
-                    response.raise_for_status()
-                    response_data = response.json()
-                    
-                    if response_data.get("choices") and response_data["choices"][0].get("message"):
-                        result = response_data["choices"][0]["message"].get("content")
-                        if result:
-                            logger.info(f"Perplexity search successful with {current_model}")
-                            return result
-                        logger.warning("Empty content in Perplexity response")
-                    else:
-                        logger.warning(f"Unexpected Perplexity response structure: {response_data}")
-                    
-                    if attempt < self.retry_attempts - 1:
-                        wait_time = min(2 ** attempt * 1.5, 10) # Increased backoff and max wait
-                        logger.info(f"Retrying in {wait_time}s...")
-                        await asyncio.sleep(wait_time)
-                        continue
-                        
-                except httpx.HTTPStatusError as e:
-                    if e.response.status_code == 429:  # Rate limit
-                        retry_after = e.response.headers.get('retry-after')
-                        wait_time = float(retry_after) if retry_after else min(2 ** attempt * 2, 15)
-                        logger.warning(f"Rate limited. Waiting {wait_time}s before retry...")
-                        await asyncio.sleep(wait_time)
-                        if attempt < self.retry_attempts - 1:
-                            continue
-                    elif e.response.status_code >= 500:  # Server errors
-                        if attempt < self.retry_attempts - 1:
-                            wait_time = min(2 ** attempt * 1.5, 10)
-                            logger.warning(f"Server error. Retrying in {wait_time}s...")
-                            await asyncio.sleep(wait_time)
-                            continue
-                    logger.error(f"HTTP error from Perplexity API: {e.response.status_code} - {e.response.text}")
-                except Exception as e:
-                    logger.error(f"Error calling Perplexity API: {str(e)}")
-                    if attempt < self.retry_attempts - 1:
-                        wait_time = min(2 ** attempt, 8)
-                        await asyncio.sleep(wait_time)
-                        continue
-
-        return None  # Return None if all attempts failed
+        return await self._execute_search(query, model=model, **kwargs)
 
     async def extract_grant_data(self, raw_perplexity_content: Optional[str]) -> List[Dict[str, Any]]:
-        """Extract structured grant data from Perplexity search results using OpenAI."""
-        if self.use_mock and hasattr(self, 'mock_extracted_grants'):
-            # await asyncio.sleep(0.01)
-            return self.mock_extracted_grants
-        
+        """Extract structured grant data from Perplexity search results using OpenAI (o1-mini)."""
         if not raw_perplexity_content:
             logger.info("No content from Perplexity to extract grants from.")
             return []
@@ -236,7 +84,7 @@ class PerplexityClient:
             return self._extract_grants_with_basic_regex(raw_perplexity_content)
 
         extraction_payload = {
-            "model": "gpt-4o", 
+            "model": "o1-mini", 
             "messages": [
                 {
                     "role": "system",                    "content": (
@@ -305,9 +153,9 @@ class PerplexityClient:
             except Exception as e:
                 logger.error(f"Unexpected error during OpenAI grant data extraction: {e}", exc_info=True)
         
-        if not grants: 
-            logger.info("OpenAI extraction yielded no grants or failed, attempting basic regex fallback.")
-            grants = self._extract_grants_with_basic_regex(raw_perplexity_content)
+        if not grants:
+             logger.info("OpenAI extraction yielded no grants or failed, attempting basic regex fallback.")
+             grants = self._extract_grants_with_basic_regex(raw_perplexity_content)
 
         return grants
 
@@ -391,9 +239,6 @@ class PerplexityClient:
 
     async def _execute_search(self, query: str, model: str = None, **kwargs) -> Dict[str, Any]:
         """Execute search with proper model handling and retries."""
-        if self.use_mock:
-            return self.mock_results
-            
         current_model = model or self.default_model
         search_domain_filter = kwargs.get('search_domain_filter')
         structured_output = kwargs.get('structured_output', False)
@@ -528,7 +373,7 @@ class PerplexityClient:
                                 break
                             except ValueError:
                                 continue
-                                  if parsed_date:
+                        if parsed_date:
                             # Only use future dates
                             if parsed_date > datetime.now():
                                 # Use ISO format for consistent API responses
@@ -536,28 +381,8 @@ class PerplexityClient:
                             else:
                                 logger.warning(f"Skipping past deadline: {date_str}")
                                 grant_data['deadline'] = None
-                        else:
-                            # If no format matched, try to extract using regex
-                            date_match = re.search(r'(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4})', date_str)
-                            if date_match:
-                                date_str_normalized = date_match.group(1)
-                                try:
-                                    # Attempt to parse the regex match with common formats
-                                    for fmt in ['%Y/%m/%d', '%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y']:
-                                        try:
-                                            parsed_date = datetime.strptime(date_str_normalized, fmt)
-                                            if parsed_date > datetime.now():
-                                                grant_data['deadline'] = parsed_date.isoformat()
-                                                break
-                                        except ValueError:
-                                            continue
-                                except Exception:
-                                    logger.warning(f"Failed to normalize date from regex match: {date_str_normalized}")
-                            else:
-                                logger.warning(f"Could not parse date format: {date_str}")
-                                grant_data['deadline'] = None
                     except Exception as e:
-                        logger.warning(f"Error parsing deadline date: {e}")
+                        logger.warning(f"Error parsing deadline in regex fallback: {e}")
                         grant_data['deadline'] = None
                 
                 grants.append(grant_data)
