@@ -232,12 +232,8 @@ async def trigger_search(
         log_api_metrics(
             "/system/run-search",
             duration,
-            500,
-            error=str(e)
+            500,        error=str(e)
         )
         raise
 
-@api_router.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy"}
+# Note: Health check endpoint is defined in main.py at root level /health

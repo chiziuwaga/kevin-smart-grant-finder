@@ -75,6 +75,15 @@ app.add_middleware(
     max_age=600
 )
 
+# Add simple test routes BEFORE router inclusion to avoid conflicts
+@app.get("/")
+async def root():
+    return {"message": "Kevin Smart Grant Finder API", "status": "online", "timestamp": datetime.utcnow()}
+
+@app.get("/test")
+async def test_route():
+    return {"message": "Test route working", "timestamp": datetime.utcnow()}
+
 # Initialize services on startup
 @app.on_event("startup")
 async def startup_event():
@@ -126,14 +135,7 @@ try:
 except Exception as e:
     logger.error(f"Failed to include API router: {e}", exc_info=True)
 
-# Add a simple test route at root level to verify routing works
-@app.get("/")
-async def root():
-    return {"message": "Kevin Smart Grant Finder API", "status": "online"}
-
-@app.get("/test")
-async def test_route():
-    return {"message": "Test route working", "timestamp": datetime.utcnow()}
+# Enhanced health check moved here after router inclusion
 
 # Enhanced health check
 @app.get("/health")
