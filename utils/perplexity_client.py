@@ -26,9 +26,9 @@ class PerplexityClient:
         if not self.api_key:
             raise ValueError("Perplexity API key not found. Please set PERPLEXITY_API_KEY environment variable.")
 
-     self.base_url = "https://api.perplexity.ai"
-     self.retry_attempts = 3
-     self._last_request_time = 0
+        self.base_url = "https://api.perplexity.ai"
+        self.retry_attempts = 3
+        self._last_request_time = 0
         
         # Updated models configuration with clear capabilities
         self.models = {
