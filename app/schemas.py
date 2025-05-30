@@ -1,6 +1,9 @@
-from typing import Dict, List, Optional, TypedDict, Union, Any
+from typing import Dict, List, Optional, TypedDict, Union, Any, Generic, TypeVar
 from datetime import datetime
 from pydantic import BaseModel, Field
+
+# Type variable for generic responses
+T = TypeVar('T')
 
 # Grant models
 class Grant(BaseModel):
@@ -52,10 +55,10 @@ class UserSettings(BaseModel):
         allow_population_by_field_name = True
 
 # API response models
-class APIResponse(BaseModel):
+class APIResponse(BaseModel, Generic[T]):
     status: str = "success"
     message: Optional[str] = None
-    data: Optional[Any] = None
+    data: Optional[T] = None
 
 class PaginatedResponse(BaseModel):
     items: List[Any]
