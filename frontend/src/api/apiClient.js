@@ -13,7 +13,7 @@ import apiClientTS, {
   getRunHistory,
   getUserSettings,
   updateUserSettings
-} from './apiClient';
+} from './apiClient.ts';
 
 // Named exports
 export {
