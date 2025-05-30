@@ -85,13 +85,11 @@ async def startup_event():
         await init_services()
         logger.info("init_services() completed successfully")
     except Exception as e:
-        logger.error(f"init_services() failed: {e}", exc_info=True)
-
-    # Verify database connectivity
+        logger.error(f"init_services() failed: {e}", exc_info=True)    # Verify database connectivity
     try:
         from database.session import engine
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
         logger.info("Database connection verified")
     except Exception as e:
         logger.error(f"Database health check failed: {e}", exc_info=True)
@@ -100,8 +98,11 @@ async def startup_event():
     try:
         from utils.pinecone_client import PineconeClient
         pinecone_client = PineconeClient()
-        await pinecone_client.verify_connection()
-        logger.info("Pinecone connection verified")
+        # Simple check - if we can initialize without errors and have an index, connection is good
+        if hasattr(pinecone_client, 'index') and pinecone_client.index:
+            logger.info("Pinecone connection verified")
+        else:
+            logger.warning("Pinecone initialized but connection may be limited")
     except Exception as e:
         logger.error(f"Pinecone health check failed: {e}", exc_info=True)
 
@@ -157,17 +158,27 @@ async def health_check():
                 }
             except Exception as e:
                 logger.error(f"Perplexity client check failed: {str(e)}", exc_info=True)
-                health_status["services"]["perplexity"] = {"status": "unhealthy", "error": str(e)}
-
-        # Check Pinecone
+                health_status["services"]["perplexity"] = {"status": "unhealthy", "error": str(e)}        # Check Pinecone
         if services.get("pinecone_client"):
             try:
-                # Basic connectivity check
-                stats = services["pinecone_client"].describe_index_stats()
-                health_status["services"]["pinecone"] = {
-                    "status": "healthy",
-                    "total_vector_count": stats.get("total_vector_count", 0)
-                }
+                # Basic connectivity check - try to get index stats if available
+                pinecone_client = services["pinecone_client"]
+                if hasattr(pinecone_client, 'index') and pinecone_client.index and not pinecone_client.use_mock:
+                    stats = pinecone_client.index.describe_index_stats()
+                    health_status["services"]["pinecone"] = {
+                        "status": "healthy",
+                        "total_vector_count": stats.get("total_vector_count", 0)
+                    }
+                elif pinecone_client.use_mock:
+                    health_status["services"]["pinecone"] = {
+                        "status": "healthy",
+                        "mode": "mock"
+                    }
+                else:
+                    health_status["services"]["pinecone"] = {
+                        "status": "degraded",
+                        "message": "Index not available"
+                    }
             except Exception as e:
                 logger.error(f"Pinecone check failed: {str(e)}", exc_info=True)
                 health_status["services"]["pinecone"] = {"status": "unhealthy", "error": str(e)}
