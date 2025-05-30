@@ -20,13 +20,11 @@ async def fetch_grants(
     Returns a tuple of (grants_list, total_count).
     """
     query = select(Grant).join(Analysis)
-    
-    if min_score > 0:
+      if min_score > 0:
         query = query.filter(Analysis.score >= min_score)
-    
     if category:
         query = query.filter(Grant.category == category)
-      if deadline_before:
+    if deadline_before:
         deadline = datetime.fromisoformat(deadline_before)
         query = query.filter(Grant.deadline <= deadline)
     
@@ -79,9 +77,7 @@ async def fetch_stats(db: AsyncSession) -> Dict[str, Any]:
         .select_from(Grant)\
         .filter(Grant.created_at >= current_month_start)
     monthly_result = await db.execute(monthly_query)
-    grants_this_month = monthly_result.scalar() or 0
-
-    # Get upcoming deadlines (next 30 days)
+    grants_this_month = monthly_result.scalar() or 0    # Get upcoming deadlines (next 30 days)
     upcoming_deadline_query = select(func.count())\
         .select_from(Grant)\
         .filter(
@@ -96,7 +92,9 @@ async def fetch_stats(db: AsyncSession) -> Dict[str, Any]:
         "averageScore": average_score,
         "grantsThisMonth": grants_this_month,
         "upcomingDeadlines": upcoming_deadlines
-    }async def fetch_distribution(db: AsyncSession) -> Dict[str, Dict[str, int]]:
+    }
+
+async def fetch_distribution(db: AsyncSession) -> Dict[str, Dict[str, int]]:
     """Get analytics distribution using SQLAlchemy."""
     # Get category distribution
     category_query = select(
