@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useEffect, useState } from 'react';
-import API from '../api/apiClient.ts';
+import API from '../api/apiClient';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 
 const SCHEDULE_OPTIONS = [

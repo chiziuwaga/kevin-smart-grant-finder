@@ -1,7 +1,36 @@
-// Re-export all functions from the TypeScript file
-// This allows JavaScript files to import from this file without .ts extension
-export * from './apiClient';
+// Re-export all functions from the TypeScript file explicitly
+import apiClientTS, {
+  getDashboardStats,
+  getDistribution,
+  getGrants,
+  searchGrants,
+  getGrantById,
+  getSavedGrants,
+  saveGrant,
+  unsaveGrant,
+  runSearch,
+  getLastRun,
+  getRunHistory,
+  getUserSettings,
+  updateUserSettings
+} from './apiClient';
 
-// Re-export the default export
-import apiClient from './apiClient';
-export default apiClient;
+// Named exports
+export {
+  getDashboardStats,
+  getDistribution,
+  getGrants,
+  searchGrants,
+  getGrantById,
+  getSavedGrants,
+  saveGrant,
+  unsaveGrant,
+  runSearch,
+  getLastRun,
+  getRunHistory,
+  getUserSettings,
+  updateUserSettings
+};
+
+// Default export
+export default apiClientTS;

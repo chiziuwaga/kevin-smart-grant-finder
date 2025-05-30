@@ -47,7 +47,9 @@ import {
   getDashboardStats,
   getGrants,
   getDistribution,
-  runSearch
+  runSearch,
+  saveGrant,
+  unsaveGrant
 } from '../api/apiClient';
 
 const Dashboard = () => {
@@ -97,15 +99,14 @@ const Dashboard = () => {
 
     fetchDashboardData();
   }, []); // Added missing dependency array for useEffect
-
   const handleSaveGrant = async (grantId, shouldSave) => {
     try {
       if (shouldSave) {
-        // await saveGrant(grantId); // TODO: Implement or import saveGrant
+        await saveGrant(grantId);
         setSavedGrants(prev => new Set(prev).add(grantId));
         enqueueSnackbar('Grant saved!', { variant: 'success' });
       } else {
-        // await unsaveGrant(grantId); // TODO: Implement or import unsaveGrant
+        await unsaveGrant(grantId);
         setSavedGrants(prev => {
           const next = new Set(prev);
           next.delete(grantId);
