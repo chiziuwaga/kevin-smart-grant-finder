@@ -104,7 +104,7 @@ def initialize_global_services():
     notification_instance, notification_status = initialize_service_with_retry(
         "Notification manager",
         lambda: NotificationManager(
-            telegram_token=current_settings.telegram_token,
+            telegram_token=current_settings.telegram_bot_token,
             telegram_chat_id=current_settings.telegram_chat_id
         )
     )
