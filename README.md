@@ -121,7 +121,7 @@ See `frontend/DEPLOYMENT.md` for detailed instructions on deploying the backend 
 
 - `Home.py`: FastAPI application entry point and service initialization.
 - `api/`: Contains FastAPI routers and API endpoint definitions.
-- `database/`: MongoDB and Pinecone client implementations.
+- `database/`: SQLAlchemy/PostgreSQL models and Pinecone client implementations.
 - `agents/`: Research and Analysis agent logic.
 - `utils/`: Helper utilities, notification manager, API clients.
 - `config/`: Logging configuration.
