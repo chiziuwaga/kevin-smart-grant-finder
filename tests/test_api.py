@@ -9,29 +9,41 @@ services = __import__('Home').services
 
 client = TestClient(test_app)
 
-class DummyMongoClient:
+class DummySession:
     def __init__(self, fail=False):
-        if fail:
-            def cmd(cmd):
-                raise Exception("Connection failed")
-            self.client = SimpleNamespace(admin=SimpleNamespace(command=cmd))
-        else:
-            self.client = SimpleNamespace(admin=SimpleNamespace(command=lambda cmd: {}))
+        self.fail = fail
+
+    async def __aenter__(self):
+        if self.fail:
+            raise Exception("Connection failed")
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        pass
+
+    async def execute(self, query):
+        if self.fail:
+            raise Exception("Connection failed")
+        return {}
+
+class DummySessionMaker:
+    def __init__(self, fail=False):
+        self.fail = fail
+    def __call__(self):
+        return DummySession(self.fail)
 
 
 def test_health_success(monkeypatch):
-    # Simulate successful MongoDB ping
-    monkeypatch.setitem(services, 'mongodb_client', DummyMongoClient(fail=False))
+    monkeypatch.setattr(services, 'db_sessionmaker', DummySessionMaker(fail=False))
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "detail": "MongoDB connected"}
+    assert response.json() == {"status": "ok", "detail": "Database connected"}
 
 
 def test_health_failure(monkeypatch):
-    # Simulate MongoDB ping failure
-    monkeypatch.setitem(services, 'mongodb_client', DummyMongoClient(fail=True))
+    monkeypatch.setattr(services, 'db_sessionmaker', DummySessionMaker(fail=True))
     response = client.get("/health")
     assert response.status_code == 503
     data = response.json()
     assert data.get("status") == "error"
-    assert "Connection failed" in data.get("detail", "") 
+    assert "Connection failed" in data.get("detail", "")
