@@ -96,7 +96,8 @@ async def list_grants(
             deadline_before=deadline_before,
             page=page,
             pageSize=page_size
-        )        return PaginatedResponse(
+        )
+        return PaginatedResponse(
             items=grants,
             total=total,
             page=page,
@@ -119,7 +120,8 @@ async def search_grants_endpoint(
             filters.dict(by_alias=True),
             page=page,
             pageSize=page_size
-        )        return PaginatedResponse(
+        )
+        return PaginatedResponse(
             items=results,
             total=total,
             page=page,
@@ -227,7 +229,8 @@ async def trigger_search(
         
         return result
         
-    except Exception as e:        # Log error metrics
+    except Exception as e:
+        # Log error metrics
         duration = (datetime.now() - start_time).total_seconds()
         log_api_metrics(
             "/system/run-search",
@@ -319,9 +322,9 @@ async def health_check():
             content={
                 "status": "unhealthy",
                 "error": f"Import error: {str(import_error)}",
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        )    
+                "timestamp": datetime.utcnow().isoformat()            }
+        )
+    
     try:
         logger.info("Starting detailed health check...")
         
@@ -355,7 +358,7 @@ async def health_check():
                 health_status["services"]["perplexity"] = {"status": "unhealthy", "error": str(e)}
         else:
             logger.warning("Perplexity client not available")
-            health_status["services"]["perplexity"] = {"status": "unhealthy", "error": "No Perplexity client"}        
+            health_status["services"]["perplexity"] = {"status": "unhealthy", "error": "No Perplexity client"}
         
         # Check Pinecone
         if services.pinecone_client:
