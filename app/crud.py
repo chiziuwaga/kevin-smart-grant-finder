@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy import select, func, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from database.models import Grant, Analysis, SearchRun, UserSettings
 from utils.pinecone_client import PineconeClient
@@ -18,7 +19,7 @@ async def fetch_grants(
     """
     Fetch grants with optional filtering using SQLAlchemy.
     Returns a tuple of (grants_list, total_count).    """
-    query = select(Grant).outerjoin(Analysis)
+    query = select(Grant).outerjoin(Analysis).options(selectinload(Grant.analyses))
     
     if min_score > 0:
         query = query.filter(Analysis.score >= min_score)
@@ -40,10 +41,14 @@ async def fetch_grants(
     query = query.offset((page - 1) * page_size).limit(page_size)
     
     result = await db.execute(query)
-    grants = result.scalars().all()
-      # Convert SQLAlchemy models to dicts that match our schema
+    grants = result.scalars().all()      # Convert SQLAlchemy models to dicts that match our schema
     grants_data = []
     for grant in grants:
+        # Safely get the score from analyses
+        score = None
+        if grant.analyses and len(grant.analyses) > 0:
+            score = grant.analyses[0].score
+            
         grant_dict = {
             "id": str(grant.id),
             "title": grant.title,
@@ -54,7 +59,7 @@ async def fetch_grants(
             "category": grant.category,
             "source_url": grant.source_url,
             "source_name": grant.source,
-            "score": grant.analyses[0].score if grant.analyses else None
+            "score": score
         }
         grants_data.append(grant_dict)
     
