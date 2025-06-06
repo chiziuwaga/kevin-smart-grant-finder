@@ -95,7 +95,7 @@ async def list_grants(
             category=category,
             deadline_before=deadline_before,
             page=page,
-            pageSize=page_size
+            page_size=page_size
         )
         return PaginatedResponse(
             items=grants,
@@ -116,13 +116,19 @@ async def search_grants_endpoint(
 ):
     """Advanced grant search with custom filters"""
     try:
-        results, total = await research_agent.search_grants(
-            filters.dict(by_alias=True),
-            page=page,
-            pageSize=page_size
+        # research_agent.search_grants doesn't accept pagination parameters
+        results = await research_agent.search_grants(
+            filters.dict(by_alias=True)
         )
+        
+        # Apply pagination manually
+        total = len(results)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_results = results[start_idx:end_idx]
+        
         return PaginatedResponse(
-            items=results,
+            items=paginated_results,
             total=total,
             page=page,
             pageSize=page_size
