@@ -24,7 +24,7 @@ class GrantSearchFilters(BaseModel):
     search_text: Optional[str] = Field(None, alias="searchText")
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 # Dashboard models
 class DashboardStats(BaseModel):
@@ -34,7 +34,7 @@ class DashboardStats(BaseModel):
     upcoming_deadlines: int = Field(..., alias="upcomingDeadlines")
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 class DistributionData(BaseModel):
     categories: Dict[str, int]
@@ -51,7 +51,7 @@ class UserSettings(BaseModel):
     minimum_score: float = Field(..., alias="minimumScore")
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 # API response models
 class APIResponse(BaseModel, Generic[T]):
@@ -66,4 +66,4 @@ class PaginatedResponse(BaseModel, Generic[T]):
     page_size: int = Field(..., alias="pageSize")
 
     class Config:
-        allow_population_by_field_name = True
+        populate_by_name = True

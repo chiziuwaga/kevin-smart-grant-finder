@@ -224,3 +224,6 @@ async def read_root():
 
 # Note: When running with uvicorn like `uvicorn Home:main_app --reload`,
 # this file (Home.py) becomes the entry point for the ASGI server.
+
+# For compatibility with uvicorn Home:app
+app = main_app
