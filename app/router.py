@@ -237,6 +237,65 @@ async def trigger_search(
         )
         raise
 
+# System endpoints for search run tracking
+@api_router.get("/system/last-run")
+async def get_last_run(db: AsyncSession = Depends(get_db_session)):
+    """Get information about the last search run"""
+    try:
+        from database.models import SearchRun
+        from sqlalchemy import select
+        
+        # Get the most recent search run
+        query = select(SearchRun).order_by(SearchRun.timestamp.desc()).limit(1)
+        result = await db.execute(query)
+        last_run = result.scalar_one_or_none()
+        
+        if last_run:
+            return {
+                "status": "success",
+                "start": last_run.timestamp.isoformat(),
+                "end": last_run.timestamp.isoformat(),  # For compatibility
+                "grants_found": last_run.grants_found or 0,
+                "high_priority": last_run.high_priority or 0
+            }
+        else:
+            return {
+                "status": "none",
+                "message": "No search runs found"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/system/run-history")
+async def get_run_history(
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Get history of recent search runs"""
+    try:
+        from database.models import SearchRun
+        from sqlalchemy import select
+        
+        # Get recent search runs
+        query = select(SearchRun).order_by(SearchRun.timestamp.desc()).limit(limit)
+        result = await db.execute(query)
+        search_runs = result.scalars().all()
+        
+        history = []
+        for run in search_runs:
+            history.append({
+                "start": run.timestamp.isoformat(),
+                "status": "completed",  # Assuming completed if in database
+                "results": run.grants_found or 0,
+                "stored": run.grants_found or 0,
+                "total": run.grants_found or 0,
+                "high_priority": run.high_priority or 0
+            })
+        
+        return history
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Enhanced health check endpoint
 @api_router.get("/health")
 async def health_check():
