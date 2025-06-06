@@ -95,13 +95,12 @@ async def list_grants(
             category=category,
             deadline_before=deadline_before,
             page=page,
-            page_size=page_size
-        )
-        return PaginatedResponse(
+            pageSize=page_size
+        )        return PaginatedResponse(
             items=grants,
             total=total,
             page=page,
-            page_size=page_size
+            pageSize=page_size
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -119,13 +118,12 @@ async def search_grants_endpoint(
         results, total = await research_agent.search_grants(
             filters.dict(by_alias=True),
             page=page,
-            page_size=page_size
-        )
-        return PaginatedResponse(
+            pageSize=page_size
+        )        return PaginatedResponse(
             items=results,
             total=total,
             page=page,
-            page_size=page_size
+            pageSize=page_size
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
