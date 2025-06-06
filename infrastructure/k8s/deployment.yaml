@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grant-finder-api-deployment
+  labels:
+    app: grant-finder-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: grant-finder-api
+  template:
+    metadata:
+      labels:
+        app: grant-finder-api
+    spec:
+      containers:
+        - name: grant-finder-api
+          image: <your-docker-registry>/grant-finder-api:latest # replace with your image path
+          ports:
+            - containerPort: 8000
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
