@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Tuple
+import json
 from sqlalchemy import select, func, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -48,14 +49,21 @@ async def fetch_grants(
         score = None
         if grant.analyses and len(grant.analyses) > 0:
             score = grant.analyses[0].score
-            
+              # Convert eligibility JSON to string for API schema compatibility
+        eligibility_str = None
+        if grant.eligibility:
+            if isinstance(grant.eligibility, dict):
+                eligibility_str = json.dumps(grant.eligibility)
+            else:
+                eligibility_str = str(grant.eligibility)
+        
         grant_dict = {
             "id": str(grant.id),
             "title": grant.title,
             "description": grant.description,
             "funding_amount": grant.funding_amount,
             "deadline": grant.deadline.isoformat() if grant.deadline else None,
-            "eligibility_criteria": grant.eligibility,
+            "eligibility_criteria": eligibility_str,
             "category": grant.category,
             "source_url": grant.source_url,
             "source_name": grant.source,

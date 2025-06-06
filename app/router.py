@@ -101,7 +101,7 @@ async def list_grants(
             items=grants,
             total=total,
             page=page,
-            pageSize=page_size
+            page_size=page_size
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -131,7 +131,7 @@ async def search_grants_endpoint(
             items=paginated_results,
             total=total,
             page=page,
-            pageSize=page_size
+            page_size=page_size
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
