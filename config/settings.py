@@ -49,11 +49,13 @@ class Settings(BaseSettings):
 
     # API Keys
     pinecone_api_key: str = Field(default="", env="PINECONE_API_KEY")
-    pinecone_index_name: str = Field(default="grantcluster", env="PINECONE_INDEX_NAME") # Corrected
-    perplexity_api_key: str = Field(default="", env="PERPLEXITY_API_KEY")
+    pinecone_index_name: str = Field(default="grantcluster", env="PINECONE_INDEX_NAME") # Corrected    perplexity_api_key: str = Field(default="", env="PERPLEXITY_API_KEY")
     perplexity_rate_limit: int = Field(default=30, env="PERPLEXITY_RATE_LIMIT")
-    openai_api_key: str = Field(default="", env="OPENAI_API_KEY")  # Added OpenAI API Key    # Notifications
-    telegram_bot_token: str = Field(default="", env="TELEGRAM_BOT_TOKEN") # Changed from telegram_token    telegram_chat_id: str = Field(default="", env="TELEGRAM_CHAT_ID")
+    openai_api_key: str = Field(default="", env="OPENAI_API_KEY")  # Added OpenAI API Key
+    
+    # Notifications
+    telegram_bot_token: str = Field(default="", env="TELEGRAM_BOT_TOKEN") # Changed from telegram_token
+    telegram_chat_id: str = Field(default="", env="TELEGRAM_CHAT_ID")
     
     @property
     def db_url(self) -> str:
