@@ -108,8 +108,8 @@ async def fetch_stats(db: AsyncSession) -> Dict[str, Any]:
         "upcomingDeadlines": upcoming_deadlines
     }
 
-async def fetch_distribution(db: AsyncSession) -> Dict[str, Dict[str, int]]:
-    """Get analytics distribution using SQLAlchemy."""
+async def fetch_distribution(db: AsyncSession) -> Dict[str, List[Dict[str, Any]]]:
+    """Get analytics distribution using SQLAlchemy, formatted for frontend charts."""
     # Get category distribution
     category_query = select(
         Grant.category,
@@ -118,10 +118,10 @@ async def fetch_distribution(db: AsyncSession) -> Dict[str, Dict[str, int]]:
     .group_by(Grant.category)
     
     category_result = await db.execute(category_query)
-    categories = {
-        str(cat or "Uncategorized"): int(count)
+    categories = [
+        {"name": str(cat or "Uncategorized"), "value": int(count)}
         for cat, count in category_result.all()
-    }
+    ]
 
     # Get deadline distribution (grouped by month)
     deadline_query = select(
@@ -132,25 +132,30 @@ async def fetch_distribution(db: AsyncSession) -> Dict[str, Dict[str, int]]:
     .order_by(text('month'))
     
     deadline_result = await db.execute(deadline_query)
-    deadlines = {
-        row[0].strftime('%Y-%m'): int(row[1])
+    deadlines = [
+        {"name": row[0].strftime('%Y-%m'), "count": int(row[1])}
         for row in deadline_result.all()
         if row[0]
-    }
+    ]
 
     # Get score distribution (in ranges of 10)
+    # Ensure Analysis table is joined if scores are directly on Grants or through Analysis
+    # This example assumes Analysis table has scores and a relation to Grant if needed.
+    # If Grant has a direct score, adjust accordingly.
     score_query = select(
-        func.floor(Analysis.score * 10).label('range'),
+        func.floor(Analysis.score / 10).label('range_start'), # Calculate the start of the range (e.g., 7 for 70-79)
         func.count(Analysis.id).label('count')
     ).select_from(Analysis)\
-    .group_by(text('range'))\
-    .order_by(text('range'))
+    .filter(Analysis.score.isnot(None))\
+    .group_by(text('range_start'))\
+    .order_by(text('range_start'))
     
     score_result = await db.execute(score_query)
-    scores = {
-        f"{int(range_*10)}-{int((range_+1)*10)}": int(count)
-        for range_, count in score_result.all()
-    }
+    scores = []
+    for row in score_result.all():
+        range_start = int(row[0] * 10)
+        range_end = range_start + 9 # Creates ranges like 70-79, 80-89
+        scores.append({"name": f"{range_start}-{range_end}", "count": int(row[1])})
 
     return {
         "categories": categories,

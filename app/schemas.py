@@ -4,6 +4,19 @@ from pydantic import BaseModel, Field
 
 T = TypeVar('T')
 
+# TypedDicts for distribution items
+class CategoryDistributionItem(TypedDict):
+    name: str
+    value: int
+
+class DeadlineDistributionItem(TypedDict):
+    name: str # e.g., "2023-01" (Year-Month) or a specific date string
+    count: int
+
+class ScoreDistributionItem(TypedDict):
+    name: str # e.g., "70-80"
+    count: int
+
 # Grant models
 class Grant(BaseModel):
     id: str
@@ -37,9 +50,9 @@ class DashboardStats(BaseModel):
         populate_by_name = True
 
 class DistributionData(BaseModel):
-    categories: Dict[str, int]
-    deadlines: Dict[str, int]
-    scores: Dict[str, int]
+    categories: List[CategoryDistributionItem]
+    deadlines: List[DeadlineDistributionItem]
+    scores: List[ScoreDistributionItem]
 
 # User settings models
 class UserSettings(BaseModel):
