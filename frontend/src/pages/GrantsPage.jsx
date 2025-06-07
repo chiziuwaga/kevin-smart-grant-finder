@@ -57,19 +57,21 @@ const GrantsPage = () => {
   const fetchGrants = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
-    startLoading();
-
-    try {
+    startLoading();    try {
       const params = { ...filters };
       if (filters.category === 'All') delete params.category;
       
-      const data = await getGrants(params);
-      if (Array.isArray(data)) {
-        setGrants(data);
-        if (data.length === 0) {
+      const response = await getGrants(params);
+      // Handle both paginated response format and direct array format
+      const grants = response.items || response.data || response;
+      
+      if (Array.isArray(grants)) {
+        setGrants(grants);
+        if (grants.length === 0) {
           setFetchError('No grants found matching your criteria');
         }
       } else {
+        console.error('Unexpected response format:', response);
         throw new Error('Invalid response format from server');
       }
     } catch (error) {

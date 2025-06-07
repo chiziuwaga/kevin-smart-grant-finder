@@ -68,21 +68,21 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      setLoading(true);
-      try {
+      setLoading(true);      try {
         const statsResponse = await getDashboardStats();
         const highPriorityResponse = await getGrants({ min_score: 85, limit: 5 });
         const deadlineSoonResponse = await getGrants({ days_to_deadline: 7, limit: 5 });
         const distributionResponse = await getDistribution();
 
-        setStats(statsResponse);
-        setHighPriorityGrants(highPriorityResponse);
-        setDeadlineSoonGrants(deadlineSoonResponse);
+        setStats(statsResponse.data || statsResponse);
+        setHighPriorityGrants(highPriorityResponse.items || highPriorityResponse);
+        setDeadlineSoonGrants(deadlineSoonResponse.items || deadlineSoonResponse);
         if (distributionResponse) {
+          const distData = distributionResponse.data || distributionResponse;
           setChartData({
-            deadlines: distributionResponse.deadlines || [],
-            categories: distributionResponse.categories || [],
-            relevanceDistribution: distributionResponse.relevanceDistribution || []
+            deadlines: distData.deadlines || [],
+            categories: distData.categories || [],
+            relevanceDistribution: distData.relevanceDistribution || []
           });
         }
 
