@@ -165,11 +165,26 @@ async def save_user_settings(db: AsyncSession, settings_data: Dict[str, Any]) ->
     result = await db.execute(query)
     settings = result.scalar_one_or_none()
     
+    # Map frontend camelCase fields to database snake_case fields
+    field_mapping = {
+        "telegramEnabled": "telegram_enabled",
+        "minimumScore": "minimum_score", 
+        "searchFrequency": "schedule_frequency",
+        "categories": "notify_categories"
+    }
+    
     if settings:
         for key, value in settings_data.items():
-            setattr(settings, key, value)
+            db_field = field_mapping.get(key, key)
+            if hasattr(settings, db_field):
+                setattr(settings, db_field, value)
     else:
-        settings = UserSettings(**settings_data)
+        # Map fields for new settings creation
+        mapped_data = {}
+        for key, value in settings_data.items():
+            db_field = field_mapping.get(key, key)
+            mapped_data[db_field] = value
+        settings = UserSettings(**mapped_data)
         db.add(settings)
     
     await db.commit()

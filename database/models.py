@@ -72,6 +72,17 @@ class UserSettings(Base):
 
     saved_grants = relationship("Grant", secondary="saved_grants", back_populates="saved_by")
 
+    def to_dict(self):
+        """Convert UserSettings model to dictionary format for API responses"""
+        return {
+            "telegramEnabled": self.telegram_enabled,
+            "emailNotifications": True,  # Default value since not in DB model
+            "deadlineReminders": True,   # Default value since not in DB model
+            "searchFrequency": self.schedule_frequency.value if self.schedule_frequency else "weekly",
+            "categories": self.notify_categories or [],
+            "minimumScore": self.minimum_score or 0.7
+        }
+
 class SavedGrants(Base):
     __tablename__ = 'saved_grants'
 
