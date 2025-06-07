@@ -150,10 +150,34 @@ const Dashboard = () => {
   }
 
   const renderGrantRow = (grant) => {
-    const daysToDeadline = differenceInDays(
-      parseISO(grant.deadline),
-      new Date()
-    );
+    let daysToDeadline = 'N/A';
+    let formattedDeadline = 'N/A';
+    let deadlineColor = theme.palette.text.secondary;
+
+    if (grant.deadline && typeof grant.deadline === 'string') {
+      try {
+        const parsedDate = parseISO(grant.deadline);
+        const now = new Date();
+        if (parsedDate instanceof Date && !isNaN(parsedDate)) {
+          daysToDeadline = differenceInDays(parsedDate, now);
+          formattedDeadline = format(parsedDate, 'PP');
+          if (daysToDeadline < 0) { // Deadline has passed
+            deadlineColor = theme.palette.text.disabled;
+            daysToDeadline = Math.abs(daysToDeadline); // Show as positive days ago
+            formattedDeadline = `${formattedDeadline} (Passed)`;
+          } else if (daysToDeadline < 7) { // Due very soon
+            deadlineColor = theme.palette.error.main;
+          } else if (daysToDeadline < 30) { // Due soon
+            deadlineColor = theme.palette.warning.main;
+          }
+        } else {
+          console.warn(`Invalid date object after parsing for grant ${grant.id}: ${grant.deadline}`);
+        }
+      } catch (e) {
+        console.warn(`Error parsing date for grant ${grant.id}: ${grant.deadline}`, e);
+      }
+    }
+
     const isSaved = savedGrants.has(grant.id);
 
     return (
@@ -187,12 +211,14 @@ const Dashboard = () => {
         </TableCell>
         <TableCell>
           <Box sx={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-            <AccessTimeIcon fontSize="small" sx={{ mr: 0.5, color: daysToDeadline < 14 ? theme.palette.error.main : theme.palette.text.secondary }} />
-            <Typography variant="body2">
-              {format(parseISO(grant.deadline), 'PP')}
-              <Typography component="span" variant="caption" sx={{ color: 'text.secondary', ml: 0.5 }}>
-                ({daysToDeadline}d)
-              </Typography>
+            <AccessTimeIcon fontSize="small" sx={{ mr: 0.5, color: deadlineColor }} />
+            <Typography variant="body2" sx={{ color: deadlineColor }}>
+              {formattedDeadline}
+              {typeof daysToDeadline === 'number' && (
+                <Typography component="span" variant="caption" sx={{ color: deadlineColor, ml: 0.5 }}>
+                  ({daysToDeadline}d{daysToDeadline < 0 ? ' ago' : ''})
+                </Typography>
+              )}
             </Typography>
           </Box>
         </TableCell>
