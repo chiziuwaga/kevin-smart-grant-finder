@@ -41,9 +41,7 @@ async def init_services():
     # No explicit connect method in the provided PineconeClient, assuming it connects on demand or init
 
     # Initialize Perplexity
-    services.perplexity_client = PerplexityClient() # API key is read from env vars within the client
-
-    # Initialize Notifications
+    services.perplexity_client = PerplexityClient() # API key is read from env vars within the client    # Initialize Notifications
     if settings.telegram_bot_token and settings.telegram_chat_id:
         services.notifier = NotificationManager(
             telegram_token=settings.telegram_bot_token,
@@ -53,6 +51,4 @@ async def init_services():
         logger.warning("Telegram token or chat ID not found in settings. NotificationManager not initialized.")
         services.notifier = None # Explicitly set to None if not configured
 
-    # The following line can be removed if Home.py has its own separate initialization logic
-    # or if it also relies on this central init_services.
-    # pass # Service initialization is now primarily handled in Home.py
+    logger.info("Service initialization completed successfully")

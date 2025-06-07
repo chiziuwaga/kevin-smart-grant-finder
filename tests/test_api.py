@@ -4,8 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 # Import the FastAPI app and services mapping
-test_app = __import__('Home').main_app
-services = __import__('Home').services
+from app.main import app as test_app
+from app.services import services
 
 client = TestClient(test_app)
 

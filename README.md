@@ -100,7 +100,7 @@ A comprehensive system for automatically discovering, analyzing, and prioritizin
 
 1. Start the FastAPI backend (from project root):
    ```bash
-   uvicorn Home:main_app --host 0.0.0.0 --port 8000 --reload
+   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
    *(The backend API will be available at `http://localhost:8000`)*
 
@@ -119,8 +119,8 @@ See `frontend/DEPLOYMENT.md` for detailed instructions on deploying the backend 
 
 ### Backend (`/` - Root Directory)
 
-- `Home.py`: FastAPI application entry point and service initialization.
-- `api/`: Contains FastAPI routers and API endpoint definitions.
+- `app/main.py`: FastAPI application entry point and service initialization.
+- `app/`: Contains FastAPI routers, dependencies, schemas, and API endpoint definitions.
 - `database/`: SQLAlchemy/PostgreSQL models and Pinecone client implementations.
 - `agents/`: Research and Analysis agent logic.
 - `utils/`: Helper utilities, notification manager, API clients.

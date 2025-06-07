@@ -105,3 +105,26 @@ async def shutdown_event():
 
 # Add routes
 app.include_router(api_router, prefix="/api")
+
+# Add root route
+@app.get("/")
+async def read_root():
+    """Root endpoint - welcome message"""
+    return {"message": "Welcome to Kevin's Smart Grant Finder API"}
+
+# Add health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint to verify database connection"""
+    try:
+        if services.db_sessionmaker:
+            async with services.db_sessionmaker() as session:
+                await session.execute(text("SELECT 1"))
+            logger.info("Database health check successful")
+            return {"status": "ok", "detail": "Database connected"}
+        else:
+            logger.warning("Database sessionmaker not initialized")
+            return JSONResponse(status_code=503, content={"status": "error", "detail": "Database service not configured"})
+    except Exception as e:
+        logger.error(f"Database health check failed: {str(e)}", exc_info=True)
+        return JSONResponse(status_code=503, content={"status": "error", "detail": f"Database connection failed: {str(e)}"})
