@@ -54,16 +54,23 @@ app = FastAPI(
     openapi_url="/api/openapi.json"
 )
 
-# Enhanced CORS middleware - allow all origins for production debugging
+# CORS middleware - configured for Vercel frontend
+allowed_origins = [
+    "https://smartgrantfinder.vercel.app",
+    "https://www.smartgrantfinder.vercel.app", 
+    "http://localhost:3000",
+    "http://127.0.0.1:3000"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now to fix CORS issues
-    allow_credentials=False,  # Cannot use credentials with allow_origins=["*"]
+    allow_origins=allowed_origins,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
     allow_headers=["*"],
     expose_headers=[
         "Content-Length",
-        "X-Total-Count",
+        "X-Total-Count", 
         "X-Rate-Limit-Remaining"
     ],
     max_age=600
