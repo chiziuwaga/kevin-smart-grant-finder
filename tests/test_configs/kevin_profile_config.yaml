@@ -1,0 +1,14 @@
+user_profile:
+  name: "Kevin"
+  focus_areas:
+    - "Technology"
+    - "Community Development"
+  expertise:
+    - "Software Development"
+    - "Project Management"
+  strategic_goals:
+    - "Secure funding for innovative tech projects"
+    - "Support local community initiatives"
+  resource_constraints:
+    team_capacity_hours_per_week: 40
+    max_projects_concurrent: 2

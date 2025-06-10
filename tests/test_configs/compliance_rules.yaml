@@ -1,0 +1,36 @@
+# Minimal compliance rules for testing
+rules:
+  - rule_id: "ELIGIBILITY_001"
+    description: "Must be a registered non-profit."
+    # Condition logic is handled by the agent, this is illustrative
+    condition_keywords: ["non-profit", "501c3"] 
+    severity: "High"
+    score_impact_if_failed: -0.5 
+
+  - rule_id: "REPORTING_001"
+    description: "Quarterly reporting required."
+    condition_keywords: ["quarterly reporting"]
+    severity: "Medium"
+    score_impact_if_failed: -0.2
+
+# Default scores or parameters if grant data is insufficient for a rule
+default_scores:
+  eligibility_check: 0.5 # Default score if specific keywords not found or N/A
+
+# Weights for combining various compliance aspects if your agent does that
+# These might be different from the final_weighted_score in ComplianceScores schema
+# and are specific to how ComplianceAnalysisAgent itself weighs internal checks.
+# For simplicity, let's assume the agent uses these to derive its sub-scores.
+component_weights:
+  business_rules: 0.6
+  feasibility_assessment: 0.4 # Example
+
+# Thresholds for overall compliance assessment by this agent
+pass_threshold: 0.6
+
+# Configuration for LLM usage within compliance checks, if any
+llm_prompts:
+  summarize_compliance_breaches: "Based on the grant data and the following failed compliance rules, provide a brief summary of key compliance issues: {failed_rules_details}"
+
+# This structure is a placeholder and should align with what ComplianceAnalysisAgent expects.
+# The key is to have a file that can be loaded without error.

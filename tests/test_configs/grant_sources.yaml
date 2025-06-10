@@ -1,0 +1,19 @@
+grant_sources:
+  - name: "Grants.gov"
+    url: "https://www.grants.gov"
+    description: "Federal grant opportunities"
+    focus_areas:
+      - "Federal"
+      - "Various Sectors"
+  - name: "USDA Rural Development"
+    url: "https://www.rd.usda.gov"
+    description: "Grants for rural development"
+    focus_areas:
+      - "Rural Development"
+      - "Infrastructure"
+  - name: "Natchitoches Parish Government"
+    url: "https://natchitochesparishla.gov"
+    description: "Local grants for Natchitoches Parish"
+    focus_areas:
+      - "Local Government"
+      - "Natchitoches Parish"

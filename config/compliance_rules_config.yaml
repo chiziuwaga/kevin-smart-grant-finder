@@ -1,0 +1,207 @@
+# Compliance Rules Configuration
+# Defines compliance criteria, risk factors, and feasibility checks for grants.
+
+# General Compliance Categories & Keywords
+# These help in identifying and flagging compliance aspects mentioned in grant texts.
+compliance_categories:
+  - name: "Financial Reporting"
+    keywords: ["financial statements", "audit report", "budget reporting", "quarterly reports", "annual financial review"]
+    description: "Requirements related to submitting financial documentation and undergoing audits."
+    risk_level: "Medium" # Default risk if specific rules aren't met
+    feasibility_check_points: # Questions to ask or criteria to check for Kevin's capacity
+      - "Can Kevin's organization provide audited financial statements?"
+      - "Does Kevin have a system for detailed budget tracking and reporting?"
+      - "Frequency of reporting (quarterly, annually) manageable?"
+
+  - name: "Legal & Regulatory"
+    keywords: ["legal compliance", "regulatory standards", "data privacy", "GDPR", "HIPAA", "501c3 status", "non-profit registration"]
+    description: "Adherence to laws, regulations, and specific legal statuses."
+    risk_level: "High"
+    feasibility_check_points:
+      - "Is Kevin's organization's 501(c)(3) status current and in good standing?"
+      - "Are there specific industry regulations (e.g., HIPAA for health) that apply and can be met?"
+      - "Data privacy and security measures in place (if handling sensitive data)?"
+
+  - name: "Ethical Conduct"
+    keywords: ["ethics policy", "conflict of interest", "human subjects research", "animal welfare", "IRB approval"]
+    description: "Standards for ethical behavior, research conduct, and conflict of interest."
+    risk_level: "High"
+    feasibility_check_points:
+      - "Does Kevin have a conflict of interest policy?"
+      - "If research is involved, can IRB (Institutional Review Board) or equivalent ethical approval be obtained?"
+
+  - name: "Project Monitoring & Evaluation (M&E)"
+    keywords: ["monitoring plan", "evaluation framework", "performance metrics", "KPIs", "impact assessment", "progress reports"]
+    description: "Requirements for tracking project progress, outcomes, and impact."
+    risk_level: "Medium"
+    feasibility_check_points:
+      - "Does Kevin have experience with developing and implementing M&E plans?"
+      - "Are the required metrics and KPIs feasible to track?"
+      - "Capacity for regular progress reporting (e.g., monthly, quarterly)?"
+
+  - name: "Matching Funds & Cost Sharing"
+    keywords: ["matching funds", "cost share", "in-kind contributions", "leveraged funds"]
+    description: "Requirement for the grantee to contribute a portion of the project costs."
+    risk_level: "Medium"
+    feasibility_check_points:
+      - "Can Kevin's organization meet the specified matching fund percentage?"
+      - "Are in-kind contributions accepted and can they be documented?"
+      - "Source of matching funds identified?"
+
+  - name: "Reporting Timelines & Deadlines"
+    keywords: ["strict deadlines", "reporting schedule", "milestone reports", "final report submission"]
+    description: "Adherence to specific timelines for reporting and deliverables."
+    risk_level: "Medium"
+    feasibility_check_points:
+      - "Are the reporting deadlines realistic given Kevin's operational capacity?"
+      - "System in place to track and meet multiple reporting deadlines?"
+
+  - name: "Intellectual Property (IP)"
+    keywords: ["IP rights", "licensing", "patents", "copyright", "data ownership"]
+    description: "Rules regarding ownership and use of intellectual property developed with grant funds."
+    risk_level: "Medium" # Can be High depending on Kevin's business model
+    feasibility_check_points:
+      - "Are the IP terms favorable or acceptable to Kevin?"
+      - "Does Kevin wish to retain primary IP rights?"
+
+# Specific Compliance Rules for Kevin (based on his profile and preferences)
+# These rules can override or add detail to the general categories.
+# 'Applies_if' conditions can be used to make rules context-dependent.
+kevin_specific_compliance_rules:
+  - rule_id: "FIN_AUDIT_01"
+    category: "Financial Reporting"
+    description: "Grants requiring an external audit of the entire organization (not just the project) are high effort."
+    condition_keywords: ["full organizational audit", "comprehensive external audit"]
+    assigned_risk_level: "High"
+    feasibility_note: "Assess if annual budget justifies full external audit cost/effort for this specific grant."
+    # Applies if: kevin_profile.organization_type == "Non-Profit" && kevin_profile.annual_budget < 1000000
+
+  - rule_id: "LEGAL_501C3_01"
+    category: "Legal & Regulatory"
+    description: "Grant explicitly requires 501(c)(3) status."
+    condition_keywords: ["must be 501c3", "requires 501(c)(3)", "eligible 501c3"]
+    # This is more of an eligibility flag than a risk, but can be modeled here.
+    # If kevin_profile.organizational_capacity.has_501c3_status is false, this grant is infeasible.
+    # If true, it's a pass.
+    pass_fail_flag: true # Indicates this is a hard eligibility requirement
+    feasibility_check_if_fail: "Kevin's organization does not meet the 501(c)(3) requirement."
+
+  - rule_id: "MATCH_FUNDS_01"
+    category: "Matching Funds & Cost Sharing"
+    description: "Matching fund requirement exceeds Kevin's stated capacity."
+    # This rule would be dynamically checked against kevin_profile.grant_preferences.match_funding_capability.max_match_percentage
+    # Example: if grant requires 25% match and Kevin's max is 20%.
+    assigned_risk_level: "High"
+    feasibility_note: "Grant's matching fund requirement is above Kevin's preferred maximum."
+
+  - rule_id: "IP_POLICY_01"
+    category: "Intellectual Property (IP)"
+    description: "Grant assigns all IP rights to the funder."
+    condition_keywords: ["funder owns all IP", "all intellectual property to funder", "assigns IP rights"]
+    assigned_risk_level: "High" # Depending on Kevin's preference for IP retention
+    feasibility_note: "Review IP terms carefully; funder retains all IP."
+
+# Risk Scoring Configuration
+# How to aggregate risk from different compliance factors.
+# (This is a simplified model; a more complex one might use weighted scores)
+risk_mapping:
+  "Low": 1
+  "Medium": 3
+  "High": 5
+  "Critical": 10 # For show-stopper issues
+
+# Feasibility Scoring (could be a simple checklist or a weighted score)
+# For now, feasibility notes from rules will guide manual review or a simple "pass/needs review/fail"
+feasibility_thresholds:
+  # Example: if total risk score > X, mark as "Needs Detailed Review"
+  high_risk_threshold_score: 10 # Sum of risk points from triggered rules
+
+# Default assumptions if grant text is unclear
+default_compliance_assumptions:
+  financial_reporting: "Standard annual project financial report required."
+  monitoring_evaluation: "Basic progress and final report required."
+
+scoring_weights:
+  business_logic_alignment: 0.35
+  feasibility_context: 0.35
+  strategic_synergy: 0.30
+
+business_logic_rules:
+  prohibited_grant_keywords: # Keywords that make a grant unsuitable
+    - "tobacco"
+    - "gambling"
+    - "weapons development"
+    - "political lobbying"
+  # required_kevin_certifications_for_application: # Certs Kevin *must* have to even consider applying (hypothetical)
+  #   - "SpecificIndustryCert123"
+  ethical_red_flags_keywords: # Keywords indicating potential ethical concerns
+    - "surveillance without consent"
+    - "discriminatory practices"
+    - "data exploitation"
+    - "environmental harm without mitigation"
+  # Rules for business type alignment are handled in code by comparing grant eligibility to kevin_profile.business_profile.type
+
+feasibility_context_rules:
+  # Match funding: Max percentage of total project cost Kevin is willing to provide as match
+  # This is now primarily driven by kevin_profile.operational_capacity.financial_capacity.max_match_funding_commitment_usd
+  # However, a general rule for acceptable match *percentage* could be here if needed.
+  # max_match_funding_percentage_kevin_provides: 25 # e.g., Kevin won't cover more than 25% as a match
+
+  # Team commitment / FTE - driven by kevin_profile.operational_capacity.team_size_fte
+  # min_team_commitment_fte_if_specified: 1 # If grant specifies FTE, Kevin must be able to meet at least this.
+
+  acceptable_reporting_frequencies: # What reporting schedules are generally acceptable to Kevin?
+    - "quarterly"
+    - "semi-annually"
+    - "annually"
+    - "end_of_project"
+  # Note: The agent logic will compare grant's requirement to kevin_profile.operational_capacity.reporting_capacity
+  # This list helps filter or score grants that explicitly state a frequency.
+
+  # Technical expertise: Driven by kevin_profile.operational_capacity.technical_expertise
+  # min_technical_expertise_match_percentage: 60 # e.g., Kevin must have at least 60% of required skills
+
+  # Other feasibility constraints could be added, e.g.:
+  # max_project_duration_years: 3
+  # min_funding_request_usd: 10000 # Avoid overly small grants if not strategic
+
+strategic_synergy_rules:
+  synergistic_keywords: # Keywords that indicate strong alignment with Kevin's strategy
+    - "innovation in education"
+    - "sustainable development goals (SDGs)"
+    - "community impact technology"
+    - "ai for good"
+    - "urban mobility solutions"
+    - "green tech"
+    - "digital literacy"
+  misaligned_focus_areas: # Keywords/phrases indicating grant is likely outside strategic scope
+    - "arts and humanities funding" # (Unless Kevin has a specific strategic goal for this)
+    - "historical preservation"
+    - "basic scientific research (non-applied)"
+    - "sports and recreation programs"
+  # Alignment with primary objectives and target sectors is primarily driven by kevin_profile.strategic_goals
+  # These keywords here can provide additional nuance or specific inclusions/exclusions.
+
+# Original eligibility_criteria and reporting_requirements from Task 1.5 are kept for reference
+# but their direct use by ComplianceAnalysisAgent might be superseded by the more specific rules above
+# and direct profile comparisons in the agent's Python code.
+# The agent will primarily use the rules above and the kevin_profile for its logic.
+
+eligibility_criteria:
+  - rule_id: "EC001"
+    description: "Must be a registered non-profit organization."
+    keywords_include: ["non-profit", "501c3", "charity"]
+    keywords_exclude: ["for-profit", "commercial entity"]
+    applies_if_user_type: "non-profit" # Link to user profile
+  - rule_id: "EC002"
+    description: "Project must focus on STEM education for underserved communities."
+    required_focus_areas: ["STEM Education", "Underserved Communities"]
+
+reporting_requirements: # This section might be more for informational context or a simpler check
+  - level: "low"
+    max_reports_per_year: 2
+    acceptable_formats: ["online_portal", "pdf_submission"]
+  - level: "medium"
+    max_reports_per_year: 4
+    acceptable_formats: ["online_portal", "pdf_submission", "quarterly_calls"]
+  # High level reporting requirements can be inferred from kevin_profile.operational_capacity.reporting_capacity

@@ -1,0 +1,99 @@
+# Sector Configuration
+# Defines various sectors, sub-sectors, and associated keywords for grant categorization and search.
+
+sectors:
+  - name: "Technology & Innovation"
+    description: "Grants related to technological advancements, research, and innovation."
+    sub_sectors:
+      - name: "Information Technology"
+        keywords: ["software development", "cybersecurity", "AI", "machine learning", "data science", "blockchain", "cloud computing"]
+      - name: "Biotechnology"
+        keywords: ["genetic engineering", "pharmaceuticals", "medical devices", "bioinformatics"]
+      - name: "Clean Technology"
+        keywords: ["renewable energy", "solar", "wind", "geothermal", "energy storage", "sustainable transport", "carbon capture"]
+      - name: "Advanced Manufacturing"
+        keywords: ["3D printing", "robotics", "nanotechnology", "industrial automation"]
+    general_keywords: ["innovation", "R&D", "startup funding", "tech grants", "prototype development"]
+
+  - name: "Education"
+    description: "Grants for educational programs, institutions, and research."
+    sub_sectors:
+      - name: "K-12 Education"
+        keywords: ["primary education", "secondary education", "school funding", "teacher training", "curriculum development"]
+      - name: "Higher Education"
+        keywords: ["university grants", "college funding", "scholarships", "academic research", "postgraduate studies"]
+      - name: "Vocational Training"
+        keywords: ["skill development", "workforce training", "apprenticeships", "trade schools"]
+      - name: "STEM Education"
+        keywords: ["science education", "technology education", "engineering education", "math education", "coding camps"]
+    general_keywords: ["educational grants", "learning initiatives", "literacy programs", "educational equity"]
+
+  - name: "Healthcare"
+    description: "Grants related to health services, medical research, and public health."
+    sub_sectors:
+      - name: "Medical Research"
+        keywords: ["clinical trials", "disease research", "cancer research", "neuroscience", "genomics"]
+      - name: "Public Health"
+        keywords: ["health initiatives", "disease prevention", "community health", "epidemiology", "vaccination programs"]
+      - name: "Healthcare Services"
+        keywords: ["hospital funding", "clinic support", "mental health services", "telemedicine", "patient care"]
+      - name: "Global Health"
+        keywords: ["international health aid", "tropical diseases", "health in developing countries"]
+    general_keywords: ["health grants", "medical funding", "wellness programs", "healthcare access"]
+
+  - name: "Community Development"
+    description: "Grants for improving local communities, social welfare, and infrastructure."
+    sub_sectors:
+      - name: "Urban Development"
+        keywords: ["city planning", "public spaces", "smart cities", "urban renewal"]
+      - name: "Rural Development"
+        keywords: ["agricultural support", "rural infrastructure", "community facilities in rural areas"]
+      - name: "Social Services"
+        keywords: ["homelessness", "poverty alleviation", "food banks", "elderly care", "disability support"]
+      - name: "Housing"
+        keywords: ["affordable housing", "homeless shelters", "housing development"]
+    general_keywords: ["community grants", "social impact", "local initiatives", "civic engagement", "infrastructure grants"]
+
+  - name: "Arts & Culture"
+    description: "Grants supporting artistic endeavors, cultural institutions, and heritage preservation."
+    sub_sectors:
+      - name: "Performing Arts"
+        keywords: ["theatre", "dance", "music", "opera"]
+      - name: "Visual Arts"
+        keywords: ["painting", "sculpture", "photography", "museums", "galleries"]
+      - name: "Literature & Writing"
+        keywords: ["publishing grants", "author support", "poetry", "libraries"]
+      - name: "Cultural Heritage"
+        keywords: ["historic preservation", "indigenous culture", "archaeology", "folk arts"]
+    general_keywords: ["arts funding", "cultural grants", "creative projects", "artist fellowships"]
+
+  - name: "Environment & Conservation"
+    description: "Grants for environmental protection, conservation efforts, and climate change mitigation."
+    sub_sectors:
+      - name: "Conservation"
+        keywords: ["wildlife protection", "habitat restoration", "biodiversity", "national parks", "endangered species"]
+      - name: "Climate Change"
+        keywords: ["climate adaptation", "mitigation strategies", "carbon reduction", "climate resilience"]
+      - name: "Water Resources"
+        keywords: ["water quality", "watershed management", "ocean conservation", "marine biology"]
+      - name: "Sustainable Agriculture"
+        keywords: ["organic farming", "permaculture", "soil health", "food security"]
+    general_keywords: ["environmental grants", "sustainability projects", "green initiatives", "conservation funding"]
+
+  # Add more sectors as needed, e.g., Human Rights, International Aid, Animal Welfare, etc.
+  - name: "Other"
+    description: "Grants that do not fit neatly into other categories or are cross-sectoral."
+    sub_sectors: []
+    general_keywords: ["general operating support", "capacity building", "miscellaneous grants"]
+
+# Sector Weighting (Optional: for prioritizing certain sectors for Kevin)
+# Higher weight means grants in this sector are considered more important. Default is 1.
+# This can be used in the relevance scoring mechanism.
+sector_weights:
+  "Technology & Innovation": 1.2
+  "Education": 1.1
+  "Environment & Conservation": 1.2
+  "Community Development": 1.0
+  "Healthcare": 0.9
+  "Arts & Culture": 0.8
+  "Other": 0.5

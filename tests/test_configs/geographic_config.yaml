@@ -1,0 +1,12 @@
+
+geographic_tiers:
+  primary:
+    name: "Natchitoches Parish, LA-08 district"
+    sites:
+      - "grants.gov"
+      - "rd.usda.gov"
+  secondary:
+    name: "Louisiana"
+    sites:
+      - "sba.gov"
+      - "ifundwomen.com"

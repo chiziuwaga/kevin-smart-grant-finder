@@ -33,6 +33,12 @@ def get_perplexity() -> PerplexityClient:
 def get_notifier() -> NotificationManager:
     return services.notifier
 
+def get_db_sessionmaker():
+    """Get the database sessionmaker from services"""
+    if not services.db_sessionmaker:
+        raise RuntimeError("Database sessionmaker not initialized in services.")
+    return services.db_sessionmaker
+
 def get_research_agent(
     perplexity: PerplexityClient = Depends(get_perplexity),
     pinecone: PineconeClient = Depends(get_pinecone)

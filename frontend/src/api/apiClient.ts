@@ -1,12 +1,15 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import type { 
-  Grant, 
+  // Grant, // Grant is no longer directly used here, EnrichedGrant is used instead
   GrantSearchFilters,
   DashboardStats, 
   DistributionData,
   UserSettings,
   APIResponse,
-  PaginatedResponse
+  PaginatedResponse,
+  EnrichedGrant, // Added EnrichedGrant
+  ApplicationHistory, // Added ApplicationHistory
+  ApplicationFeedbackData // Added ApplicationFeedbackData
 } from './types';
 
 interface CircuitBreaker {
@@ -137,12 +140,12 @@ export const getDistribution = async (): Promise<APIResponse<DistributionData>> 
 };
 
 // Grants endpoints
-export const getGrants = async (params: Partial<GrantSearchFilters> = {}): Promise<PaginatedResponse<Grant>> => {
+export const getGrants = async (params: Partial<GrantSearchFilters> = {}): Promise<PaginatedResponse<EnrichedGrant>> => {
   if (circuitBreaker.isOpen()) {
     throw new Error('Service temporarily unavailable');
   }
   try {
-    const response = await API.get<PaginatedResponse<Grant>>('/grants', { params });
+    const response = await API.get<PaginatedResponse<EnrichedGrant>>('/grants', { params });
     circuitBreaker.reset();
     return response.data;
   } catch (error) {
@@ -151,12 +154,12 @@ export const getGrants = async (params: Partial<GrantSearchFilters> = {}): Promi
   }
 };
 
-export const searchGrants = async (filters: GrantSearchFilters): Promise<PaginatedResponse<Grant>> => {
+export const searchGrants = async (filters: GrantSearchFilters): Promise<PaginatedResponse<EnrichedGrant>> => {
   if (circuitBreaker.isOpen()) {
     throw new Error('Service temporarily unavailable');
   }
   try {
-    const response = await API.post<PaginatedResponse<Grant>>('/grants/search', filters);
+    const response = await API.post<PaginatedResponse<EnrichedGrant>>('/grants/search', filters);
     circuitBreaker.reset();
     return response.data;
   } catch (error) {
@@ -165,12 +168,12 @@ export const searchGrants = async (filters: GrantSearchFilters): Promise<Paginat
   }
 };
 
-export const getGrantById = async (id: string): Promise<APIResponse<Grant>> => {
+export const getGrantById = async (id: string): Promise<APIResponse<EnrichedGrant>> => {
   if (circuitBreaker.isOpen()) {
     throw new Error('Service temporarily unavailable');
   }
   try {
-    const response = await API.get<APIResponse<Grant>>(`/grants/${id}`);
+    const response = await API.get<APIResponse<EnrichedGrant>>(`/grants/${id}`);
     circuitBreaker.reset();
     return response.data;
   } catch (error) {
@@ -179,12 +182,12 @@ export const getGrantById = async (id: string): Promise<APIResponse<Grant>> => {
   }
 };
 
-export const getSavedGrants = async (): Promise<PaginatedResponse<Grant>> => {
+export const getSavedGrants = async (): Promise<PaginatedResponse<EnrichedGrant>> => {
   if (circuitBreaker.isOpen()) {
     throw new Error('Service temporarily unavailable');
   }
   try {
-    const response = await API.get<PaginatedResponse<Grant>>('/grants/saved');
+    const response = await API.get<PaginatedResponse<EnrichedGrant>>('/grants/saved');
     circuitBreaker.reset();
     return response.data;
   } catch (error) {
@@ -293,6 +296,50 @@ export const getRunHistory = async (): Promise<APIResponse<Array<{ timestamp: st
   }
 };
 
+// Application History and Feedback Endpoints
+export const submitApplicationFeedback = async (feedbackData: ApplicationFeedbackData): Promise<APIResponse<ApplicationHistory>> => {
+  if (circuitBreaker.isOpen()) {
+    throw new Error('Service temporarily unavailable');
+  }
+  try {
+    const response = await API.post<APIResponse<ApplicationHistory>>('/applications/feedback', feedbackData);
+    circuitBreaker.reset();
+    return response.data;
+  } catch (error) {
+    circuitBreaker.recordFailure();
+    throw categorizeError(error);
+  }
+};
+
+export const getApplicationHistoryForGrant = async (grantId: string): Promise<PaginatedResponse<ApplicationHistory>> => {
+  if (circuitBreaker.isOpen()) {
+    throw new Error('Service temporarily unavailable');
+  }
+  try {
+    const response = await API.get<PaginatedResponse<ApplicationHistory>>(`/applications/history`, { params: { grant_id: grantId } });
+    circuitBreaker.reset();
+    return response.data;
+  } catch (error) {
+    circuitBreaker.recordFailure();
+    throw categorizeError(error);
+  }
+};
+
+export const getAllApplicationHistory = async (params: { page?: number, pageSize?: number, grant_id?: string } = {}): Promise<PaginatedResponse<ApplicationHistory>> => {
+  if (circuitBreaker.isOpen()) {
+    throw new Error('Service temporarily unavailable');
+  }
+  try {
+    const response = await API.get<PaginatedResponse<ApplicationHistory>>('/applications/history', { params });
+    circuitBreaker.reset();
+    return response.data;
+  } catch (error) {
+    circuitBreaker.recordFailure();
+    throw categorizeError(error);
+  }
+};
+
+
 // Add named exports to default export to support both import styles
 const APIWithMethods = {
   ...API,
@@ -308,7 +355,10 @@ const APIWithMethods = {
   getLastRun,
   getRunHistory,
   getUserSettings,
-  updateUserSettings
+  updateUserSettings,
+  submitApplicationFeedback, // Added new method
+  getApplicationHistoryForGrant, // Added new method
+  getAllApplicationHistory // Added new method
 };
 
 export default APIWithMethods;

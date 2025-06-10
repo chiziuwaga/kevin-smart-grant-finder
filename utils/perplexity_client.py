@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from typing import Dict, List, Any, Optional # Added typing imports
 import httpx # Added for async HTTP requests
 import asyncio # For async sleep in mock/retries if needed
+import time # Added for time.monotonic()
 
 load_dotenv()
 
@@ -27,7 +28,7 @@ class PerplexityClient:
 
         self.base_url = "https://api.perplexity.ai"
         self.retry_attempts = 3
-        self._last_request_time = 0
+        # self._last_request_time = 0 # This is now per-model
         
         # Updated models configuration with clear capabilities
         self.models = {
@@ -50,8 +51,13 @@ class PerplexityClient:
         }
         
         self.default_model = "sonar-pro"  # Best for complex tasks like grant analysis
-        self._rate_limiters = {
-            model: self._create_rate_limiter(config["rpm"])
+        
+        # Initialize last request times for each model
+        self._last_request_times = {model: 0.0 for model in self.models.keys()}
+        
+        # Calculate and store the minimum delay between requests for each model
+        self._model_delays = {
+            model: self._calculate_delay_from_rpm(config["rpm"])
             for model, config in self.models.items()
         }
         
@@ -239,6 +245,10 @@ class PerplexityClient:
     async def _execute_search(self, query: str, model: str = None, **kwargs) -> Dict[str, Any]:
         """Execute search with proper model handling and retries."""
         current_model = model or self.default_model
+        if current_model not in self.models:
+            logger.error(f"Model {current_model} not configured. Falling back to default: {self.default_model}")
+            current_model = self.default_model
+            
         search_domain_filter = kwargs.get('search_domain_filter')
         structured_output = kwargs.get('structured_output', False)
         
@@ -265,6 +275,19 @@ class PerplexityClient:
             payload["messages"][0]["content"] = f"{query}\n\nPlease provide results in a structured format including:\n- Title\n- Description\n- Funding Amount\n- Deadline\n- Eligibility\n- Source URL"
             
         for attempt in range(self.retry_attempts):
+            # Proactive rate limiting
+            required_delay = self._model_delays.get(current_model, 2.0) # Default to 2s delay if model somehow not in _model_delays
+            last_req_time = self._last_request_times.get(current_model, 0.0)
+            
+            elapsed_time = time.monotonic() - last_req_time
+            
+            if elapsed_time < required_delay:
+                wait_for = required_delay - elapsed_time
+                logger.info(f"Proactive rate limit: Waiting {wait_for:.2f}s for model {current_model} before request.")
+                await asyncio.sleep(wait_for)
+            
+            self._last_request_times[current_model] = time.monotonic() # Update last request time before making the call
+
             try:
                 async with httpx.AsyncClient() as client:
                     response = await client.post(
@@ -388,7 +411,22 @@ class PerplexityClient:
         
         return grants
 
-    def _create_rate_limiter(self, rpm: int) -> float:
+    def _calculate_delay_from_rpm(self, rpm: int) -> float:
+        """
+        Calculate the minimum delay between requests in seconds from RPM.
+        
+        Args:
+            rpm: Requests per minute limit for the model
+            
+        Returns:
+            float: Minimum delay between requests in seconds
+        """
+        if rpm <= 0:
+            logger.warning("RPM must be positive. Defaulting to a 2-second delay.")
+            return 2.0  # Default delay for invalid RPM
+        return 60.0 / rpm
+
+    def _create_rate_limiter(self, rpm: int) -> float: # This method is now effectively replaced by _calculate_delay_from_rpm and direct storage in _model_delays
         """
         Create a rate limiter for a specific model based on its RPM limit.
         
@@ -399,9 +437,10 @@ class PerplexityClient:
             float: Minimum delay between requests in seconds
         """
         # Convert RPM to minimum delay between requests
-        min_delay = 60.0 / float(rpm)  # Ensure float division
-        logger.debug(f"Creating rate limiter with {rpm} RPM (min delay: {min_delay:.2f}s)")
-        return min_delay
+        # This logic is now in _calculate_delay_from_rpm
+        # and the result is stored in self._model_delays
+        logger.warning("_create_rate_limiter is deprecated. Delays are pre-calculated in __init__.")
+        return self._calculate_delay_from_rpm(rpm)
 
     def get_rate_limit_status(self) -> int:
         """Get current rate limit status.
@@ -410,7 +449,10 @@ class PerplexityClient:
             int: Estimated remaining requests for current minute
         """
         current_time = time.time()
-        time_since_last = current_time - self._last_request_time
+        
+        # Get the last request time for the default model
+        last_request_time = self._last_request_times.get(self.default_model, 0.0)
+        time_since_last = current_time - last_request_time
         
         # Simple estimation: assume we can make requests at the default model's rate
         default_model_config = self.models.get(self.default_model, {})

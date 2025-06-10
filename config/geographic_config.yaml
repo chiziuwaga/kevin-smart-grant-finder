@@ -1,0 +1,107 @@
+# Geographic Configuration
+# Defines geographic areas, their relationships, and specific rules or preferences.
+
+# Hierarchical Geographic Structure
+# This helps in understanding grant eligibility based on location.
+# Example: A grant for "California" would also be relevant if Kevin's focus is "USA" or "North America".
+# A grant for "Anytown, CA" would be relevant if focus is "California".
+
+# Continents / Major Regions
+continents:
+  - name: "North America"
+    countries:
+      - name: "USA"
+        code: "US"
+        states_provinces:
+          - name: "California"
+            code: "CA"
+            major_cities_counties: ["Los Angeles", "San Francisco", "San Diego", "Anytown"]
+            regions: ["Northern California", "Southern California", "Central Valley"]
+          - name: "New York"
+            code: "NY"
+            major_cities_counties: ["New York City", "Buffalo", "Rochester", "Metropolis"]
+            regions: ["Upstate New York", "Long Island"]
+          - name: "Texas"
+            code: "TX"
+            major_cities_counties: ["Houston", "Dallas", "Austin"]
+          # Add all 50 states + territories if comprehensive coverage is needed
+          # For brevity, only a few examples are listed.
+        national_keywords: ["federal grants", "national funding", "USA-wide"]
+      - name: "Canada"
+        code: "CA" # Note: Country code CA, not state. Be mindful of overlaps if not namespaced.
+        states_provinces:
+          - name: "Ontario"
+            code: "ON" # Province code
+            major_cities_counties: ["Toronto", "Ottawa"]
+          - name: "Quebec"
+            code: "QC"
+            major_cities_counties: ["Montreal", "Quebec City"]
+        national_keywords: ["canadian federal grants", "national research council canada"]
+    regional_keywords: ["north american grants"]
+
+  - name: "Europe"
+    countries:
+      - name: "United Kingdom"
+        code: "GB"
+        # ... further breakdown if needed
+      - name: "Germany"
+        code: "DE"
+        # ...
+    regional_keywords: ["european union grants", "horizon europe"]
+
+  # Add other continents: Asia, South America, Africa, Oceania as needed.
+
+# Geographic Preferences & Restrictions for Kevin (Overrides or complements kevin_profile_config.yaml)
+# This allows for more granular control over geographic relevance.
+geographic_preferences:
+  # Specific areas Kevin is *highly* interested in, even if not primary focus.
+  # These might get a boost in relevance scoring.
+  high_interest_areas:
+    - type: "City"
+      name: "Techville" # A hypothetical city known for innovation
+      country_code: "US"
+      state_code: "CA" # Assuming Techville is in California
+      rationale: "Emerging hub for target sector."
+    - type: "Region"
+      name: "Appalachian Region"
+      country_code: "US"
+      rationale: "Focus on underserved community development."
+
+  # Areas Kevin explicitly wants to *avoid* or deprioritize.
+  restricted_areas:
+    - type: "Country"
+      name: "CountryX" # Hypothetical
+      code: "CX"
+      rationale: "Operational constraints or lack of strategic alignment."
+    - type: "State"
+      name: "StateY"
+      country_code: "US"
+      code: "SY"
+      rationale: "Previous negative experiences or low success rate."
+
+# Geographic Keywords for Search
+# Keywords associated with specific locations that might appear in grant descriptions.
+# This can help the ResearchAgent identify location-specific grants.
+location_keywords_map:
+  "California": ["CA grants", "California funding", "Golden State opportunities"]
+  "New York City": ["NYC grants", "Manhattan funding", "Brooklyn community grants"]
+  "Bay Area": ["San Francisco Bay Area grants", "Silicon Valley funding"] # Region example
+  "Appalachian Regional Commission": ["ARC grants"] # Specific funder tied to a region
+
+# Rules for International Grants
+# Only relevant if Kevin operates or is interested in international funding.
+international_grant_rules:
+  eligibility_check:
+    # Does Kevin's organization type (e.g., US-based non-profit) qualify for grants from international bodies?
+    requires_specific_registration: false # e.g., registered as an NGO in the target country
+    language_requirements: ["English"] # Grants must be available in these languages
+  target_international_regions: # If Kevin has specific international interests
+    - "Sub-Saharan Africa" # For development projects
+    - "Southeast Asia" # For technology partnerships
+  # Deprioritize grants requiring physical presence if Kevin doesn't have it.
+
+# Default settings if not specified in Kevin's profile
+default_geographic_context:
+  country: "USA"
+  # This can be used if a grant has no explicit geographic information,
+  # to assume it's for the default country unless otherwise specified.

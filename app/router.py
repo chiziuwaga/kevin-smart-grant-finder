@@ -12,17 +12,24 @@ from app.dependencies import (
     get_pinecone,
     get_notifier,
     get_research_agent,
-    get_analysis_agent
+    get_analysis_agent,
+    get_perplexity, # Fixed function name
+    get_db_sessionmaker # Added for run_full_search_cycle
 )
 from app import crud
 from app.schemas import (
-    Grant,
+    Grant, # This might be deprecated in favor of EnrichedGrant for responses
+    EnrichedGrant, # Added
     GrantSearchFilters,
     DashboardStats,
     DistributionData,
     UserSettings,
     APIResponse,
-    PaginatedResponse
+    PaginatedResponse,
+    SingleEnrichedGrantResponse, # Added
+    PaginatedEnrichedGrantResponse, # Added
+    ApplicationHistoryCreate, # Added
+    ApplicationHistoryResponse # Added
 )
 
 api_router = APIRouter()
@@ -76,64 +83,112 @@ async def get_analytics_distribution(db: AsyncSession = Depends(get_db_session))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.get("/grants", response_model=PaginatedResponse[Grant])
+@api_router.get("/grants", response_model=PaginatedEnrichedGrantResponse) # Changed to PaginatedEnrichedGrantResponse
 async def list_grants(
-    min_score: float = 0.0,
-    category: Optional[str] = None,
-    deadline_before: Optional[str] = None,
+    # min_score: float = 0.0, # Replaced by min_overall_score
+    # category: Optional[str] = None, # Replaced by more specific filters if needed or search_query
+    # deadline_before: Optional[str] = None, # Can be part of a more generic date filter if needed
     page: int = 1,
     page_size: int = 20,
-    db: AsyncSession = Depends(get_db_session),
-    pinecone_client=Depends(get_pinecone)
+    sort_by: Optional[str] = "overall_composite_score",
+    sort_order: Optional[str] = "desc",
+    status_filter: Optional[str] = None,
+    min_overall_score: Optional[float] = None,
+    search_query: Optional[str] = None,
+    db: AsyncSession = Depends(get_db_session)
+    # pinecone_client=Depends(get_pinecone) # Not directly used by crud.get_grants_list
 ):
-    """Get grants with optional filtering"""
+    """Get grants with advanced filtering, sorting, and pagination, returning EnrichedGrant objects."""
+    start_time_req = time.time()
     try:
-        grants, total = await crud.fetch_grants(
+        grants, total = await crud.get_grants_list(
             db=db,
-            pinecone=pinecone_client,
-            min_score=min_score,
-            category=category,
-            deadline_before=deadline_before,
-            page=page,
-            page_size=page_size
+            skip=(page - 1) * page_size,
+            limit=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            status_filter=status_filter,
+            min_overall_score=min_overall_score,
+            search_query=search_query
         )
-        return PaginatedResponse(
+        duration_req = time.time() - start_time_req
+        log_api_metrics("/grants", duration_req, 200, page=page, page_size=page_size, total_items=total)
+        return PaginatedEnrichedGrantResponse(
             items=grants,
             total=total,
             page=page,
             page_size=page_size
         )
     except Exception as e:
+        duration_req = time.time() - start_time_req
+        log_api_metrics("/grants", duration_req, 500, error=str(e))
+        logging.error(f"Error in /grants endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.post("/grants/search", response_model=PaginatedResponse[Grant])
+@api_router.get("/grants/{grant_id}", response_model=SingleEnrichedGrantResponse) # Changed to SingleEnrichedGrantResponse
+async def get_grant_detail(
+    grant_id: int,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Get a single grant by its ID, returning an EnrichedGrant object."""
+    start_time_req = time.time()
+    try:
+        grant = await crud.get_grant_by_id(db=db, grant_id=grant_id)
+        if not grant:
+            duration_req = time.time() - start_time_req
+            log_api_metrics("/grants/{grant_id}", duration_req, 404, grant_id=grant_id)
+            raise HTTPException(status_code=404, detail="Grant not found")
+        duration_req = time.time() - start_time_req
+        log_api_metrics("/grants/{grant_id}", duration_req, 200, grant_id=grant_id)
+        return SingleEnrichedGrantResponse(data=grant)
+    except HTTPException: # Re-raise HTTPException to preserve status code
+        raise
+    except Exception as e:
+        duration_req = time.time() - start_time_req
+        log_api_metrics("/grants/{grant_id}", duration_req, 500, grant_id=grant_id, error=str(e))
+        logging.error(f"Error in /grants/{{grant_id}} endpoint for ID {grant_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/grants/search", response_model=PaginatedEnrichedGrantResponse) # Changed to PaginatedEnrichedGrantResponse
 async def search_grants_endpoint(
-    filters: GrantSearchFilters,
+    filters: GrantSearchFilters, # GrantSearchFilters might need update for EnrichedGrant fields
     page: int = 1,
     page_size: int = 20,
-    research_agent=Depends(get_research_agent),
-    db: AsyncSession = Depends(get_db_session) 
+    db: AsyncSession = Depends(get_db_session)
+    # research_agent=Depends(get_research_agent) # This endpoint should now use crud.get_grants_list
 ):
-    """Advanced grant search with custom filters"""
+    """Advanced grant search using filters, returning EnrichedGrant objects."""
+    # This endpoint now mirrors /grants but with a POST body for filters.
+    # It will use the same crud.get_grants_list function.
+    # The GrantSearchFilters schema might need to be aligned with parameters of get_grants_list.
+    start_time_req = time.time()
     try:
-        # research_agent.search_grants doesn't accept pagination parameters
-        results = await research_agent.search_grants(
-            filters.dict(by_alias=True)
+        # Adapt GrantSearchFilters to the parameters of crud.get_grants_list
+        # For now, we assume GrantSearchFilters contains fields like search_text, min_score (min_overall_score)
+        # and potentially status_filter, sort_by, sort_order if added to GrantSearchFilters.
+        grants, total = await crud.get_grants_list(
+            db=db,
+            skip=(page - 1) * page_size,
+            limit=page_size,
+            sort_by="overall_composite_score", # Default or from filters
+            sort_order="desc", # Default or from filters
+            status_filter=None, # Or from filters.category if mapped
+            min_overall_score=filters.min_score,
+            search_query=filters.search_text
         )
-        
-        # Apply pagination manually
-        total = len(results)
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_results = results[start_idx:end_idx]
-        
-        return PaginatedResponse(
-            items=paginated_results,
+        duration_req = time.time() - start_time_req
+        log_api_metrics("/grants/search", duration_req, 200, page=page, page_size=page_size, total_items=total)
+        return PaginatedEnrichedGrantResponse(
+            items=grants,
             total=total,
             page=page,
             page_size=page_size
         )
     except Exception as e:
+        duration_req = time.time() - start_time_req
+        log_api_metrics("/grants/search", duration_req, 500, error=str(e))
+        logging.error(f"Error in /grants/search endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/user/settings", response_model=APIResponse[UserSettings])
@@ -191,60 +246,61 @@ async def update_user_settings_route(
 
 @api_router.post("/system/run-search")
 async def trigger_search(
-    db: AsyncSession = Depends(get_db_session),
-    pinecone_client = Depends(get_pinecone),
-    research_agent = Depends(get_research_agent)
+    # db: AsyncSession = Depends(get_db_session), # db_sessionmaker is used by run_full_search_cycle
+    db_sessionmaker = Depends(get_db_sessionmaker),
+    perplexity_client = Depends(get_perplexity),
+    pinecone_client = Depends(get_pinecone)
+    # research_agent = Depends(get_research_agent) # Not needed directly, agents are instantiated in crud
 ):
-    """Manually trigger a grant search and notify."""
+    """Manually trigger a full grant search and enrichment cycle."""
     start_time = datetime.now()
     try:
-        high_priority_grants = await crud.run_full_search_cycle(
-            db=db, 
-            pinecone=pinecone_client, 
-            research_agent=research_agent
+        # crud.run_full_search_cycle now takes db_sessionmaker, perplexity_client, pinecone_client
+        fully_analyzed_grants = await crud.run_full_search_cycle(
+            db_sessionmaker=db_sessionmaker, 
+            perplexity_client=perplexity_client, 
+            pinecone_client=pinecone_client
         )
         
-        notifier_service = get_notifier()
-        if high_priority_grants and notifier_service:
-            await notifier_service.notify_new_grants(high_priority_grants)
-            result = {"status": "success", "new_grants_notified": len(high_priority_grants)}
-        elif not high_priority_grants:
-            result = {"status": "success", "message": "No new high-priority grants found."}
-        else:
-            result = {"status": "success", "new_grants_found": len(high_priority_grants), "notification_status": "Notifier not available or no grants to notify."}
+        notifier_service = get_notifier() # Assuming get_notifier() is correctly set up
+        notified_count = 0
+        if fully_analyzed_grants and notifier_service:
+            # Assuming notifier_service.notify_new_grants expects List[EnrichedGrant]
+            # And we only want to notify for high-priority ones
+            high_priority_to_notify = [g for g in fully_analyzed_grants if g.overall_composite_score is not None and g.overall_composite_score >= 0.7]
+            if high_priority_to_notify:
+                await notifier_service.notify_new_grants(high_priority_to_notify)
+                notified_count = len(high_priority_to_notify)
+            result_message = f"Search completed. {len(fully_analyzed_grants)} grants processed. {notified_count} high-priority grants notified."
+        elif not fully_analyzed_grants:
+            result_message = "Search completed. No grants found or processed."
+        else: # Grants found, but no notifier or no high-priority ones
+            result_message = f"Search completed. {len(fully_analyzed_grants)} grants processed. Notifier not available or no high-priority grants to notify."
+
+        result = {"status": "success", "message": result_message, "grants_processed": len(fully_analyzed_grants), "notified_count": notified_count}
         
-        # Log metrics
         duration = (datetime.now() - start_time).total_seconds()
         log_api_metrics(
             "/system/run-search",
             duration,
             200,
-            grants_found=len(high_priority_grants) if high_priority_grants else 0,
-            notifications_sent=bool(high_priority_grants and notifier_service)
+            grants_processed=len(fully_analyzed_grants),
+            notifications_sent=notified_count > 0
         )
-        
-        # Log audit
         log_audit_event(
-            "grant_search",
+            "triggered_grant_search_cycle",
             {
-                "grants_found": len(high_priority_grants) if high_priority_grants else 0,
-                "notifications_sent": bool(high_priority_grants and notifier_service),
+                "grants_processed": len(fully_analyzed_grants),
+                "notified_count": notified_count,
                 "duration": duration
             }
         )
-        
         return result
-        
     except Exception as e:
-        # Log error metrics
         duration = (datetime.now() - start_time).total_seconds()
-        log_api_metrics(
-            "/system/run-search",
-            duration,
-            500,
-            error=str(e)
-        )
-        raise
+        log_api_metrics("/system/run-search", duration, 500, error=str(e))
+        logging.error(f"Error in /system/run-search endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 # System endpoints for search run tracking
 @api_router.get("/system/last-run")
@@ -427,3 +483,46 @@ async def health_check():
                 "error": str(e)
             }
         )
+
+# Endpoint for Application History CRUD
+@api_router.post("/applications/feedback", response_model=APIResponse[ApplicationHistoryResponse], status_code=201)
+async def create_application_feedback(
+    application_data: ApplicationHistoryCreate,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Submit feedback for a grant application."""
+    start_time_req = time.time()
+    try:
+        # TODO: Add user_id to application_data if implementing multi-user support
+        # For now, assuming a single-user context or user_id is handled in crud or default.
+        # Example: application_data_dict = application_data.dict()
+        # application_data_dict["user_id"] = "default_user" # Or from auth
+        
+        created_feedback = await crud.create_application_history_entry(
+            db=db, 
+            application_history_data=application_data
+        )
+        duration_req = time.time() - start_time_req
+        log_api_metrics("/applications/feedback", duration_req, 201, grant_id=created_feedback.grant_id)
+        log_audit_event(
+            "application_feedback_created",
+            {
+                "application_history_id": created_feedback.id,
+                "grant_id": created_feedback.grant_id,
+                "status": created_feedback.status
+            }
+        )
+        return APIResponse(data=created_feedback, message="Application feedback submitted successfully.", status="created")
+    except Exception as e:
+        duration_req = time.time() - start_time_req
+        log_api_metrics("/applications/feedback", duration_req, 500, error=str(e))
+        logging.error(f"Error in /applications/feedback endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+# TODO: Add GET, PUT, DELETE endpoints for ApplicationHistory if needed as per Task 5.2
+# For example:
+# @api_router.get("/applications/feedback/{history_id}", response_model=APIResponse[ApplicationHistoryResponse])
+# async def get_application_feedback_entry(...)
+
+# @api_router.get("/grants/{grant_id}/feedback", response_model=APIResponse[List[ApplicationHistoryResponse]])
+# async def get_feedback_for_grant(...)

@@ -7,14 +7,16 @@ import {
   Box, 
   IconButton, 
   Button,
-  useTheme
+  useTheme,
+  Tooltip // Added for detailed scores
 } from '@mui/material';
 import { 
   AccessTime as AccessTimeIcon,
   AttachMoney as AttachMoneyIcon,
   BookmarkBorder as BookmarkBorderIcon,
   Bookmark as BookmarkIcon,
-  OpenInNew as OpenInNewIcon
+  OpenInNew as OpenInNewIcon,
+  InfoOutlined as InfoOutlinedIcon // Added for scores tooltip
 } from '@mui/icons-material';
 import { format, parseISO, differenceInDays } from 'date-fns';
 
@@ -38,11 +40,33 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
     new Date()
   );
   
-  const formatFunding = (fundingAmount) => {
-    if (!fundingAmount) return 'Not specified';
-    return fundingAmount;
+  const renderScores = (scores, title) => {
+    if (!scores || typeof scores !== 'object' || Object.keys(scores).length === 0) {
+      return null;
+    }
+    // Ensure score values are numbers and format them, otherwise display as is
+    const formatScoreValue = (value) => {
+      if (typeof value === 'number') {
+        return value.toFixed(2);
+      }
+      if (typeof value === 'string' && !isNaN(parseFloat(value))) {
+        return parseFloat(value).toFixed(2);
+      }
+      return value;
+    };
+
+    return (
+      <Box mt={1}>
+        <Typography variant="caption" fontWeight="bold">{title}:</Typography>
+        {Object.entries(scores).map(([key, value]) => (
+          <Typography key={key} variant="caption" display="block" sx={{ ml: 1 }}>
+            {key.replace(/_/g, ' ').replace(/\\b(\\w)/g, c => c.toUpperCase())}: {formatScoreValue(value)}
+          </Typography>
+        ))}
+      </Box>
+    );
   };
-  
+
   return (
     <Card sx={{ 
       height: '100%', 
@@ -69,11 +93,13 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
               width: 36,
               height: 36,
               borderRadius: '50%',
-              bgcolor: grant.relevanceScore >= 90 
+              bgcolor: grant.overall_composite_score >= 90 
                 ? theme.palette.success.main 
-                : grant.relevanceScore >= 80 
+                : grant.overall_composite_score >= 80 
                   ? theme.palette.info.main 
-                  : theme.palette.warning.main,
+                  : grant.overall_composite_score >= 70
+                    ? theme.palette.warning.main
+                    : theme.palette.error.light, 
               color: 'white',
               display: 'flex',
               alignItems: 'center',
@@ -82,7 +108,7 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
               fontSize: '0.8rem'
             }}
           >
-            {grant.relevanceScore}
+            {grant.overall_composite_score !== undefined ? grant.overall_composite_score.toFixed(0) : (grant.relevanceScore !== undefined ? grant.relevanceScore : 'N/A')} 
           </Box>
         </Box>
         
@@ -101,8 +127,45 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
               : grant.description}
           </Typography>
         )}
+
+        {grant.summary_llm && (
+          <Box mt={1}>
+            <Typography variant="body2" fontWeight="bold" color="textSecondary">AI Summary:</Typography>
+            <Typography variant="body2" sx={{ mb: 1, fontStyle: 'italic' }}>
+              {grant.summary_llm.length > 120 
+                ? `${grant.summary_llm.substring(0, 120)}...` 
+                : grant.summary_llm}
+            </Typography>
+          </Box>
+        )}
+
+        {grant.eligibility_summary_llm && (
+          <Box mt={1}>
+            <Typography variant="body2" fontWeight="bold" color="textSecondary">AI Eligibility:</Typography>
+            <Typography variant="body2" sx={{ mb: 2, fontStyle: 'italic' }}>
+              {grant.eligibility_summary_llm.length > 120 
+                ? `${grant.eligibility_summary_llm.substring(0, 120)}...` 
+                : grant.eligibility_summary_llm}
+            </Typography>
+          </Box>
+        )}
         
         <Box sx={{ mt: 'auto' }}>
+          {(grant.research_scores || grant.compliance_scores) && (
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <Tooltip title={
+                <React.Fragment>
+                  {renderScores(grant.research_scores, "Research Scores")}
+                  {renderScores(grant.compliance_scores, "Compliance Scores")}
+                </React.Fragment>
+              }>
+                <Button size="small" startIcon={<InfoOutlinedIcon />} variant="text" sx={{ textTransform: 'none', color: theme.palette.text.secondary }}>
+                  View Detailed Scores
+                </Button>
+              </Tooltip>
+            </Box>
+          )}
+
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
             <AccessTimeIcon fontSize="small" sx={{ 
               mr: 1, 
@@ -125,7 +188,7 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <AttachMoneyIcon fontSize="small" sx={{ mr: 1, color: theme.palette.success.main }} />
             <Typography variant="body2">
-              Funding: {formatFunding(grant.fundingAmount)}
+              Funding: {grant.funding_amount_display || grant.fundingAmount || 'Not specified'}
             </Typography>
           </Box>
           
@@ -157,4 +220,4 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
   );
 };
 
-export default GrantCard; 
+export default GrantCard;

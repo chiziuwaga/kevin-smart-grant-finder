@@ -12,6 +12,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 load_dotenv()
 
+# Define Project Root and Config Directory
+# Assuming settings.py is in the 'config' directory
+CONFIG_DIR_PATH = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT_PATH = os.path.dirname(CONFIG_DIR_PATH)
+
 class DatabaseURL:
     """Helper class to build database URL."""
     @staticmethod
@@ -49,10 +54,19 @@ class Settings(BaseSettings):
 
     # API Keys
     pinecone_api_key: str = Field(default="", env="PINECONE_API_KEY")
-    pinecone_index_name: str = Field(default="grantcluster", env="PINECONE_INDEX_NAME") # Corrected    perplexity_api_key: str = Field(default="", env="PERPLEXITY_API_KEY")
+    pinecone_index_name: str = Field(default="grantcluster", env="PINECONE_INDEX_NAME") # Corrected
+    perplexity_api_key: str = Field(default="", env="PERPLEXITY_API_KEY")
     perplexity_rate_limit: int = Field(default=30, env="PERPLEXITY_RATE_LIMIT")
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")  # Added OpenAI API Key
     
+    # Configuration File Paths
+    PROJECT_ROOT: str = PROJECT_ROOT_PATH
+    CONFIG_DIR: str = CONFIG_DIR_PATH
+    KEVIN_PROFILE_CONFIG_PATH: str = os.path.join(CONFIG_DIR_PATH, "kevin_profile_config.yaml")
+    COMPLIANCE_RULES_CONFIG_PATH: str = os.path.join(CONFIG_DIR_PATH, "compliance_rules_config.yaml")
+    SECTOR_CONFIG_PATH: str = os.path.join(CONFIG_DIR_PATH, "sector_config.yaml")
+    GEOGRAPHIC_CONFIG_PATH: str = os.path.join(CONFIG_DIR_PATH, "geographic_config.yaml")
+
     # Notifications
     telegram_bot_token: str = Field(default="", env="TELEGRAM_BOT_TOKEN") # Changed from telegram_token
     telegram_chat_id: str = Field(default="", env="TELEGRAM_CHAT_ID")

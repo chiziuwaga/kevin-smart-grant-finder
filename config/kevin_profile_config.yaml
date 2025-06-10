@@ -1,0 +1,156 @@
+# Kevin's Profile Configuration
+# This file defines Kevin's specific profile, preferences, and strategic objectives.
+
+user_id: "kevin_main_profile"
+user_name: "Kevin"
+
+# Business Profile
+business_profile:
+  type: "For-Profit" # Options: "For-Profit", "Non-Profit", "B-Corp", "Sole-Proprietor", "LLC" etc.
+  industry: "Technology Solutions"
+  primary_services:
+    - "AI-driven educational platform development"
+    - "Custom software for sustainable urban mobility"
+    - "Technology consulting for community projects"
+  certifications: # List of certifications Kevin's organization holds
+    - "ISO 9001"
+    - "Certified B Corporation" # Example
+
+# Operational Capacity
+operational_capacity:
+  team_size_fte: 15 # Full-Time Equivalents
+  reporting_capacity: "quarterly" # How frequently can Kevin's team handle detailed reporting? "monthly", "quarterly", "semi-annually", "annually"
+  technical_expertise: # List of key technical skills/areas
+    - "Python"
+    - "Machine Learning"
+    - "Data Analysis"
+    - "Cloud Infrastructure (AWS, Azure)"
+    - "Web Development (React, Node.js)"
+    - "Project Management"
+  financial_capacity:
+    max_match_funding_commitment_usd: 50000 # Max amount Kevin can commit for matching funds
+    annual_operating_budget_usd: 750000 # General idea of scale
+
+# Strategic Goals
+strategic_goals:
+  long_term_vision: "To be a leading provider of innovative technology solutions that address critical educational and environmental challenges."
+  primary_objectives: # Broad goals
+    - "Develop and launch a scalable AI-powered literacy platform for K-12."
+    - "Secure pilot projects for sustainable urban mobility solutions in 3 cities."
+    - "Expand service offerings to include data analytics for non-profits."
+    - "Achieve 20% revenue growth from grant-funded projects."
+  target_sectors: # Specific sectors Kevin wants to focus on for grants/projects
+    - "Education Technology"
+    - "Smart Cities & Urban Development"
+    - "Environmental Sustainability"
+    - "Community Empowerment"
+  desired_impact_areas: # What kind of impact does Kevin want to make?
+    - "Improved educational outcomes"
+    - "Reduced carbon emissions in urban areas"
+    - "Enhanced community engagement through technology"
+
+# General Organizational Information
+organization_name: "Kevin's Innovative Ventures"
+organization_type: "Non-Profit" # e.g., Non-Profit, For-Profit, Educational, Research Institution
+mission_statement: "To foster innovation in sustainable technologies and community development through targeted projects and research."
+primary_contact:
+  name: "Kevin Owner"
+  email: "kevin@example.com"
+  phone: "555-0101"
+
+# Strategic Objectives (Key areas Kevin wants to focus on)
+strategic_objectives:
+  - "Develop and deploy renewable energy solutions in underserved communities."
+  - "Promote STEM education for youth in the local region."
+  - "Fund research into biodegradable plastics."
+  - "Support local artists and cultural heritage projects."
+
+# Keywords & Areas of Interest (Used for grant searching and relevance scoring)
+# Broad categories and specific terms relevant to Kevin's work.
+keywords:
+  - "sustainability"
+  - "renewable energy"
+  - "solar power"
+  - "wind energy"
+  - "community development"
+  - "STEM education"
+  - "youth programs"
+  - "biodegradable materials"
+  - "environmental research"
+  - "arts funding"
+  - "cultural preservation"
+  - "innovation grants"
+  - "technology development"
+
+# Operational Context (Used for filtering and feasibility)
+operational_context:
+  target_beneficiaries: # Who does Kevin's organization primarily serve?
+    - "Underserved populations"
+    - "Youth (K-12 and college)"
+    - "Researchers and Scientists"
+    - "Local artists"
+  project_scale: # Typical scale of projects
+    min_budget: 10000 # USD
+    max_budget: 500000 # USD
+    duration_months_min: 6
+    duration_months_max: 36
+  organizational_capacity:
+    has_501c3_status: true # Important for many US-based grants
+    years_in_operation: 5
+    grant_writing_experience: "Intermediate" # Beginner, Intermediate, Advanced
+    previous_funding_sources: # List of types or specific funders
+      - "Local foundations"
+      - "State grants"
+      - "Private donations"
+  reporting_requirements_capacity: "Standard" # Can handle Standard, Complex, or only Simple reporting
+
+# Geographic Focus (Primary areas of operation or interest)
+# This will be complemented by the more detailed geographic_config.yaml for specific rules
+geographic_focus:
+  primary_regions:
+    - "North America"
+  primary_countries:
+    - "USA"
+  primary_states_provinces: # Specific states/provinces if applicable
+    - "California"
+    - "New York"
+  local_municipalities: # Specific cities/counties if hyper-local focus
+    - "Anytown, CA"
+    - "Metropolis, NY"
+  operates_internationally: false
+
+# Grant Preferences
+grant_preferences:
+  funding_types_preferred: # e.g., Project-based, General Operating, Research, Seed funding
+    - "Project-based"
+    - "Research"
+    - "Seed funding"
+  funding_types_avoided:
+    - "Loans"
+    - "Equity investments" # If non-profit
+  match_funding_capability: # Ability to provide matching funds if required by a grant
+    can_provide_match: true
+    max_match_percentage: 20 # e.g., can match up to 20% of grant amount
+  preferred_grant_duration_months: 24 # Ideal project length
+
+# Risk Tolerance & Compliance
+# This will be complemented by compliance_rules_config.yaml
+risk_tolerance: "Medium" # Low, Medium, High - for experimental or high-effort grants
+compliance_preferences:
+  willing_to_share_detailed_financials: true
+  audit_requirements_preference: "Standard external audit" # e.g., None, Internal review, Standard external audit
+
+# Success Metrics (How Kevin defines success for his grant-seeking efforts)
+# These can be used to refine the system over time.
+key_performance_indicators:
+  - "Number of successful grant applications per year"
+  - "Total funding amount secured per year"
+  - "Alignment of secured grants with strategic objectives (percentage)"
+  - "Impact achieved through funded projects (qualitative and quantitative)"
+
+# Perplexity API Key (placeholder, should be managed securely, e.g., via environment variables)
+# For now, we'll note it here, but best practice is to not store keys in version control.
+perplexity_api_key: "YOUR_PERPLEXITY_API_KEY" # IMPORTANT: Replace with actual key or env var reference
+
+# Other Custom Fields (Add as needed)
+# custom_field_1: "value_1"

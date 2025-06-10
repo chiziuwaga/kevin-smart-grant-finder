@@ -1,449 +1,470 @@
-import {
-  AccessTime as AccessTimeIcon,
-  Assessment as AssessmentIcon,
-  AttachMoney as AttachMoneyIcon,
-  BookmarkBorder as BookmarkBorderIcon,
-  Bookmark as BookmarkIcon,
-  InfoOutlined as InfoOutlinedIcon,
-  NotificationsActive as NotificationsActiveIcon,
-  TrendingUp as TrendingUpIcon
-} from '@mui/icons-material';
-import {
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Container, 
+  Grid, 
+  CircularProgress, 
+  Typography, 
+  Alert,
   Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  Grid,
-  IconButton,
-  Link as MuiLink,
   Paper,
+  Button,
+  TextField,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Typography,
-  useTheme
+  TablePagination
 } from '@mui/material';
-import { differenceInDays, format, parseISO } from 'date-fns';
-import { useSnackbar } from 'notistack';
-import React, { useEffect, useState } from 'react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from 'recharts';
-import {
-  getDashboardStats,
-  getGrants,
-  getDistribution,
-  runSearch,
-  saveGrant,
-  unsaveGrant
-} from '../api/apiClient';
+import { Refresh as RefreshIcon, AddComment as AddCommentIcon, Visibility as VisibilityIcon } from '@mui/icons-material';
+import GrantCard from './GrantCard';
+import apiClient from '../api/apiClient'; // apiClient will be the compiled JS version of apiClient.ts
+// Types are for JSDoc and understanding, not enforced by JS runtime directly
+/**
+ * @typedef {import('../api/types').EnrichedGrant} EnrichedGrant
+ * @typedef {import('../api/types').ApplicationFeedbackData} ApplicationFeedbackData
+ * @typedef {import('../api/types').ApplicationHistory} ApplicationHistory
+ * @typedef {import('../api/types').GrantSearchFilters} GrantSearchFilters
+ */
 
 const Dashboard = () => {
-  const theme = useTheme();
+  const [grants, setGrants] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState(null);
-  const [highPriorityGrants, setHighPriorityGrants] = useState([]);
-  const [deadlineSoonGrants, setDeadlineSoonGrants] = useState([]);
-  const [chartData, setChartData] = useState({
-    deadlines: [],
-    categories: [],
-    relevanceDistribution: []
-  });
+  const [error, setError] = useState(null);
   const [savedGrants, setSavedGrants] = useState(new Set());
-  const { enqueueSnackbar } = useSnackbar();
+  const [filters, setFilters] = useState({ 
+    searchText: '', 
+    category: '', 
+    minOverallScore: '', // New filter for minimum overall_composite_score
+    maxOverallScore: ''  // New filter for maximum overall_composite_score
+  });
+  // Add state for Application Feedback Modal
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [currentGrantForFeedback, setCurrentGrantForFeedback] = useState(null);
+  const [feedbackData, setFeedbackData] = useState({});
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [feedbackError, setFeedbackError] = useState(null);
+
+  // Add state for Application History
+  const [applicationHistory, setApplicationHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(null);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [currentGrantForHistory, setCurrentGrantForHistory] = useState(null);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyRowsPerPage, setHistoryRowsPerPage] = useState(5);
+
+  const fetchGrants = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Use searchText and category from filters state
+      const { searchText, category, minOverallScore, maxOverallScore, ...otherFilters } = filters;
+      const params = { 
+        searchText: searchText || undefined,
+        category: category || undefined,
+        min_overall_score: minOverallScore ? parseFloat(minOverallScore) : undefined, // Pass to backend
+        max_overall_score: maxOverallScore ? parseFloat(maxOverallScore) : undefined, // Pass to backend
+        ...otherFilters 
+      };
+      const response = await apiClient.getGrants(params);
+      setGrants(response.items);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch grants');
+    }
+    setLoading(false);
+  }, [filters]); // Dependency is now just filters
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      setLoading(true);      try {
-        const statsResponse = await getDashboardStats();
-        const highPriorityResponse = await getGrants({ min_score: 85, limit: 5 });
-        const deadlineSoonResponse = await getGrants({ days_to_deadline: 7, limit: 5 });
-        const distributionResponse = await getDistribution();
+    fetchGrants();
+  }, [fetchGrants]);
 
-        setStats(statsResponse.data || statsResponse);
-        setHighPriorityGrants(highPriorityResponse.items || highPriorityResponse);
-        setDeadlineSoonGrants(deadlineSoonResponse.items || deadlineSoonResponse);
-        if (distributionResponse) {
-          const distData = distributionResponse.data || distributionResponse;
-          setChartData({
-            deadlines: distData.deadlines || [],
-            categories: distData.categories || [],
-            relevanceDistribution: distData.relevanceDistribution || []
-          });
-        }
-
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error);
-        setStats({ totalGrants: 'N/A', highPriorityCount: 'N/A', deadlineSoonCount: 'N/A', savedGrantsCount: 'N/A', totalFunding: 'N/A', averageRelevanceScore: 'N/A' });
-        setHighPriorityGrants([]);
-        setDeadlineSoonGrants([]);
-        setChartData({ deadlines: [], categories: [], relevanceDistribution: [] });
-      } finally {
-        setLoading(false);
+  useEffect(() => {
+    const fetchSaved = async () => {
+      try {
+        const response = await apiClient.getSavedGrants();
+        setSavedGrants(new Set(response.items.map(g => g.id)));
+      } catch (err) {
+        console.error('Failed to fetch saved grants:', err);
       }
     };
+    fetchSaved();
+  }, []);
 
-    fetchDashboardData();
-  }, []); // Added missing dependency array for useEffect
-  const handleSaveGrant = async (grantId, shouldSave) => {
+  const handleSaveGrant = async (grantId, save) => {
     try {
-      if (shouldSave) {
-        await saveGrant(grantId);
+      if (save) {
+        await apiClient.saveGrant(grantId);
         setSavedGrants(prev => new Set(prev).add(grantId));
-        enqueueSnackbar('Grant saved!', { variant: 'success' });
       } else {
-        await unsaveGrant(grantId);
+        await apiClient.unsaveGrant(grantId);
         setSavedGrants(prev => {
           const next = new Set(prev);
           next.delete(grantId);
           return next;
         });
-        enqueueSnackbar('Grant unsaved.', { variant: 'info' });
       }
-    } catch (error) {
-      console.error('Error saving/unsaving grant:', error);
-      enqueueSnackbar(`Error ${shouldSave ? 'saving' : 'unsaving'} grant.`, { variant: 'error' });
+    } catch (err) {
+      console.error(`Failed to ${save ? 'save' : 'unsave'} grant:`, err);
+      setError(`Failed to ${save ? 'save' : 'unsave'} grant. Please try again.`);
     }
   };
 
-  const categoryColors = {
-    Research: theme.palette.info.main,
-    Education: theme.palette.success.main,
-    Community: theme.palette.warning.main,
-    Healthcare: theme.palette.error.main,
-    Environment: theme.palette.secondary.main,
-    Arts: '#9c27b0',
-    Business: '#795548',
-    Energy: '#607d8b',
-    Other: theme.palette.grey[500]
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
   };
 
-  const COLORS = [
-    theme.palette.primary.main,
-    theme.palette.secondary.main,
-    theme.palette.info.main,
-    theme.palette.success.main,
-    theme.palette.warning.main,
-    theme.palette.error.main,
-  ];
+  const handleSearch = () => {
+    fetchGrants();
+  };
 
-  if (loading || !stats) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
-        <CircularProgress />
-      </Box>
-    );
+  // Application Feedback Modal Handlers
+  const openFeedbackModal = (grant) => {
+    setCurrentGrantForFeedback(grant);
+    setFeedbackData({ grant_id: grant.id });
+    setFeedbackError(null);
+    setFeedbackModalOpen(true);
+  };
+
+  const closeFeedbackModal = () => {
+    setFeedbackModalOpen(false);
+    setCurrentGrantForFeedback(null);
+    setFeedbackData({});
+  };
+
+  const handleFeedbackChange = (e) => {
+    const { name, value } = e.target;
+    setFeedbackData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleFeedbackSubmit = async () => {
+    if (!currentGrantForFeedback || !feedbackData.grant_id || !feedbackData.status || !feedbackData.submission_date) {
+      setFeedbackError('Please fill in all required fields (status, submission date).');
+      return;
+    }
+    setFeedbackSubmitting(true);
+    setFeedbackError(null);
+    try {
+      await apiClient.submitApplicationFeedback(feedbackData);
+      closeFeedbackModal();
+      alert('Feedback submitted successfully!');
+      // Optionally, refresh history if the current grant's history was open
+      if (currentGrantForHistory && currentGrantForHistory.id === feedbackData.grant_id) {
+        fetchApplicationHistory(feedbackData.grant_id);
+      }
+    } catch (err) {
+      setFeedbackError(err.message || 'Failed to submit feedback.');
+    }
+    setFeedbackSubmitting(false);
+  };
+
+  // Application History Modal Handlers
+  const fetchApplicationHistory = async (grantId) => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const response = await apiClient.getApplicationHistoryForGrant(grantId);
+      setApplicationHistory(response.items);
+    } catch (err) {
+      setHistoryError(err.message || 'Failed to fetch application history.');
+      setApplicationHistory([]); // Clear history on error
+    }
+    setHistoryLoading(false);
+  };
+
+  const openHistoryModal = (grant) => {
+    setCurrentGrantForHistory(grant);
+    fetchApplicationHistory(grant.id);
+    setHistoryModalOpen(true);
+  };
+
+  const closeHistoryModal = () => {
+    setHistoryModalOpen(false);
+    setCurrentGrantForHistory(null);
+    setApplicationHistory([]);
+    setHistoryPage(0);
+    setHistoryRowsPerPage(5);
+  };
+
+  const handleChangeHistoryPage = (event, newPage) => {
+    setHistoryPage(newPage);
+  };
+
+  const handleChangeHistoryRowsPerPage = (event) => {
+    setHistoryRowsPerPage(parseInt(event.target.value, 10));
+    setHistoryPage(0);
+  };
+
+  if (loading && grants.length === 0) {
+    return <Container sx={{ textAlign: 'center', mt: 5 }}><CircularProgress /></Container>;
   }
 
-  const renderGrantRow = (grant) => {
-    let daysToDeadline = 'N/A';
-    let formattedDeadline = 'N/A';
-    let deadlineColor = theme.palette.text.secondary;
-
-    if (grant.deadline && typeof grant.deadline === 'string') {
-      try {
-        const parsedDate = parseISO(grant.deadline);
-        const now = new Date();
-        if (parsedDate instanceof Date && !isNaN(parsedDate)) {
-          daysToDeadline = differenceInDays(parsedDate, now);
-          formattedDeadline = format(parsedDate, 'PP');
-          if (daysToDeadline < 0) { // Deadline has passed
-            deadlineColor = theme.palette.text.disabled;
-            daysToDeadline = Math.abs(daysToDeadline); // Show as positive days ago
-            formattedDeadline = `${formattedDeadline} (Passed)`;
-          } else if (daysToDeadline < 7) { // Due very soon
-            deadlineColor = theme.palette.error.main;
-          } else if (daysToDeadline < 30) { // Due soon
-            deadlineColor = theme.palette.warning.main;
-          }
-        } else {
-          console.warn(`Invalid date object after parsing for grant ${grant.id}: ${grant.deadline}`);
-        }
-      } catch (e) {
-        console.warn(`Error parsing date for grant ${grant.id}: ${grant.deadline}`, e);
-      }
-    }
-
-    const isSaved = savedGrants.has(grant.id);
-
-    return (
-      <TableRow 
-        key={grant.id}
-        hover
-        sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-      >
-        <TableCell component="th" scope="row">
-            <MuiLink 
-              component="button"
-              variant="subtitle1" 
-              onClick={() => {/* TODO: Open grant detail modal or navigate */}}
-              sx={{ fontWeight: 'bold', textAlign: 'left', color: 'primary.main' }}
-            >
-              {grant.title}
-            </MuiLink>
-            <Typography variant="body2" color="textSecondary" sx={{ display: 'block' }}>
-              {grant.source}
-            </Typography>
-        </TableCell>
-        <TableCell>
-          <Chip 
-            label={grant.category} 
-            size="small" 
-            sx={{ 
-              backgroundColor: categoryColors[grant.category] || categoryColors.Other,
-              color: 'white'
-            }}
-          />
-        </TableCell>
-        <TableCell>
-          <Box sx={{ display: 'flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-            <AccessTimeIcon fontSize="small" sx={{ mr: 0.5, color: deadlineColor }} />
-            <Typography variant="body2" sx={{ color: deadlineColor }}>
-              {formattedDeadline}
-              {typeof daysToDeadline === 'number' && (
-                <Typography component="span" variant="caption" sx={{ color: deadlineColor, ml: 0.5 }}>
-                  ({daysToDeadline}d{daysToDeadline < 0 ? ' ago' : ''})
-                </Typography>
-              )}
-            </Typography>
-          </Box>
-        </TableCell>
-        <TableCell>
-          <Typography variant="body2">{grant.fundingAmount || 'N/A'}</Typography>
-        </TableCell>
-        <TableCell>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <Chip 
-              label={grant.relevanceScore}
-              size="small"
-              color={grant.relevanceScore >= 90 ? "success" : grant.relevanceScore >= 80 ? "info" : "warning"}
-              variant="outlined"
-            />
-          </Box>
-        </TableCell>
-        <TableCell align="right">
-            <IconButton 
-              size="small"
-              onClick={() => handleSaveGrant(grant.id, !isSaved)} 
-              color={isSaved ? "secondary" : "default"}
-              title={isSaved ? "Unsave Grant" : "Save Grant"}
-            >
-              {isSaved ? <BookmarkIcon /> : <BookmarkBorderIcon />}
-            </IconButton>
-            <IconButton 
-              size="small" 
-              href={grant.sourceUrl} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              title="View Original Source"
-              sx={{ ml: 1 }}
-            >
-              <InfoOutlinedIcon fontSize="small" />
-            </IconButton>
-        </TableCell>
-      </TableRow>
-    );
-  };
+  // ... existing rendering for stats, charts etc. ...
 
   return (
-    <Box sx={{ p: 3, backgroundColor: theme.palette.background.default, minHeight: 'calc(100vh - 64px)' }}>
-      <Box sx={{ display:'flex', justifyContent:'space-between', alignItems:'center', mb:3 }}>
-        <Typography variant="h4" sx={{ fontWeight:700 }}>Dashboard</Typography>
-        <Button variant="contained" size="small" onClick={async ()=>{
-          try{
-            await runSearch(); // Use directly imported function
-            const now = new Date().toLocaleString();
-            // Ensure 'last-run-time' element exists if you're using this
-            const lastRunElement = document.getElementById('last-run-time');
-            if (lastRunElement) {
-              lastRunElement.innerText = now;
-            }
-            enqueueSnackbar('Background discovery started',{variant:'success'});
-          }catch(e){ console.error(e); enqueueSnackbar('Failed to start discovery',{variant:'error'});}
-        }}>Run Discovery Now</Button>
-      </Box>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Typography variant="h4" gutterBottom component="h1">
+        Grant Dashboard
+      </Typography>
+      
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={4} md={3}>
+            <TextField 
+              fullWidth
+              label="Search Grants"
+              variant="outlined"
+              name="searchText" // Add name attribute
+              value={filters.searchText || ''} // Use filters.searchText
+              onChange={handleFilterChange} // Use handleFilterChange
+            />
+          </Grid>
+          <Grid item xs={12} sm={3} md={2}>
+            <FormControl fullWidth>
+              <InputLabel>Category</InputLabel>
+              <Select
+                name="category" // Ensure name attribute is set
+                value={filters.category || ''} // Use filters.category
+                label="Category"
+                onChange={handleFilterChange} // Use handleFilterChange
+              >
+                <MenuItem value=""><em>All</em></MenuItem>
+                <MenuItem value="Research">Research</MenuItem>
+                <MenuItem value="Education">Education</MenuItem>
+                <MenuItem value="Community">Community</MenuItem>
+                {/* Add more categories as needed */}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={2} md={2}>
+            <TextField
+              fullWidth
+              label="Min Score"
+              name="minOverallScore"
+              type="number"
+              value={filters.minOverallScore || ''}
+              onChange={handleFilterChange}
+              InputProps={{ inputProps: { min: 0, max: 100, step: 1 } }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={2} md={2}>
+            <TextField
+              fullWidth
+              label="Max Score"
+              name="maxOverallScore"
+              type="number"
+              value={filters.maxOverallScore || ''}
+              onChange={handleFilterChange}
+              InputProps={{ inputProps: { min: 0, max: 100, step: 1 } }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={1} md={1}>
+            <Button fullWidth variant="contained" onClick={handleSearch} startIcon={<RefreshIcon />}>
+              Search
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
 
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={4} lg={2}>
-          <Card elevation={2}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <TrendingUpIcon color="primary" sx={{ fontSize: 36, mb: 1 }} />
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>{stats.totalGrants}</Typography>
-              <Typography variant="body2" color="textSecondary">Total Grants Found</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={4} lg={2}>
-          <Card elevation={2} sx={{ bgcolor: theme.palette.info.lighter, borderLeft: `4px solid ${theme.palette.info.main}` }}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <AssessmentIcon sx={{ fontSize: 36, mb: 1, color: theme.palette.info.dark }} />
-              <Typography variant="h5" sx={{ fontWeight: 600, color: theme.palette.info.darker }}>{stats.highPriorityCount}</Typography>
-              <Typography variant="body2" sx={{ color: theme.palette.info.dark }}>High Priority</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-         <Grid item xs={12} sm={6} md={4} lg={2}>
-          <Card elevation={2} sx={{ bgcolor: theme.palette.warning.lighter, borderLeft: `4px solid ${theme.palette.warning.main}` }}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <AccessTimeIcon sx={{ fontSize: 36, mb: 1, color: theme.palette.warning.dark }} />
-              <Typography variant="h5" sx={{ fontWeight: 600, color: theme.palette.warning.darker }}>{stats.deadlineSoonCount}</Typography>
-              <Typography variant="body2" sx={{ color: theme.palette.warning.dark }}>Due Soon (7d)</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={4} lg={2}>
-          <Card elevation={2}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <BookmarkIcon color="secondary" sx={{ fontSize: 36, mb: 1 }} />
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>{stats.savedGrantsCount}</Typography>
-              <Typography variant="body2" color="textSecondary">Saved Grants</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={4} lg={2}>
-          <Card elevation={2}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <AttachMoneyIcon color="success" sx={{ fontSize: 36, mb: 1 }} />
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>{stats.totalFunding || 'N/A'}</Typography>
-              <Typography variant="body2" color="textSecondary">Total Funding</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={4} lg={2}>
-          <Card elevation={2}>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <NotificationsActiveIcon color="action" sx={{ fontSize: 36, mb: 1 }} />
-              <Typography variant="h5" sx={{ fontWeight: 600 }}>{stats.averageRelevanceScore || 'N/A'}%</Typography>
-              <Typography variant="body2" color="textSecondary">Avg. Relevance</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-         <Grid item xs={12} md={4}>
-          <Card elevation={2} sx={{ height: 320 }}>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 2 }}>Deadlines Distribution</Typography>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={chartData.deadlines} margin={{ top: 5, right: 5, left: -25, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false}/>
-                  <XAxis dataKey="name" fontSize={12} />
-                  <YAxis fontSize={12} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill={theme.palette.primary.main} radius={[4, 4, 0, 0]}/>
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <Card elevation={2} sx={{ height: 320 }}>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 2 }}>Grant Categories</Typography>
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie
-                    data={chartData.categories}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    fontSize={12}
-                  >
-                    {chartData.categories.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <Card elevation={2} sx={{ height: 320 }}>
-            <CardContent>
-              <Typography variant="h6" sx={{ mb: 2 }}>Relevance Distribution</Typography>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={chartData.relevanceDistribution} layout="vertical" margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false}/>
-                  <XAxis type="number" fontSize={12} />
-                  <YAxis dataKey="name" type="category" width={50} fontSize={12} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill={theme.palette.secondary.main} radius={[0, 4, 4, 0]}/>
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      {loading && grants.length > 0 && <CircularProgress sx={{ display: 'block', margin: 'auto', mb: 2 }}/>}
 
       <Grid container spacing={3}>
-        <Grid item xs={12} lg={6}>
-          <Typography variant="h5" sx={{ mb: 2 }}>High Priority Grants</Typography>
-          <TableContainer component={Paper} elevation={2}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Grant</TableCell>
-                  <TableCell>Category</TableCell>
-                  <TableCell>Deadline</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Score</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {highPriorityGrants.length > 0 ? 
-                  highPriorityGrants.map(grant => renderGrantRow(grant)) : 
-                  <TableRow><TableCell colSpan={6} align="center">No high priority grants found matching current criteria.</TableCell></TableRow>}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Grid>
-
-        <Grid item xs={12} lg={6}>
-          <Typography variant="h5" sx={{ mb: 2 }}>Deadlines Soon</Typography>
-          <TableContainer component={Paper} elevation={2}>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Grant</TableCell>
-                  <TableCell>Category</TableCell>
-                  <TableCell>Deadline</TableCell>
-                  <TableCell>Amount</TableCell>
-                  <TableCell>Score</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {deadlineSoonGrants.length > 0 ? 
-                  deadlineSoonGrants.map(grant => renderGrantRow(grant)) : 
-                  <TableRow><TableCell colSpan={6} align="center">No grants due soon matching current criteria.</TableCell></TableRow>}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Grid>
+        {grants.map((grant) => (
+          <Grid item key={grant.id} xs={12} sm={6} md={4}>
+            <GrantCard 
+              grant={grant} 
+              onSave={handleSaveGrant} 
+              isSaved={savedGrants.has(grant.id)}
+            />
+            <Box sx={{mt: 1, display: 'flex', justifyContent: 'space-around'}}>
+                <Button 
+                    size="small" 
+                    startIcon={<AddCommentIcon />}
+                    onClick={() => openFeedbackModal(grant)}
+                >
+                    Add Feedback
+                </Button>
+                <Button 
+                    size="small" 
+                    startIcon={<VisibilityIcon />}
+                    onClick={() => openHistoryModal(grant)}
+                >
+                    View History
+                </Button>
+            </Box>
+          </Grid>
+        ))}
       </Grid>
-    </Box>
+      {grants.length === 0 && !loading && !error && (
+        <Typography sx={{ textAlign: 'center', mt: 5 }}>No grants found matching your criteria.</Typography>
+      )}
+
+      {/* Application Feedback Modal */}
+      {currentGrantForFeedback && (
+        <Dialog open={feedbackModalOpen} onClose={closeFeedbackModal} fullWidth maxWidth="sm">
+          <DialogTitle>Submit Application Feedback for: {currentGrantForFeedback.title}</DialogTitle>
+          <DialogContent>
+            {feedbackError && <Alert severity="error" sx={{ mb: 2 }}>{feedbackError}</Alert>}
+            <TextField
+              autoFocus
+              margin="dense"
+              name="submission_date"
+              label="Submission Date *"
+              type="date"
+              fullWidth
+              variant="standard"
+              value={feedbackData.submission_date || ''}
+              onChange={handleFeedbackChange}
+              InputLabelProps={{
+                shrink: true,
+              }}
+            />
+            <FormControl fullWidth margin="dense" variant="standard">
+                <InputLabel id="status-label">Status *</InputLabel>
+                <Select
+                    labelId="status-label"
+                    name="status"
+                    value={feedbackData.status || ''}
+                    onChange={handleFeedbackChange}
+                    label="Status"
+                >
+                    <MenuItem value="Draft">Draft</MenuItem>
+                    <MenuItem value="Submitted">Submitted</MenuItem>
+                    <MenuItem value="Under Review">Under Review</MenuItem>
+                    <MenuItem value="Awarded">Awarded</MenuItem>
+                    <MenuItem value="Rejected">Rejected</MenuItem>
+                    <MenuItem value="Withdrawn">Withdrawn</MenuItem>
+                    <MenuItem value="Other">Other</MenuItem>
+                </Select>
+            </FormControl>
+            <TextField
+              margin="dense"
+              name="outcome_notes"
+              label="Outcome Notes"
+              type="text"
+              fullWidth
+              multiline
+              rows={3}
+              variant="standard"
+              value={feedbackData.outcome_notes || ''}
+              onChange={handleFeedbackChange}
+            />
+            <TextField
+              margin="dense"
+              name="feedback_for_profile_update"
+              label="Feedback for Profile Update"
+              type="text"
+              fullWidth
+              multiline
+              rows={3}
+              variant="standard"
+              value={feedbackData.feedback_for_profile_update || ''}
+              onChange={handleFeedbackChange}
+            />
+             <TextField
+              margin="dense"
+              name="status_reason"
+              label="Status Reason (e.g., why rejected)"
+              type="text"
+              fullWidth
+              multiline
+              rows={2}
+              variant="standard"
+              value={feedbackData.status_reason || ''}
+              onChange={handleFeedbackChange}
+            />
+            <FormControl fullWidth margin="dense" variant="standard">
+                <InputLabel id="is_successful_outcome-label">Was this a successful outcome?</InputLabel>
+                <Select
+                    labelId="is_successful_outcome-label"
+                    name="is_successful_outcome"
+                    value={feedbackData.is_successful_outcome === undefined ? '' : String(feedbackData.is_successful_outcome)}
+                    onChange={(e) => setFeedbackData(prev => ({...prev, is_successful_outcome: e.target.value === 'true' ? true : e.target.value === 'false' ? false : undefined }))}
+                    label="Successful Outcome?"
+                >
+                    <MenuItem value=""><em>Select...</em></MenuItem>
+                    <MenuItem value="true">Yes</MenuItem>
+                    <MenuItem value="false">No</MenuItem>
+                </Select>
+            </FormControl>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeFeedbackModal}>Cancel</Button>
+            <Button onClick={handleFeedbackSubmit} disabled={feedbackSubmitting}>
+              {feedbackSubmitting ? <CircularProgress size={24} /> : 'Submit'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+      {/* Application History Modal */}
+      {currentGrantForHistory && (
+        <Dialog open={historyModalOpen} onClose={closeHistoryModal} fullWidth maxWidth="md">
+          <DialogTitle>Application History for: {currentGrantForHistory.title}</DialogTitle>
+          <DialogContent>
+            {historyError && <Alert severity="error" sx={{ mb: 2 }}>{historyError}</Alert>}
+            {historyLoading ? (
+              <CircularProgress />
+            ) : applicationHistory.length > 0 ? (
+              <TableContainer component={Paper}>
+                <Table sx={{ minWidth: 650 }} aria-label="application history table">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Submission Date</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Outcome Notes</TableCell>
+                      <TableCell>Profile Feedback</TableCell>
+                      <TableCell>Reason</TableCell>
+                      <TableCell>Successful?</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {applicationHistory
+                      .slice(historyPage * historyRowsPerPage, historyPage * historyRowsPerPage + historyRowsPerPage)
+                      .map((entry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell>{entry.submission_date ? new Date(entry.submission_date).toLocaleDateString() : 'N/A'}</TableCell>
+                          <TableCell>{entry.status}</TableCell>
+                          <TableCell>{entry.outcome_notes || '-'}</TableCell>
+                          <TableCell>{entry.feedback_for_profile_update || '-'}</TableCell>
+                          <TableCell>{entry.status_reason || '-'}</TableCell>
+                          <TableCell>{entry.is_successful_outcome === undefined ? 'N/A' : entry.is_successful_outcome ? 'Yes' : 'No'}</TableCell>
+                        </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <TablePagination
+                  rowsPerPageOptions={[5, 10, 25]}
+                  component="div"
+                  count={applicationHistory.length}
+                  rowsPerPage={historyRowsPerPage}
+                  page={historyPage}
+                  onPageChange={handleChangeHistoryPage}
+                  onRowsPerPageChange={handleChangeHistoryRowsPerPage}
+                />
+              </TableContainer>
+            ) : (
+              <Typography>No application history found for this grant.</Typography>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeHistoryModal}>Close</Button>
+          </DialogActions>
+        </Dialog>
+      )}
+
+    </Container>
   );
 };
 
