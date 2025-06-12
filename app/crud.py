@@ -245,11 +245,9 @@ async def run_full_search_cycle(
     logger.info("Starting full search cycle...")
     start_time_cycle = time.time()
     research_agent_instance = None # Initialize to None
-    try:
-        research_agent_instance = ResearchAgent(
+    try:        research_agent_instance = ResearchAgent(
             perplexity_client=perplexity_client,
-            db_sessionmaker=db_sessionmaker,
-            # pinecone_client=pinecone_client, # Assuming pinecone_client is not a direct param for ResearchAgent constructor
+            db_session_maker=db_sessionmaker,
             config_path=settings.CONFIG_DIR # Corrected from config_dir to config_path
         )
     except Exception as e:

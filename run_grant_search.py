@@ -32,11 +32,9 @@ async def main():
 
         logger.info("Initializing services...")
         await init_services()
-        
-        research_agent = ResearchAgent(
+          research_agent = ResearchAgent(
             perplexity_client=services.perplexity_client,
-            db_sessionmaker=services.db_sessionmaker, 
-            pinecone_client=services.pinecone_client
+            db_session_maker=services.db_sessionmaker
         )
         
         analysis_agent = AnalysisAgent(
