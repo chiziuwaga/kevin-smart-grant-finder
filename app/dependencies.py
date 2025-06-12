@@ -44,7 +44,8 @@ def get_research_agent(
     pinecone: PineconeClient = Depends(get_pinecone)
 ) -> ResearchAgent:
     if not services.db_sessionmaker:
-        raise RuntimeError("Database sessionmaker not initialized in services.")    return ResearchAgent(
+        raise RuntimeError("Database sessionmaker not initialized in services.")
+    return ResearchAgent(
         perplexity_client=perplexity,
         db_session_maker=services.db_sessionmaker
     )

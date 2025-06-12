@@ -28,11 +28,10 @@ async def main():
         from agents.research_agent import ResearchAgent
         from agents.analysis_agent import AnalysisAgent
         from app.crud import create_search_run # Assuming this function will be created in crud.py
-        from database.models import Grant as DBGrant # For type hinting if needed
-
-        logger.info("Initializing services...")
+        from database.models import Grant as DBGrant # For type hinting if needed        logger.info("Initializing services...")
         await init_services()
-          research_agent = ResearchAgent(
+        
+        research_agent = ResearchAgent(
             perplexity_client=services.perplexity_client,
             db_session_maker=services.db_sessionmaker
         )
