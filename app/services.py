@@ -1,22 +1,23 @@
 import os
 from dataclasses import dataclass
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker # type: ignore
+from typing import Optional
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
 from utils.pinecone_client import PineconeClient
 from utils.perplexity_client import PerplexityClient
 from utils.notification_manager import NotificationManager
 from config.settings import get_settings
-import logging # Added logging import
+import logging
 
-logger = logging.getLogger(__name__) # Added logger instance
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Services:
-    db_engine: AsyncSession = None # type: ignore
-    db_sessionmaker: async_sessionmaker = None # type: ignore
-    pinecone_client: PineconeClient = None
-    perplexity_client: PerplexityClient = None
-    notifier: NotificationManager = None
-    start_time: float = None # type: ignore
+    db_engine: Optional[AsyncEngine] = None
+    db_sessionmaker: Optional[async_sessionmaker[AsyncSession]] = None
+    pinecone_client: Optional[PineconeClient] = None
+    perplexity_client: Optional[PerplexityClient] = None
+    notifier: Optional[NotificationManager] = None
+    start_time: Optional[float] = None
 
 services = Services()
 

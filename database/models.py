@@ -4,11 +4,11 @@ Database models for the application.
 
 from datetime import datetime
 from enum import Enum as PyEnum
-from typing import List
+from typing import List, Optional
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enum, JSON, Boolean, Text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 
 Base = declarative_base()
@@ -28,31 +28,68 @@ class SearchFrequency(str, PyEnum):
 class Grant(Base):
     __tablename__ = 'grants'
 
-    id = Column(Integer, primary_key=True) # Keep as Integer for now, consider UUID later if needed
-    title = Column(String, nullable=False, index=True)
-    description = Column(String) # Consider TEXT type for longer descriptions if DB supports easily
-    funding_amount = Column(Float)
-    deadline = Column(DateTime, index=True)
-    # source = Column(String) # Replaced by source_name and source_url
-    source_name = Column(String) # e.g., "Grants.gov", "Ford Foundation"
-    source_url = Column(String) # Direct link to the grant page
-    # category = Column(String, index=True) # To be replaced by more granular sector/sub-sector if used
+    id = Column(Integer, primary_key=True)
     
-    # New fields for enriched data - these align with EnrichedGrant Pydantic model
+    # Basic grant information
+    title = Column(String, nullable=False, index=True)
+    description = Column(String)
+    
+    # External identifier and additional descriptive fields
+    grant_id_external = Column(String, nullable=True, index=True)
+    summary_llm = Column(String, nullable=True)
+    eligibility_summary_llm = Column(String, nullable=True)
+    funder_name = Column(String, nullable=True)
+    
+    # Funding details
+    funding_amount = Column(Float)  # Legacy field
+    funding_amount_min = Column(Float, nullable=True)
+    funding_amount_max = Column(Float, nullable=True)
+    funding_amount_exact = Column(Float, nullable=True)
+    funding_amount_display = Column(String, nullable=True)
+    
+    # Date fields
+    deadline = Column(DateTime, index=True)  # Legacy field
+    deadline_date = Column(DateTime, nullable=True)
+    application_open_date = Column(DateTime, nullable=True)
+    
+    # Keywords and categories as JSON
+    keywords_json = Column(JSON, nullable=True)
+    categories_project_json = Column(JSON, nullable=True)
+    
+    # Source information
+    source_name = Column(String, nullable=True)
+    source_url = Column(String, nullable=True)
+    retrieved_at = Column(DateTime, nullable=True)
+    
+    # Contextual layers
     identified_sector = Column(String, index=True, nullable=True)
     identified_sub_sector = Column(String, index=True, nullable=True)
-    geographic_scope = Column(String, nullable=True) # e.g., "National, USA", "State, CA"
-    specific_location_mentions = Column(JSON, nullable=True) # List of strings    # Raw source data from Perplexity or other APIs
-    raw_source_data = Column(JSON, nullable=True)
-    enrichment_log = Column(JSON, nullable=True) # List of strings logging enrichment steps
-    last_enriched_at = Column(DateTime, nullable=True)
+    geographic_scope = Column(String, nullable=True)
+    specific_location_mentions_json = Column(JSON, nullable=True)
 
-    # Overall composite score for this grant (calculated from analysis)
+    # Scoring systems (individual scores)
+    sector_relevance_score = Column(Float, nullable=True)
+    geographic_relevance_score = Column(Float, nullable=True)
+    operational_alignment_score = Column(Float, nullable=True)
+    business_logic_alignment_score = Column(Float, nullable=True)
+    feasibility_context_score = Column(Float, nullable=True)
+    strategic_synergy_score = Column(Float, nullable=True)
     overall_composite_score = Column(Float, nullable=True, index=True)
+    
+    # Compliance and feasibility
+    compliance_summary_json = Column(JSON, nullable=True)
+    feasibility_score = Column(Float, nullable=True)
+    risk_assessment_json = Column(JSON, nullable=True)
 
-    # status = Column(Enum(GrantStatus), default=GrantStatus.ACTIVE, index=True) # Retain or revise based on new workflow
-    # eligibility = Column(JSON) # Replaced by more structured compliance/feasibility in Analysis
+    # Additional metadata
+    raw_source_data_json = Column(JSON, nullable=True)
+    enrichment_log_json = Column(JSON, nullable=True)
+    last_enriched_at = Column(DateTime, nullable=True)
+    
+    # Grant lifecycle tracking
+    record_status = Column(String, nullable=True, default="ACTIVE")
 
+    # Timestamps
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

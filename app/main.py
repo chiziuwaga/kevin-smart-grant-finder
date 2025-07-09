@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from app.router import api_router
 from app.services import init_services, services
@@ -7,12 +7,11 @@ from config.logging_config import setup_logging
 from datetime import datetime
 import os
 from typing import List
-import os
-from typing import List
 import time
 from fastapi.responses import JSONResponse
-from sqlalchemy.future import select
 from sqlalchemy import text
+from database.session import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Setup logging
 setup_logging()
@@ -54,13 +53,38 @@ app = FastAPI(
     openapi_url="/api/openapi.json"
 )
 
+@app.get("/health", tags=["Health Check"])
+async def health_check(db: AsyncSession = Depends(get_db)):
+    """
+    Health check endpoint to verify service and database connectivity.
+    """
+    start_time = time.time()
+    try:
+        # Check database connection
+        await db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception as e:
+        logger.error(f"Database connection error: {e}")
+        db_status = "error"
+
+    response_time = time.time() - start_time
+    
+    status_code = 200 if db_status == "ok" else 503
+    
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ok" if db_status == "ok" else "error",
+            "timestamp": datetime.utcnow().isoformat(),
+            "dependencies": {
+                "database": db_status
+            },
+            "response_time": f"{response_time:.4f}s"
+        }
+    )
+
 # CORS middleware - configured for Vercel frontend
-allowed_origins = [
-    "https://smartgrantfinder.vercel.app",
-    "https://www.smartgrantfinder.vercel.app", 
-    "http://localhost:3000",
-    "http://127.0.0.1:3000"
-]
+allowed_origins = get_allowed_origins()
 
 app.add_middleware(
     CORSMiddleware,
@@ -118,20 +142,3 @@ app.include_router(api_router, prefix="/api")
 async def read_root():
     """Root endpoint - welcome message"""
     return {"message": "Welcome to Kevin's Smart Grant Finder API"}
-
-# Add health check endpoint
-@app.get("/health")
-async def health_check():
-    """Health check endpoint to verify database connection"""
-    try:
-        if services.db_sessionmaker:
-            async with services.db_sessionmaker() as session:
-                await session.execute(text("SELECT 1"))
-            logger.info("Database health check successful")
-            return {"status": "ok", "detail": "Database connected"}
-        else:
-            logger.warning("Database sessionmaker not initialized")
-            return JSONResponse(status_code=503, content={"status": "error", "detail": "Database service not configured"})
-    except Exception as e:
-        logger.error(f"Database health check failed: {str(e)}", exc_info=True)
-        return JSONResponse(status_code=503, content={"status": "error", "detail": f"Database connection failed: {str(e)}"})

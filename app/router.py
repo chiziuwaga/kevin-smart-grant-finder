@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,7 +37,7 @@ api_router = APIRouter()
 metrics_logger = logging.getLogger("metrics")
 audit_logger = logging.getLogger("audit")
 
-def log_api_metrics(endpoint: str, duration: float, status: int, **extra: Dict[str, Any]):
+def log_api_metrics(endpoint: str, duration: float, status: int, **extra: Any):
     """Log API metrics in structured format"""
     metrics_logger.info(
         f"API Request: {endpoint}",
@@ -83,20 +83,18 @@ async def get_analytics_distribution(db: AsyncSession = Depends(get_db_session))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.get("/grants", response_model=PaginatedEnrichedGrantResponse) # Changed to PaginatedEnrichedGrantResponse
+@api_router.get("/grants", response_model=PaginatedEnrichedGrantResponse)
 async def list_grants(
-    # min_score: float = 0.0, # Replaced by min_overall_score
-    # category: Optional[str] = None, # Replaced by more specific filters if needed or search_query
-    # deadline_before: Optional[str] = None, # Can be part of a more generic date filter if needed
     page: int = 1,
     page_size: int = 20,
     sort_by: Optional[str] = "overall_composite_score",
     sort_order: Optional[str] = "desc",
     status_filter: Optional[str] = None,
-    min_overall_score: Optional[float] = None,
-    search_query: Optional[str] = None,
+    min_overall_score: Optional[float] = Query(None, alias="minOverallScore"),
+    max_overall_score: Optional[float] = Query(None, alias="maxOverallScore"),
+    category: Optional[str] = None,
+    searchText: Optional[str] = None, # Renamed from search_query to match frontend
     db: AsyncSession = Depends(get_db_session)
-    # pinecone_client=Depends(get_pinecone) # Not directly used by crud.get_grants_list
 ):
     """Get grants with advanced filtering, sorting, and pagination, returning EnrichedGrant objects."""
     start_time_req = time.time()
@@ -105,11 +103,13 @@ async def list_grants(
             db=db,
             skip=(page - 1) * page_size,
             limit=page_size,
-            sort_by=sort_by,
-            sort_order=sort_order,
+            sort_by=sort_by or "overall_composite_score",
+            sort_order=sort_order or "desc",
             status_filter=status_filter,
             min_overall_score=min_overall_score,
-            search_query=search_query
+            max_overall_score=max_overall_score,
+            category=category,
+            search_query=searchText  # Pass searchText to the crud function
         )
         duration_req = time.time() - start_time_req
         log_api_metrics("/grants", duration_req, 200, page=page, page_size=page_size, total_items=total)
@@ -117,7 +117,7 @@ async def list_grants(
             items=grants,
             total=total,
             page=page,
-            page_size=page_size
+            pageSize=page_size
         )
     except Exception as e:
         duration_req = time.time() - start_time_req
@@ -183,7 +183,7 @@ async def search_grants_endpoint(
             items=grants,
             total=total,
             page=page,
-            page_size=page_size
+            pageSize=page_size
         )
     except Exception as e:
         duration_req = time.time() - start_time_req
@@ -269,7 +269,9 @@ async def trigger_search(
             # And we only want to notify for high-priority ones
             high_priority_to_notify = [g for g in fully_analyzed_grants if g.overall_composite_score is not None and g.overall_composite_score >= 0.7]
             if high_priority_to_notify:
-                await notifier_service.notify_new_grants(high_priority_to_notify)
+                # Convert EnrichedGrant objects to dictionaries for the notification service
+                grants_dict = [g.model_dump() for g in high_priority_to_notify]
+                await notifier_service.notify_new_grants(grants_dict)
                 notified_count = len(high_priority_to_notify)
             result_message = f"Search completed. {len(fully_analyzed_grants)} grants processed. {notified_count} high-priority grants notified."
         elif not fully_analyzed_grants:
