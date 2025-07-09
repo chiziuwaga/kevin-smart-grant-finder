@@ -20,7 +20,7 @@ import {
 } from '@mui/icons-material';
 import { format, parseISO, differenceInDays } from 'date-fns';
 
-const GrantCard = ({ grant, onSave, isSaved }) => {
+const GrantCard = ({ grant, onSave, isSaved, onViewDetails }) => {
   const theme = useTheme();
   
   const categoryColors = {
@@ -35,10 +35,11 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
     Other: theme.palette.grey[500]
   };
   
-  const daysToDeadline = differenceInDays(
-    parseISO(grant.deadline),
-    new Date()
-  );
+  const daysToDeadline = grant.deadline || grant.deadline_date ? 
+    differenceInDays(parseISO(grant.deadline || grant.deadline_date), new Date()) : null;
+  
+  const isExpired = daysToDeadline !== null && daysToDeadline < 0;
+  const isUrgent = daysToDeadline !== null && daysToDeadline > 0 && daysToDeadline < 14;
   
   const renderScores = (scores, title) => {
     if (!scores || typeof scores !== 'object' || Object.keys(scores).length === 0) {
@@ -80,14 +81,32 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
     }}>
       <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-          <Chip 
-            label={grant.category} 
-            size="small" 
-            sx={{ 
-              backgroundColor: categoryColors[grant.category] || categoryColors.Other,
-              color: 'white'
-            }}
-          />
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <Chip 
+              label={grant.category || grant.identified_sector || 'Other'} 
+              size="small" 
+              sx={{ 
+                backgroundColor: categoryColors[grant.category] || categoryColors.Other,
+                color: 'white'
+              }}
+            />
+            {isExpired && (
+              <Chip 
+                label="EXPIRED" 
+                size="small" 
+                color="error"
+                sx={{ fontWeight: 'bold' }}
+              />
+            )}
+            {isUrgent && (
+              <Chip 
+                label={`${daysToDeadline} days left`} 
+                size="small" 
+                color="warning"
+                sx={{ fontWeight: 'bold' }}
+              />
+            )}
+          </Box>
           <Box
             sx={{
               width: 36,
@@ -116,8 +135,14 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
           {grant.title}
         </Typography>
         
+        {grant.funder_name && (
+          <Typography variant="body2" color="primary" sx={{ mb: 1, fontWeight: 'medium' }}>
+            Funder: {grant.funder_name}
+          </Typography>
+        )}
+        
         <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-          {grant.source}
+          {grant.source_name || grant.source || 'Unknown Source'}
         </Typography>
         
         {grant.description && (
@@ -169,19 +194,31 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
             <AccessTimeIcon fontSize="small" sx={{ 
               mr: 1, 
-              color: daysToDeadline < 14 
+              color: isExpired 
                 ? theme.palette.error.main 
-                : theme.palette.text.secondary 
+                : isUrgent 
+                  ? theme.palette.warning.main 
+                  : theme.palette.text.secondary 
             }} />
             <Typography variant="body2">
-              Deadline: {format(parseISO(grant.deadline), 'MMM d, yyyy')}
-              <Typography component="span" variant="caption" sx={{ 
-                color: daysToDeadline < 14 ? theme.palette.error.main : 'text.secondary', 
-                ml: 1,
-                fontWeight: daysToDeadline < 14 ? 'bold' : 'normal'
-              }}>
-                ({daysToDeadline} days)
-              </Typography>
+              Deadline: {
+                grant.deadline || grant.deadline_date 
+                  ? format(parseISO(grant.deadline || grant.deadline_date), 'MMM d, yyyy')
+                  : 'Not specified'
+              }
+              {daysToDeadline !== null && (
+                <Typography component="span" variant="caption" sx={{ 
+                  color: isExpired 
+                    ? theme.palette.error.main 
+                    : isUrgent 
+                      ? theme.palette.warning.main 
+                      : 'text.secondary', 
+                  ml: 1,
+                  fontWeight: (isExpired || isUrgent) ? 'bold' : 'normal'
+                }}>
+                  ({isExpired ? 'Expired' : `${daysToDeadline} days`})
+                </Typography>
+              )}
             </Typography>
           </Box>
           
@@ -191,25 +228,66 @@ const GrantCard = ({ grant, onSave, isSaved }) => {
               Funding: {grant.funding_amount_display || grant.fundingAmount || 'Not specified'}
             </Typography>
           </Box>
+
+          {grant.geographic_scope && (
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <Typography variant="body2" color="textSecondary">
+                <strong>Geographic Scope:</strong> {grant.geographic_scope}
+              </Typography>
+            </Box>
+          )}
+
+          {grant.keywords && grant.keywords.length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="caption" color="textSecondary" display="block" sx={{ mb: 0.5 }}>
+                Keywords:
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                {grant.keywords.slice(0, 3).map((keyword, idx) => (
+                  <Chip 
+                    key={idx} 
+                    label={keyword} 
+                    size="small" 
+                    variant="outlined" 
+                    sx={{ fontSize: '0.7rem', height: '20px' }}
+                  />
+                ))}
+                {grant.keywords.length > 3 && (
+                  <Typography variant="caption" color="textSecondary" sx={{ alignSelf: 'center' }}>
+                    +{grant.keywords.length - 3} more
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+          )}
           
-          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+            <Button 
+              size="small" 
+              variant="outlined" 
+              color="primary"
+              onClick={() => onViewDetails && onViewDetails(grant)}
+            >
+              Full Details
+            </Button>
+            
             <Button 
               size="small" 
               variant="outlined" 
               color="primary"
               endIcon={<OpenInNewIcon />}
-              href={grant.sourceUrl}
+              href={grant.source_url || grant.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
+              disabled={!grant.source_url && !grant.sourceUrl}
             >
-              View Details
+              View Original
             </Button>
             
             <IconButton 
               color={isSaved ? 'secondary' : 'default'} 
               onClick={() => onSave && onSave(grant.id, !isSaved)}
               size="small"
-              sx={{ ml: 1 }}
             >
               {isSaved ? <BookmarkIcon /> : <BookmarkBorderIcon />}
             </IconButton>

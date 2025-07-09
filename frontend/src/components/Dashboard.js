@@ -27,6 +27,7 @@ import {
 } from '@mui/material';
 import { Refresh as RefreshIcon, AddComment as AddCommentIcon, Visibility as VisibilityIcon } from '@mui/icons-material';
 import GrantCard from './GrantCard';
+import GrantDetailsModal from './GrantDetailsModal';
 import apiClient from '../api/apiClient'; // apiClient will be the compiled JS version of apiClient.ts
 // Types are for JSDoc and understanding, not enforced by JS runtime directly
 /**
@@ -45,7 +46,8 @@ const Dashboard = () => {
     searchText: '', 
     category: '', 
     minOverallScore: '', // New filter for minimum overall_composite_score
-    maxOverallScore: ''  // New filter for maximum overall_composite_score
+    maxOverallScore: '',  // New filter for maximum overall_composite_score
+    includeExpired: false // Filter to include/exclude expired grants
   });
   // Add state for Application Feedback Modal
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
@@ -62,6 +64,20 @@ const Dashboard = () => {
   const [currentGrantForHistory, setCurrentGrantForHistory] = useState(null);
   const [historyPage, setHistoryPage] = useState(0);
   const [historyRowsPerPage, setHistoryRowsPerPage] = useState(5);
+
+  // Grant Details Modal
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [currentGrantForDetails, setCurrentGrantForDetails] = useState(null);
+
+  const handleViewDetails = (grant) => {
+    setCurrentGrantForDetails(grant);
+    setDetailsModalOpen(true);
+  };
+
+  const handleCloseDetails = () => {
+    setDetailsModalOpen(false);
+    setCurrentGrantForDetails(null);
+  };
 
   const fetchGrants = useCallback(async () => {
     setLoading(true);
@@ -286,6 +302,7 @@ const Dashboard = () => {
               grant={grant} 
               onSave={handleSaveGrant} 
               isSaved={savedGrants.has(grant.id)}
+              onViewDetails={handleViewDetails}
             />
             <Box sx={{mt: 1, display: 'flex', justifyContent: 'space-around'}}>
                 <Button 
@@ -463,6 +480,13 @@ const Dashboard = () => {
           </DialogActions>
         </Dialog>
       )}
+
+      {/* Grant Details Modal */}
+      <GrantDetailsModal 
+        grant={currentGrantForDetails}
+        open={detailsModalOpen}
+        onClose={handleCloseDetails}
+      />
 
     </Container>
   );
