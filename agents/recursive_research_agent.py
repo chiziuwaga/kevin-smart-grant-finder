@@ -389,9 +389,9 @@ class RecursiveResearchAgent:
         unique_grants = []
         
         for grant in grants:
-            # Create unique identifier
-            title = grant.get('title', '').lower().strip()
-            url = grant.get('source_url', '').strip()
+            # Create unique identifier with proper null handling
+            title = (grant.get('title') or '').lower().strip()
+            url = (grant.get('source_url') or '').strip()
             
             # Use URL if available, otherwise use title
             identifier = url if url else title
@@ -408,6 +408,9 @@ class RecursiveResearchAgent:
             # Calculate relevance score based on chunk context
             relevance_score = self._calculate_relevance_score(grant_data)
             
+            # Parse deadline with proper error handling
+            deadline_parsed = self._parse_deadline(grant_data.get("deadline"))
+            
             enriched_grant = EnrichedGrant(
                 id=grant_data.get("grant_id", f"recursive_{int(time.time())}"),
                 grant_id_external=grant_data.get("grant_id_external"),
@@ -419,7 +422,7 @@ class RecursiveResearchAgent:
                 funding_amount_max=grant_data.get("funding_amount_max"),
                 funding_amount_exact=grant_data.get("funding_amount"),
                 funding_amount_display=grant_data.get("funding_amount_display", ""),
-                deadline=grant_data.get("deadline"),
+                deadline=deadline_parsed,
                 eligibility_criteria=grant_data.get("eligibility", ""),
                 source_url=grant_data.get("source_url", ""),
                 keywords=grant_data.get("keywords", []),
@@ -485,3 +488,47 @@ class RecursiveResearchAgent:
                 pass
         
         return min(score, 1.0)  # Cap at 1.0
+
+    def _parse_deadline(self, deadline_value: Any) -> Optional[datetime]:
+        """Parse deadline value with proper error handling for various formats."""
+        if not deadline_value:
+            return None
+            
+        if isinstance(deadline_value, datetime):
+            return deadline_value
+            
+        if isinstance(deadline_value, str):
+            # Handle common non-date strings
+            deadline_lower = deadline_value.lower().strip()
+            if deadline_lower in ['ongoing', 'null', 'none', 'n/a', 'tbd', 'rolling', 'continuous']:
+                return None
+                
+            # Try to parse date strings
+            try:
+                from dateutil import parser
+                return parser.parse(deadline_value)
+            except (ValueError, TypeError):
+                # If dateutil parsing fails, try some common formats
+                import re
+                date_patterns = [
+                    r'(\d{4})-(\d{1,2})-(\d{1,2})',  # YYYY-MM-DD
+                    r'(\d{1,2})/(\d{1,2})/(\d{4})',  # MM/DD/YYYY
+                    r'(\d{1,2})-(\d{1,2})-(\d{4})',  # MM-DD-YYYY
+                ]
+                
+                for pattern in date_patterns:
+                    match = re.search(pattern, deadline_value)
+                    if match:
+                        try:
+                            if pattern.startswith(r'(\d{4})'):  # YYYY-MM-DD
+                                year, month, day = match.groups()
+                            else:  # MM/DD/YYYY or MM-DD-YYYY
+                                month, day, year = match.groups()
+                            return datetime(int(year), int(month), int(day))
+                        except ValueError:
+                            continue
+                
+                logger.warning(f"Could not parse deadline: {deadline_value}")
+                return None
+        
+        return None
