@@ -1,9 +1,24 @@
 import {
+    AttachMoney as AttachMoneyIcon,
+    ClearAll as ClearAllIcon,
+    Event as EventIcon,
+    FilterList as FilterListIcon,
+    OpenInNew as OpenInNewIcon,
+    Search as SearchIcon,
+} from '@mui/icons-material';
+import {
+    alpha,
     Box,
     Button,
     Card,
     CardContent,
+    Checkbox,
     Chip,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    FormControlLabel,
     Grid,
     IconButton,
     MenuItem,
@@ -16,27 +31,14 @@ import {
     TableRow,
     TextField,
     Typography,
-    useTheme,
-    alpha,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions
+    useTheme
 } from '@mui/material';
-import {
-    FilterList as FilterListIcon,
-    Search as SearchIcon,
-    ClearAll as ClearAllIcon,
-    OpenInNew as OpenInNewIcon,
-    Event as EventIcon,
-    AttachMoney as AttachMoneyIcon,
-} from '@mui/icons-material';
-import { format, parseISO, differenceInDays } from 'date-fns';
-import React, { useEffect, useState, useCallback } from 'react';
+import { differenceInDays, format, parseISO } from 'date-fns';
+import { useCallback, useEffect, useState } from 'react';
 import { getGrants } from '../api/apiClient';
-import { useLoading } from '../components/common/LoadingProvider';
-import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
+import LoaderOverlay from '../components/common/LoaderOverlay';
+import { useLoading } from '../components/common/LoadingProvider';
 import TableSkeleton from '../components/common/TableSkeleton';
 
 const CATEGORIES = ['All', 'Research', 'Education', 'Community', 'Healthcare', 'Environment', 'Arts', 'Business', 'Energy', 'Other'];
@@ -48,10 +50,12 @@ const GrantsPage = () => {
   const [grants, setGrants] = useState([]);
   const [selectedGrant, setSelectedGrant] = useState(null);
   const [fetchError, setFetchError] = useState(null);
+  
   const [filters, setFilters] = useState({
     min_score: 0,
     days_to_deadline: 90,
-    category: 'All'
+    category: 'All',
+    includeExpired: false
   });
 
   const fetchGrants = useCallback(async () => {
@@ -63,7 +67,19 @@ const GrantsPage = () => {
       
       const response = await getGrants(params);
       // Handle both paginated response format and direct array format
-      const grants = response.items || response.data || response;
+      let grants = response.items || response.data || response;
+      
+      // Client-side filtering for expired grants if not including expired
+      if (!filters.includeExpired) {
+        grants = grants.filter(grant => {
+          const deadline = grant.deadline || grant.deadline_date;
+          if (!deadline) return true; // Include grants without deadlines
+          
+          const deadlineDate = new Date(deadline);
+          const today = new Date();
+          return deadlineDate >= today; // Only include non-expired grants
+        });
+      }
       
       if (Array.isArray(grants)) {
         setGrants(grants);
@@ -203,6 +219,18 @@ const GrantsPage = () => {
                   <MenuItem key={opt} value={opt}>{opt}</MenuItem>
                 )}
               </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    name="includeExpired"
+                    checked={filters.includeExpired}
+                    onChange={(e) => setFilters(prev => ({ ...prev, includeExpired: e.target.checked }))}
+                  />
+                }
+                label="Include Expired"
+              />
             </Grid>
           </Grid>
         </CardContent>

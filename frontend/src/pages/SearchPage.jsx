@@ -1,9 +1,16 @@
 import {
+    Clear as ClearIcon,
+    Search as SearchIcon,
+} from '@mui/icons-material';
+import {
+    alpha,
     Box,
     Button,
     Card,
     CardContent,
+    Checkbox,
     Chip,
+    FormControlLabel,
     Grid,
     IconButton,
     MenuItem,
@@ -18,18 +25,13 @@ import {
     TextField,
     Typography,
     useTheme,
-    alpha,
 } from '@mui/material';
-import {
-    Search as SearchIcon,
-    Clear as ClearIcon,
-} from '@mui/icons-material';
-import { format, parseISO, differenceInDays } from 'date-fns';
-import React, { useState, useCallback } from 'react';
+import { differenceInDays, format, parseISO } from 'date-fns';
+import { useCallback, useState } from 'react';
 import { searchGrants } from '../api/apiClient';
-import { useLoading } from '../components/common/LoadingProvider';
-import LoaderOverlay from '../components/common/LoaderOverlay';
 import EmptyState from '../components/common/EmptyState';
+import LoaderOverlay from '../components/common/LoaderOverlay';
+import { useLoading } from '../components/common/LoadingProvider';
 import TableSkeleton from '../components/common/TableSkeleton';
 
 const CATEGORIES = ['All', 'Research', 'Education', 'Community', 'Healthcare', 'Environment', 'Arts', 'Business', 'Energy', 'Other'];
@@ -40,6 +42,7 @@ const SearchPage = () => {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('All');
   const [minScore, setMinScore] = useState(70);
+  const [includeExpired, setIncludeExpired] = useState(false);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -63,9 +66,23 @@ const SearchPage = () => {
         min_score: minScore 
       };
       const data = await searchGrants(body);
-      setResults(Array.isArray(data) ? data : []);
+      let resultsData = Array.isArray(data) ? data : [];
       
-      if (Array.isArray(data) && data.length === 0) {
+      // Client-side filtering for expired grants if not including expired
+      if (!includeExpired) {
+        resultsData = resultsData.filter(grant => {
+          const deadline = grant.deadline || grant.deadline_date;
+          if (!deadline) return true; // Include grants without deadlines
+          
+          const deadlineDate = new Date(deadline);
+          const today = new Date();
+          return deadlineDate >= today; // Only include non-expired grants
+        });
+      }
+      
+      setResults(resultsData);
+      
+      if (resultsData.length === 0) {
         setSearchError('No grants found matching your criteria');
       }
     } catch (error) {
@@ -77,12 +94,13 @@ const SearchPage = () => {
       setLoading(false);
       stopLoading();
     }
-  }, [query, category, minScore, showError, startLoading, stopLoading]);
+  }, [query, category, minScore, includeExpired, showError, startLoading, stopLoading]);
 
   const handleReset = useCallback(() => {
     setQuery('');
     setCategory('All');
     setMinScore(70);
+    setIncludeExpired(false);
     setResults([]);
     setHasSearched(false);
     setSearchError(null);
@@ -122,7 +140,7 @@ const SearchPage = () => {
       >
         <CardContent>
           <Grid container spacing={2} alignItems="flex-start">
-            <Grid item xs={12} md={5}>
+            <Grid item xs={12} md={4}>
               <TextField 
                 label="Search grants..."
                 fullWidth
@@ -143,7 +161,7 @@ const SearchPage = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={2}>
               <TextField 
                 select
                 label="Category"
@@ -174,6 +192,18 @@ const SearchPage = () => {
                   ]}
                 />
               </Box>
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeExpired}
+                    onChange={(e) => setIncludeExpired(e.target.checked)}
+                  />
+                }
+                label="Include Expired"
+                sx={{ mt: 2 }}
+              />
             </Grid>
             <Grid item xs={12} md={2} sx={{ display: 'flex', alignItems: 'flex-end' }}>
               <Button
