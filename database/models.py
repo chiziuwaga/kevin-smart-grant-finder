@@ -194,12 +194,37 @@ class SavedGrants(Base):
     grant_id = Column(Integer, ForeignKey('grants.id', ondelete='CASCADE'), primary_key=True)
     saved_at = Column(DateTime, server_default=func.now())
 
+class SearchRunType(str, PyEnum):
+    AUTOMATED = "automated"
+    MANUAL = "manual"
+    SCHEDULED = "scheduled"
+
+class SearchRunStatus(str, PyEnum):
+    SUCCESS = "success"
+    FAILED = "failed"
+    PARTIAL = "partial"
+    IN_PROGRESS = "in_progress"
+
 class SearchRun(Base):
     __tablename__ = 'search_runs'
 
     id = Column(Integer, primary_key=True)
     timestamp = Column(DateTime, server_default=func.now())
-    grants_found = Column(Integer)
-    high_priority = Column(Integer)
+    grants_found = Column(Integer, default=0)
+    high_priority = Column(Integer, default=0)
     search_filters = Column(JSON)
     created_at = Column(DateTime, server_default=func.now())
+    
+    # Enhanced fields for better tracking
+    run_type = Column(Enum(SearchRunType), default=SearchRunType.MANUAL)
+    status = Column(Enum(SearchRunStatus), default=SearchRunStatus.SUCCESS)
+    duration_seconds = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+    error_details = Column(JSON, nullable=True)
+    search_query = Column(String, nullable=True)
+    user_triggered = Column(Boolean, default=False)
+    
+    # Performance metrics
+    sources_searched = Column(Integer, default=0)
+    api_calls_made = Column(Integer, default=0)
+    processing_time_ms = Column(Integer, nullable=True)

@@ -34,6 +34,13 @@ A comprehensive system for automatically discovering, analyzing, and prioritizin
 
 ## 🆕 Latest Features (July 2025)
 
+### Search Monitoring & Alerts
+
+- **Real-time Search Status**: Live monitoring of grant search progress with detailed status updates
+- **Search Failure Alerts**: User-facing notifications for search failures with actionable recovery options
+- **Comprehensive Search History**: Complete dashboard showing all manual and automated search runs
+- **Automated Scheduler Monitoring**: Health status tracking for Heroku scheduled searches
+
 ### Bulk Operations
 
 - **Multi-grant selection**: Select multiple grants using checkboxes in bulk mode

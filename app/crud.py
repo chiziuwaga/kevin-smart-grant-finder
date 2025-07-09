@@ -371,433 +371,198 @@ async def run_full_search_cycle(
     
     return processed_grants_for_return
 
+# Search Run Management Functions
+
 async def create_search_run(
-    db: AsyncSession, 
-    grants_found: int, 
-    high_priority_found: int, 
-    search_filters: Optional[Dict[str, Any]] = None
-) -> SearchRun:
-    """Create and store a new search run record."""
-    if search_filters is None:
-        search_filters = {}
-        
-    new_search_run = SearchRun(
-        timestamp=datetime.utcnow(), 
-        grants_found=grants_found,
-        high_priority=high_priority_found,
-        search_filters=json.dumps(search_filters) # Ensure search_filters is JSON serializable
-    )
-    db.add(new_search_run)
-    await db.commit()
-    await db.refresh(new_search_run)
-    return new_search_run
-
-def _map_db_grant_to_enriched_grant(db_grant: DBGrant) -> Optional[EnrichedGrant]:
-    if not db_grant:
-        return None
-
-    # Base Grant fields for EnrichedGrant inheritance (from app.schemas.Grant)
-    # These are common fields that EnrichedGrant inherits.
-    # Ensure these align with the base Grant Pydantic model if it's explicitly defined.
-    # For now, assuming EnrichedGrant directly defines or inherits these.
-    base_grant_fields = {
-        "id": str(db_grant.id), 
-        "title": db_grant.title,
-        "description": db_grant.description,
-        "funding_amount": db_grant.funding_amount_exact if db_grant.funding_amount_exact is not None else db_grant.funding_amount_display,
-        "deadline": db_grant.deadline, # This will be Optional[date]
-        "eligibility_criteria": db_grant.eligibility_summary_llm,
-        "category": db_grant.identified_sector, 
-        "source_url": db_grant.source_url,
-        "source_name": db_grant.source_name,
-        # 'score' is not directly on DBGrant in this way, it's overall_composite_score
-    }
-
-    grant_data = {
-        **base_grant_fields,
-        "grant_id_external": db_grant.grant_id_external,
-        "summary_llm": db_grant.summary_llm,
-        "funder_name": db_grant.funder_name,
-        "funding_amount_min": db_grant.funding_amount_min,
-        "funding_amount_max": db_grant.funding_amount_max,
-        "funding_amount_exact": db_grant.funding_amount_exact,
-        "funding_amount_display": db_grant.funding_amount_display,
-        "deadline_date": db_grant.deadline, # Explicitly part of EnrichedGrant
-        "application_open_date": db_grant.application_open_date,
-        "eligibility_summary_llm": db_grant.eligibility_summary_llm, # Explicit
-        "keywords": json.loads(db_grant.keywords_json) if db_grant.keywords_json else [],
-        "categories_project": json.loads(db_grant.categories_project_json) if db_grant.categories_project_json else [],
-        "source_details": GrantSourceDetails(
-            source_name=db_grant.source_name,
-            source_url=db_grant.source_url,
-            retrieved_at=db_grant.retrieved_at
-        ) if db_grant.source_name or db_grant.source_url or db_grant.retrieved_at else None,
-        "record_status": db_grant.record_status,
-        "research_scores": ResearchContextScores(
-            sector_relevance=db_grant.sector_relevance_score,
-            geographic_relevance=db_grant.geographic_relevance_score,
-            operational_alignment=db_grant.operational_alignment_score
-        ) if db_grant.sector_relevance_score is not None or \
-             db_grant.geographic_relevance_score is not None or \
-             db_grant.operational_alignment_score is not None else None,
-        "compliance_scores": ComplianceScores(
-            business_logic_alignment=db_grant.business_logic_alignment_score,
-            feasibility_score=db_grant.feasibility_context_score, 
-            strategic_synergy=db_grant.strategic_synergy_score,
-            # final_weighted_score is not directly stored here, it's part of overall_composite_score logic
-        ) if db_grant.business_logic_alignment_score is not None or \
-             db_grant.feasibility_context_score is not None or \
-             db_grant.strategic_synergy_score is not None else None,
-        "overall_composite_score": db_grant.overall_composite_score,
-        "created_at": db_grant.created_at,
-        "updated_at": db_grant.updated_at,
-        "identified_sector": db_grant.identified_sector,
-        "identified_sub_sector": db_grant.identified_sub_sector,
-        "geographic_scope": db_grant.geographic_scope,
-        "specific_location_mentions": json.loads(db_grant.specific_location_mentions_json) if hasattr(db_grant, 'specific_location_mentions_json') and db_grant.specific_location_mentions_json else [],
-        "raw_source_data": json.loads(db_grant.raw_source_data_json) if hasattr(db_grant, 'raw_source_data_json') and db_grant.raw_source_data_json else None,
-        "enrichment_log": json.loads(db_grant.enrichment_log_json) if hasattr(db_grant, 'enrichment_log_json') and db_grant.enrichment_log_json else [],
-        "last_enriched_at": db_grant.last_enriched_at,
-        # application_status and application_history_id would typically come from a join or separate query if needed
-        # For now, they are not directly mapped from DBGrant unless those fields exist on DBGrant
-    }
-    try:
-        # Ensure all fields expected by EnrichedGrant are present in grant_data or have defaults
-        # For example, if EnrichedGrant requires 'id' and it's not in base_grant_fields for some reason:
-        if 'id' not in grant_data and hasattr(db_grant, 'id'): # Should be covered by base_grant_fields
-            grant_data['id'] = str(db_grant.id)
-        
-        # Ensure research_scores and compliance_scores are initialized if None
-        if grant_data.get('research_scores') is None:
-            grant_data['research_scores'] = ResearchContextScores()
-        if grant_data.get('compliance_scores') is None:
-            grant_data['compliance_scores'] = ComplianceScores()
-        if grant_data.get('source_details') is None:
-            # Provide a default GrantSourceDetails if it's missing and required
-            grant_data['source_details'] = GrantSourceDetails(
-                source_name=db_grant.source_name or "Unknown", 
-                source_url=db_grant.source_url or "", 
-                retrieved_at=db_grant.retrieved_at or datetime.utcnow()
-            )
-
-        return EnrichedGrant(**grant_data)
-    except Exception as e: 
-        logger.error(f"Error converting DBGrant (ID: {db_grant.id}) to EnrichedGrant: {e}", exc_info=True)
-        return None
-
-async def get_grant_by_id(db: AsyncSession, grant_id: int) -> Optional[EnrichedGrant]:
-    """Fetch a single grant by its ID and map to EnrichedGrant schema."""
-    try:
-        grant_id_int = int(grant_id) # Ensure grant_id is int
-    except ValueError:
-        logger.error(f"Invalid grant_id format: {grant_id}. Must be an integer.")
-        return None
-
-    stmt = select(DBGrant).filter(DBGrant.id == grant_id_int)
-    result = await db.execute(stmt)
-    db_grant = result.scalar_one_or_none()
-
-    if db_grant:
-        return _map_db_grant_to_enriched_grant(db_grant)
-    return None
-
-async def get_grants_list(
     db: AsyncSession,
-    skip: int = 0,
-    limit: int = 20,
-    sort_by: str = "overall_composite_score",
-    sort_order: str = "desc",
-    status_filter: Optional[str] = None,
-    min_overall_score: Optional[float] = None,
-    max_overall_score: Optional[float] = None,
-    category: Optional[str] = None,
-    search_query: Optional[str] = None
-) -> Tuple[List[EnrichedGrant], int]:
-    """
-    Fetches a paginated, sorted, and filtered list of grants, returning EnrichedGrant objects.
-    """
+    run_type: str = "manual",
+    search_query: Optional[str] = None,
+    search_filters: Optional[Dict[str, Any]] = None,
+    user_triggered: bool = False
+) -> models.SearchRun:
+    """Create a new search run record."""
+    search_run = models.SearchRun(
+        run_type=run_type,
+        search_query=search_query,
+        search_filters=search_filters or {},
+        user_triggered=user_triggered,
+        status="in_progress"
+    )
+    db.add(search_run)
+    await db.commit()
+    await db.refresh(search_run)
+    return search_run
+
+async def update_search_run_result(
+    db: AsyncSession,
+    search_run_id: int,
+    status: str,
+    grants_found: int = 0,
+    high_priority: int = 0,
+    duration_seconds: Optional[float] = None,
+    error_message: Optional[str] = None,
+    error_details: Optional[Dict[str, Any]] = None,
+    sources_searched: int = 0,
+    api_calls_made: int = 0,
+    processing_time_ms: Optional[int] = None
+) -> models.SearchRun:
+    """Update search run with results."""
+    query = select(models.SearchRun).where(models.SearchRun.id == search_run_id)
+    result = await db.execute(query)
+    search_run = result.scalar_one_or_none()
     
-    query = select(DBGrant).options(selectinload(DBGrant.analyses))
+    if not search_run:
+        raise ValueError(f"SearchRun with id {search_run_id} not found")
     
-    if status_filter:
-        query = query.filter(DBGrant.status == status_filter)
-        
-    if min_overall_score is not None:
-        query = query.filter(DBGrant.overall_composite_score >= min_overall_score)
+    search_run.status = status
+    search_run.grants_found = grants_found
+    search_run.high_priority = high_priority
+    search_run.duration_seconds = duration_seconds
+    search_run.error_message = error_message
+    search_run.error_details = error_details
+    search_run.sources_searched = sources_searched
+    search_run.api_calls_made = api_calls_made
+    search_run.processing_time_ms = processing_time_ms
+    
+    await db.commit()
+    await db.refresh(search_run)
+    return search_run
 
-    if max_overall_score is not None:
-        query = query.filter(DBGrant.overall_composite_score <= max_overall_score)
-
-    if category:
-        query = query.filter(DBGrant.identified_sector == category)
-        
-    if search_query:
-        # Using or_ for a broader search across title, description, and summary
-        search_filter = or_(
-            DBGrant.title.ilike(f"%{search_query}%"),
-            DBGrant.description.ilike(f"%{search_query}%"),
-            DBGrant.summary_llm.ilike(f"%{search_query}%")
-        )
-        query = query.filter(search_filter)
-
-    # Count total items before pagination
+async def get_search_runs(
+    db: AsyncSession,
+    page: int = 1,
+    page_size: int = 20,
+    run_type: Optional[str] = None,
+    status: Optional[str] = None,
+    days_back: int = 30
+) -> Tuple[List[Dict[str, Any]], int]:
+    """Get paginated search runs with optional filtering."""
+    # Base query
+    query = select(models.SearchRun)
+    
+    # Add filters
+    if run_type:
+        query = query.where(models.SearchRun.run_type == run_type)
+    
+    if status:
+        query = query.where(models.SearchRun.status == status)
+    
+    # Filter by date range
+    cutoff_date = datetime.now() - timedelta(days=days_back)
+    query = query.where(models.SearchRun.created_at >= cutoff_date)
+    
+    # Get total count
     count_query = select(func.count()).select_from(query.subquery())
-    total_count_result = await db.execute(count_query)
-    total_count = total_count_result.scalar_one_or_none() or 0
+    total_result = await db.execute(count_query)
+    total = total_result.scalar_one() or 0
+    
+    # Add pagination and ordering
+    query = query.order_by(models.SearchRun.created_at.desc())
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    
+    # Execute query
+    result = await db.execute(query)
+    search_runs = result.scalars().all()
+    
+    # Convert to dictionaries
+    runs_data = []
+    for run in search_runs:
+        run_dict = {
+            "id": run.id,
+            "timestamp": run.timestamp.isoformat(),
+            "created_at": run.created_at.isoformat(),
+            "run_type": run.run_type,
+            "status": run.status,
+            "grants_found": run.grants_found,
+            "high_priority": run.high_priority,
+            "duration_seconds": run.duration_seconds,
+            "search_query": run.search_query,
+            "search_filters": run.search_filters,
+            "error_message": run.error_message,
+            "error_details": run.error_details,
+            "user_triggered": run.user_triggered,
+            "sources_searched": run.sources_searched,
+            "api_calls_made": run.api_calls_made,
+            "processing_time_ms": run.processing_time_ms
+        }
+        runs_data.append(run_dict)
+    
+    return runs_data, total
 
-    # Apply sorting
-    # Since scores are in the Analysis table, we need to handle sorting differently
-    # For now, default to created_at or title if the requested sort field doesn't exist
-    if hasattr(DBGrant, sort_by):
-        sort_column = getattr(DBGrant, sort_by)
-    elif sort_by == "overall_composite_score":
-        # For score-based sorting, we'll need to join with Analysis table
-        # For now, fallback to created_at
-        sort_column = DBGrant.created_at
-    else:
-        sort_column = DBGrant.created_at # Default fallback
-        
-    if sort_order and sort_order.lower() == "asc":
-        query = query.order_by(sort_column.asc())
-    else:
-        query = query.order_by(sort_column.desc()) # Default to desc
-
-    # Apply pagination
-    query = query.offset(skip).limit(limit)
+async def get_latest_automated_run(db: AsyncSession) -> Optional[Dict[str, Any]]:
+    """Get the latest automated search run."""
+    query = select(models.SearchRun).where(
+        models.SearchRun.run_type == "automated"
+    ).order_by(models.SearchRun.created_at.desc()).limit(1)
     
     result = await db.execute(query)
-    db_grants = result.scalars().all()
+    run = result.scalar_one_or_none()
     
-    enriched_grants = []
-    for db_grant in db_grants:
-        enriched = _map_db_grant_to_enriched_grant(db_grant)
-        if enriched:
-            enriched_grants.append(enriched)
-            
-    return enriched_grants, total_count
-
-
-async def create_or_update_grant(session: AsyncSession, grant_data_model: EnrichedGrant) -> Optional[EnrichedGrant]:
-    """
-    Creates a new grant or updates an existing one in the database.
-    Returns the saved EnrichedGrant object or None if an error occurs.
-    """
-    logger.debug(f"Attempting to create/update grant: {grant_data_model.title[:50] if grant_data_model.title else 'N/A'} (External ID: {grant_data_model.grant_id_external})")
-    existing_grant: Optional[DBGrant] = None
-
-    # Try to find existing grant by internal ID first if provided and valid
-    if grant_data_model.id:
-        try:
-            grant_internal_id = int(grant_data_model.id)
-            stmt_by_id = select(DBGrant).filter(DBGrant.id == grant_internal_id)
-            result_by_id = await session.execute(stmt_by_id)
-            existing_grant = result_by_id.scalar_one_or_none()
-            if existing_grant:
-                logger.debug(f"Found existing grant by internal ID: {existing_grant.id}")
-        except ValueError:
-            logger.warning(f"Invalid format for grant_data_model.id: {grant_data_model.id}. Will proceed to check other identifiers.")
-
-    # If not found by internal ID, try external ID
-    if not existing_grant and grant_data_model.grant_id_external:
-        stmt_ext = select(DBGrant).filter(DBGrant.grant_id_external == str(grant_data_model.grant_id_external))
-        result_ext = await session.execute(stmt_ext)
-        existing_grant = result_ext.scalar_one_or_none()
-        if existing_grant:
-            logger.debug(f"Found existing grant by external ID: {grant_data_model.grant_id_external}")
-
-    # If still not found, try by source_url (if unique enough)
-    if not existing_grant and grant_data_model.source_details and grant_data_model.source_details.source_url:
-        stmt_url = select(DBGrant).filter(DBGrant.source_url == str(grant_data_model.source_details.source_url))
-        result_url = await session.execute(stmt_url)
-        existing_grant = result_url.scalar_one_or_none()
-        if existing_grant:
-            logger.debug(f"Found existing grant by source_url: {grant_data_model.source_details.source_url}")
-
-    # If still not found, try by title (less reliable for uniqueness but a fallback)
-    if not existing_grant and grant_data_model.title:
-        stmt_title = select(DBGrant).filter(DBGrant.title == grant_data_model.title)
-        result_title = await session.execute(stmt_title)
-        existing_grant = result_title.scalar_one_or_none() # Could be multiple, take first or error
-        if existing_grant:
-            logger.debug(f"Found existing grant by title (use with caution): {grant_data_model.title}")
-
-    db_model_instance = existing_grant if existing_grant else DBGrant()
-
-    # Map all fields from EnrichedGrant to DBGrant model
-    db_model_instance.grant_id_external = grant_data_model.grant_id_external
-    db_model_instance.title = grant_data_model.title
-    db_model_instance.description = grant_data_model.description
-    db_model_instance.summary_llm = grant_data_model.summary_llm
-    db_model_instance.funder_name = grant_data_model.funder_name
-    
-    # Funding details
-    db_model_instance.funding_amount_min = grant_data_model.funding_amount_min
-    db_model_instance.funding_amount_max = grant_data_model.funding_amount_max
-    db_model_instance.funding_amount_exact = grant_data_model.funding_amount_exact
-    db_model_instance.funding_amount_display = grant_data_model.funding_amount_display
-    # Legacy funding_amount field
-    db_model_instance.funding_amount = grant_data_model.funding_amount_exact or grant_data_model.funding_amount
-    
-    # Date fields
-    db_model_instance.deadline_date = grant_data_model.deadline_date
-    db_model_instance.application_open_date = grant_data_model.application_open_date
-    # Legacy deadline field
-    db_model_instance.deadline = grant_data_model.deadline_date or grant_data_model.deadline
-    
-    # Keywords and categories
-    db_model_instance.eligibility_summary_llm = grant_data_model.eligibility_summary_llm
-    db_model_instance.keywords_json = json.dumps(grant_data_model.keywords) if grant_data_model.keywords else None
-    db_model_instance.categories_project_json = json.dumps(grant_data_model.categories_project) if grant_data_model.categories_project else None
-    
-    if grant_data_model.source_details:
-        db_model_instance.source_name = grant_data_model.source_details.source_name
-        db_model_instance.source_url = str(grant_data_model.source_details.source_url) if grant_data_model.source_details.source_url else None
-        db_model_instance.retrieved_at = grant_data_model.source_details.retrieved_at
-    
-    db_model_instance.record_status = grant_data_model.record_status
-
-    if grant_data_model.research_scores:
-        db_model_instance.sector_relevance_score = grant_data_model.research_scores.sector_relevance
-        db_model_instance.geographic_relevance_score = grant_data_model.research_scores.geographic_relevance
-        db_model_instance.operational_alignment_score = grant_data_model.research_scores.operational_alignment
-    
-    if grant_data_model.compliance_scores:
-        db_model_instance.business_logic_alignment_score = grant_data_model.compliance_scores.business_logic_alignment
-        db_model_instance.feasibility_context_score = grant_data_model.compliance_scores.feasibility_score
-        db_model_instance.strategic_synergy_score = grant_data_model.compliance_scores.strategic_synergy
-    
-    db_model_instance.overall_composite_score = grant_data_model.overall_composite_score
-
-    db_model_instance.identified_sector = grant_data_model.identified_sector
-    db_model_instance.identified_sub_sector = grant_data_model.identified_sub_sector
-    db_model_instance.geographic_scope = grant_data_model.geographic_scope
-    db_model_instance.specific_location_mentions_json = json.dumps(grant_data_model.specific_location_mentions) if grant_data_model.specific_location_mentions else None
-    db_model_instance.raw_source_data_json = json.dumps(grant_data_model.raw_source_data) if grant_data_model.raw_source_data else None
-    db_model_instance.enrichment_log_json = json.dumps(grant_data_model.enrichment_log) if grant_data_model.enrichment_log else None
-    db_model_instance.last_enriched_at = grant_data_model.last_enriched_at
-
-    db_model_instance.updated_at = datetime.utcnow()
-    if not existing_grant:
-        db_model_instance.created_at = datetime.utcnow()
-        session.add(db_model_instance)
-        logger.info(f"Creating new grant in DB: {db_model_instance.title[:50] if db_model_instance.title else 'N/A'}")
-    else:
-        logger.info(f"Updating existing grant in DB: {db_model_instance.title[:50] if db_model_instance.title else 'N/A'} (ID: {db_model_instance.id})")
-
-    try:
-        await session.commit()
-        await session.refresh(db_model_instance)
-        logger.info(f"Successfully committed grant: {db_model_instance.title[:50] if db_model_instance.title else 'N/A'} (ID: {db_model_instance.id})")
-        return _map_db_grant_to_enriched_grant(db_model_instance) # Convert back to EnrichedGrant
-    except Exception as e:
-        await session.rollback()
-        logger.error(f"Error committing grant {grant_data_model.title[:50] if grant_data_model.title else 'N/A'} to database: {e}", exc_info=True)
+    if not run:
         return None
-
-async def create_or_update_grant_from_enriched_data(session: AsyncSession, grant_data_model: EnrichedGrant) -> Optional[EnrichedGrant]:
-    """
-    Creates a new grant or updates an existing one based on the enriched data model.
-    This function now correctly handles updating existing SQLAlchemy model instances.
-    """
-    logger.debug(f"Attempting to create/update grant from enriched data: {grant_data_model.title[:50] if grant_data_model.title else 'N/A'} (External ID: {grant_data_model.grant_id_external})")
-    existing_grant: Optional[DBGrant] = None
-
-    # Try to find existing grant by internal ID first if provided and valid
-    if grant_data_model.id:
-        try:
-            grant_internal_id = int(grant_data_model.id)
-            stmt_by_id = select(DBGrant).filter(DBGrant.id == grant_internal_id)
-            result_by_id = await session.execute(stmt_by_id)
-            existing_grant = result_by_id.scalar_one_or_none()
-            if existing_grant:
-                logger.debug(f"Found existing grant by internal ID: {existing_grant.id}")
-        except ValueError:
-            logger.warning(f"Invalid format for grant_data_model.id: {grant_data_model.id}. Will proceed to check other identifiers.")
-
-    # If not found by internal ID, try external ID
-    if not existing_grant and grant_data_model.grant_id_external:
-        stmt_ext = select(DBGrant).filter(DBGrant.grant_id_external == str(grant_data_model.grant_id_external))
-        result_ext = await session.execute(stmt_ext)
-        existing_grant = result_ext.scalar_one_or_none()
-        if existing_grant:
-            logger.debug(f"Found existing grant by external ID: {grant_data_model.grant_id_external}")
-
-    # If still not found, try by source_url (if unique enough)
-    if not existing_grant and grant_data_model.source_details and grant_data_model.source_details.source_url:
-        stmt_url = select(DBGrant).filter(DBGrant.source_url == str(grant_data_model.source_details.source_url))
-        result_url = await session.execute(stmt_url)
-        existing_grant = result_url.scalar_one_or_none()
-        if existing_grant:
-            logger.debug(f"Found existing grant by source_url: {grant_data_model.source_details.source_url}")
-
-    # If still not found, try by title (less reliable for uniqueness but a fallback)
-    if not existing_grant and grant_data_model.title:
-        stmt_title = select(DBGrant).filter(DBGrant.title == grant_data_model.title)
-        result_title = await session.execute(stmt_title)
-        existing_grant = result_title.scalar_one_or_none() # Could be multiple, take first or error
-        if existing_grant:
-            logger.debug(f"Found existing grant by title (use with caution): {grant_data_model.title}")
-
-    update_data = grant_data_model.dict(exclude_unset=True)
     
-    # Remove fields that are handled specially or are not direct columns
-    update_data.pop('source_details', None)
-    update_data.pop('research_scores', None)
-    update_data.pop('compliance_scores', None)
-    update_data.pop('id', None) # Don't try to update the primary key
+    return {
+        "id": run.id,
+        "timestamp": run.timestamp.isoformat(),
+        "status": run.status,
+        "grants_found": run.grants_found,
+        "high_priority": run.high_priority,
+        "duration_seconds": run.duration_seconds,
+        "error_message": run.error_message
+    }
 
-    if existing_grant:
-        # Update existing grant
-        for key, value in update_data.items():
-            if hasattr(existing_grant, key):
-                setattr(existing_grant, key, value)
-        
-        # Handle nested structures
-        if grant_data_model.source_details:
-            for key, value in grant_data_model.source_details.dict().items():
-                setattr(existing_grant, key, value)
-        if grant_data_model.research_scores:
-            setattr(existing_grant, 'sector_relevance_score', grant_data_model.research_scores.sector_relevance)
-            setattr(existing_grant, 'geographic_relevance_score', grant_data_model.research_scores.geographic_relevance)
-            setattr(existing_grant, 'operational_alignment_score', grant_data_model.research_scores.operational_alignment)
-        if grant_data_model.compliance_scores:
-            setattr(existing_grant, 'business_logic_alignment_score', grant_data_model.compliance_scores.business_logic_alignment)
-            setattr(existing_grant, 'feasibility_context_score', grant_data_model.compliance_scores.feasibility_score)
-            setattr(existing_grant, 'strategic_synergy_score', grant_data_model.compliance_scores.strategic_synergy)
-
-        setattr(existing_grant, 'updated_at', datetime.utcnow())
-        db_model_instance = existing_grant
-        logger.info(f"Updating existing grant in DB: {grant_data_model.title[:50] if grant_data_model.title else 'N/A'} (ID: {existing_grant.id})")
-    else:
-        # Create new grant
-        # We need to flatten the nested Pydantic models into the DB model structure
-        flat_data = update_data.copy()
-        if grant_data_model.source_details:
-            flat_data.update(grant_data_model.source_details.dict())
-        if grant_data_model.research_scores:
-            flat_data['sector_relevance_score'] = grant_data_model.research_scores.sector_relevance
-            flat_data['geographic_relevance_score'] = grant_data_model.research_scores.geographic_relevance
-            flat_data['operational_alignment_score'] = grant_data_model.research_scores.operational_alignment
-        if grant_data_model.compliance_scores:
-            flat_data['business_logic_alignment_score'] = grant_data_model.compliance_scores.business_logic_alignment
-            flat_data['feasibility_context_score'] = grant_data_model.compliance_scores.feasibility_score
-            flat_data['strategic_synergy_score'] = grant_data_model.compliance_scores.strategic_synergy
-        
-        db_model_instance = DBGrant(**flat_data)
-        setattr(db_model_instance, 'created_at', datetime.utcnow())
-        setattr(db_model_instance, 'updated_at', datetime.utcnow())
-        session.add(db_model_instance)
-        logger.info(f"Creating new grant in DB: {grant_data_model.title[:50] if grant_data_model.title else 'N/A'}")
-
-    try:
-        await session.commit()
-        await session.refresh(db_model_instance)
-        logger.info(f"Successfully committed grant: {grant_data_model.title[:50] if grant_data_model.title else 'N/A'} (ID: {db_model_instance.id})")
-        return _map_db_grant_to_enriched_grant(db_model_instance)
-    except Exception as e:
-        await session.rollback()
-        logger.error(f"Error committing grant {grant_data_model.title[:50] if grant_data_model.title else 'N/A'} to database: {e}", exc_info=True)
-        return None
+async def get_search_run_statistics(db: AsyncSession, days_back: int = 7) -> Dict[str, Any]:
+    """Get search run statistics for the dashboard."""
+    cutoff_date = datetime.now() - timedelta(days=days_back)
+    
+    # Total runs
+    total_query = select(func.count()).select_from(models.SearchRun).where(
+        models.SearchRun.created_at >= cutoff_date
+    )
+    total_result = await db.execute(total_query)
+    total_runs = total_result.scalar_one() or 0
+    
+    # Successful runs
+    success_query = select(func.count()).select_from(models.SearchRun).where(
+        models.SearchRun.created_at >= cutoff_date,
+        models.SearchRun.status == "success"
+    )
+    success_result = await db.execute(success_query)
+    successful_runs = success_result.scalar_one() or 0
+    
+    # Failed runs
+    failed_query = select(func.count()).select_from(models.SearchRun).where(
+        models.SearchRun.created_at >= cutoff_date,
+        models.SearchRun.status == "failed"
+    )
+    failed_result = await db.execute(failed_query)
+    failed_runs = failed_result.scalar_one() or 0
+    
+    # Average grants found
+    avg_grants_query = select(func.avg(models.SearchRun.grants_found)).where(
+        models.SearchRun.created_at >= cutoff_date,
+        models.SearchRun.status == "success"
+    )
+    avg_grants_result = await db.execute(avg_grants_query)
+    avg_grants = avg_grants_result.scalar_one() or 0
+    
+    # Average duration
+    avg_duration_query = select(func.avg(models.SearchRun.duration_seconds)).where(
+        models.SearchRun.created_at >= cutoff_date,
+        models.SearchRun.duration_seconds.isnot(None)
+    )
+    avg_duration_result = await db.execute(avg_duration_query)
+    avg_duration = avg_duration_result.scalar_one() or 0
+    
+    return {
+        "total_runs": total_runs,
+        "successful_runs": successful_runs,
+        "failed_runs": failed_runs,
+        "success_rate": (successful_runs / total_runs * 100) if total_runs > 0 else 0,
+        "average_grants_found": round(avg_grants, 1),
+        "average_duration_seconds": round(avg_duration, 2),
+        "days_analyzed": days_back
+    }
 
 # --- ApplicationHistory CRUD Functions ---
 

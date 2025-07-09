@@ -1,38 +1,39 @@
 import {
-    Clear as ClearIcon,
-    Search as SearchIcon,
+  Clear as ClearIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import {
-    alpha,
-    Box,
-    Button,
-    Card,
-    CardContent,
-    Checkbox,
-    Chip,
-    FormControlLabel,
-    Grid,
-    IconButton,
-    MenuItem,
-    Paper,
-    Slider,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    TextField,
-    Typography,
-    useTheme,
+  alpha,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Checkbox,
+  Chip,
+  FormControlLabel,
+  Grid,
+  IconButton,
+  MenuItem,
+  Paper,
+  Slider,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+  useTheme,
 } from '@mui/material';
 import { differenceInDays, format, parseISO } from 'date-fns';
 import { useCallback, useState } from 'react';
-import { searchGrants } from '../api/apiClient';
+import { createManualSearchRun, searchGrants } from '../api/apiClient';
 import EmptyState from '../components/common/EmptyState';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import { useLoading } from '../components/common/LoadingProvider';
 import TableSkeleton from '../components/common/TableSkeleton';
+import SearchStatusMonitor from '../components/SearchStatusMonitor';
 
 const CATEGORIES = ['All', 'Research', 'Education', 'Community', 'Healthcare', 'Environment', 'Arts', 'Business', 'Energy', 'Other'];
 
@@ -47,6 +48,8 @@ const SearchPage = () => {
   const [results, setResults] = useState([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const [searchRunId, setSearchRunId] = useState(null);
+  const [showMonitor, setShowMonitor] = useState(false);
 
   const handleSearch = useCallback(async () => {
     if (!query.trim()) {
@@ -57,14 +60,31 @@ const SearchPage = () => {
     setLoading(true);
     setSearchError(null);
     setHasSearched(true);
+    setShowMonitor(false);
     startLoading();
 
     try {
+      // First create a search run to track the operation
+      const searchRunResponse = await createManualSearchRun(
+        query.trim(),
+        { 
+          category: category === 'All' ? undefined : category, 
+          min_score: minScore,
+          include_expired: includeExpired
+        }
+      );
+      
+      if (searchRunResponse && searchRunResponse.data && searchRunResponse.data.id) {
+        setSearchRunId(searchRunResponse.data.id);
+        setShowMonitor(true);
+      }
+
       const body = { 
         query: query.trim(), 
         category: category === 'All' ? undefined : category, 
         min_score: minScore 
       };
+      
       const data = await searchGrants(body);
       let resultsData = Array.isArray(data) ? data : [];
       
@@ -87,8 +107,27 @@ const SearchPage = () => {
       }
     } catch (error) {
       console.error('Search error:', error);
-      setSearchError(error.message || 'Failed to search grants. Please try again.');
-      showError('An error occurred while searching. Please try again.');
+      
+      // Enhanced error handling with specific messages
+      let errorMessage = 'Failed to search grants. Please try again.';
+      let actionable = false;
+      
+      if (error.message?.toLowerCase().includes('rate limit')) {
+        errorMessage = 'Search rate limit exceeded. Please wait a few minutes before trying again.';
+        actionable = true;
+      } else if (error.message?.toLowerCase().includes('network')) {
+        errorMessage = 'Network connection issue. Please check your internet connection and retry.';
+        actionable = true;
+      } else if (error.message?.toLowerCase().includes('timeout')) {
+        errorMessage = 'Search timed out. The service may be busy. Please try again.';
+        actionable = true;
+      } else if (error.message?.toLowerCase().includes('service unavailable')) {
+        errorMessage = 'Search service is temporarily unavailable. Please try again shortly.';
+        actionable = true;
+      }
+      
+      setSearchError(errorMessage);
+      showError(actionable ? `${errorMessage} If the problem persists, check Settings > Search History for details.` : errorMessage);
       setResults([]);
     } finally {
       setLoading(false);
@@ -220,6 +259,26 @@ const SearchPage = () => {
           </Grid>
         </CardContent>
       </Card>
+
+      {/* Search Status Monitor */}
+      {showMonitor && searchRunId && (
+        <Box sx={{ mb: 3 }}>
+          <SearchStatusMonitor 
+            searchRunId={searchRunId}
+            onComplete={(result) => {
+              console.log('Search completed:', result);
+              setShowMonitor(false);
+              // Could trigger a refresh of results here if needed
+            }}
+            onError={(error) => {
+              console.error('Search failed:', error);
+              setSearchError(error.error_message || 'Search failed');
+              setShowMonitor(false);
+            }}
+            autoRefresh={true}
+          />
+        </Box>
+      )}
 
       <LoaderOverlay loading={loading}>
         {hasSearched ? (
