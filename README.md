@@ -4,14 +4,53 @@ A comprehensive system for automatically discovering, analyzing, and prioritizin
 
 ## Features
 
+### 🔍 Core Discovery & Analysis
+
 - **Automated Grant Discovery**: Searches for grants using AgentQL and Perplexity APIs
 - **Smart Prioritization**: Ranks grants based on relevance to user priorities using Pinecone
 - **Multi-Channel Notifications**: Telegram alerts for high-priority grants
-- **API Backend**: FastAPI application providing endpoints for the frontend.
-- **Modern UI**: React-based frontend with Material UI and data visualizations deployed on Vercel.
 - **Geographically Targeted**: Special focus on LA-08 district opportunities
-- **Robust Error Handling**: Fallback mechanisms for service disruptions
-- **Scheduled Execution**: Twice-weekly automated searches via Heroku worker.
+
+### 💼 Bulk Operations & Data Management
+
+- **Bulk Grant Actions**: Select multiple grants for batch save/unsave operations
+- **Multi-Format Export**: Export grants to CSV, PDF, and Calendar (.ics) formats
+- **Smart Filtering**: Hide expired grants toggle with date-aware filtering
+- **Application Tracking**: Submit and track application feedback and outcomes
+
+### 🎨 Modern User Interface
+
+- **React Frontend**: Modern Material UI components with responsive design
+- **Interactive Dashboard**: Grid and table views with advanced filtering
+- **Real-time Updates**: Live data synchronization and progress indicators
+- **Accessibility**: WCAG AA compliant with keyboard navigation support
+
+### 🚀 Production Infrastructure
+
+- **API Backend**: FastAPI application providing RESTful endpoints
+- **Cloud Deployment**: Backend on Heroku, Frontend on Vercel
+- **Robust Error Handling**: Comprehensive error boundaries and fallback mechanisms
+- **Scheduled Execution**: Twice-weekly automated searches via Heroku worker
+
+## 🆕 Latest Features (July 2025)
+
+### Bulk Operations
+
+- **Multi-grant selection**: Select multiple grants using checkboxes in bulk mode
+- **Batch actions**: Save or unsave multiple grants at once
+- **Progress indicators**: Real-time feedback during bulk operations
+
+### Export & Integration
+
+- **CSV Export**: Export grant data with comprehensive field coverage
+- **PDF Export**: Generate formatted PDF reports via browser print dialog
+- **Calendar Integration**: Export grant deadlines to .ics calendar files
+
+### Smart Filtering
+
+- **Hide Expired Toggle**: Filter out grants with past deadlines
+- **Cross-page consistency**: Available on Dashboard, Search, and Grants pages
+- **Date-aware filtering**: Automatically detects expired grants
 
 ## Architecture
 
@@ -45,12 +84,14 @@ A comprehensive system for automatically discovering, analyzing, and prioritizin
 ### Backend Configuration (FastAPI on Heroku)
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/chiziuwaga/kevin-smart-grant-finder.git
    cd kevin-smart-grant-finder
    ```
 
 2. Create a virtual environment:
+
    ```bash
    python -m venv venv
    venv\Scripts\activate     # Windows
@@ -58,21 +99,23 @@ A comprehensive system for automatically discovering, analyzing, and prioritizin
    ```
 
 3. Install dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
 
 4. Create a `.env` file with required credentials (see `.env.example`):
+
    ```
    # API Keys
    PERPLEXITY_API_KEY=...
    PINECONE_API_KEY=...
    AGENTQL_API_KEY=...
    OPENAI_API_KEY=... # Needed for Pinecone embeddings
-   
+
    # Database
    MONGODB_URI=mongodb+srv://...
-   
+
    # Notifications
    TELEGRAM_BOT_TOKEN=...
    ADMIN_TELEGRAM_CHAT_ID=...
@@ -81,11 +124,13 @@ A comprehensive system for automatically discovering, analyzing, and prioritizin
 ### Frontend Configuration (React on Vercel)
 
 1. Navigate to the frontend directory:
+
    ```bash
    cd frontend
    ```
 
 2. Install dependencies:
+
    ```bash
    npm install
    ```
@@ -94,22 +139,24 @@ A comprehensive system for automatically discovering, analyzing, and prioritizin
    ```
    REACT_APP_API_URL=http://localhost:8000/api # For local dev, assuming backend runs on 8000
    ```
-   *Note: For production, this will be set in Vercel environment variables to point to your Heroku backend URL.* 
+   _Note: For production, this will be set in Vercel environment variables to point to your Heroku backend URL._
 
 ### Running Locally
 
 1. Start the FastAPI backend (from project root):
+
    ```bash
    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
-   *(The backend API will be available at `http://localhost:8000`)*
+
+   _(The backend API will be available at `http://localhost:8000`)_
 
 2. Start the React frontend (in a separate terminal):
    ```bash
    cd frontend
    npm start
    ```
-   *(The frontend will be available at `http://localhost:3000`)*
+   _(The frontend will be available at `http://localhost:3000`)_
 
 ### Deployment
 
@@ -155,4 +202,4 @@ MIT License.
 
 - MongoDB Atlas, Pinecone, Perplexity API, AgentQL
 - FastAPI, React, Material UI
-- Heroku, Vercel 
+- Heroku, Vercel
