@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from utils.pinecone_client import PineconeClient
 from utils.perplexity_client import PerplexityClient
 from utils.notification_manager import NotificationManager
-from agents.research_agent import ResearchAgent
+from agents.integrated_research_agent import IntegratedResearchAgent
 from agents.analysis_agent import AnalysisAgent
 from app.services import services
 
@@ -42,11 +42,10 @@ def get_db_sessionmaker():
 def get_research_agent(
     perplexity: PerplexityClient = Depends(get_perplexity),
     pinecone: PineconeClient = Depends(get_pinecone)
-) -> ResearchAgent:
+) -> IntegratedResearchAgent:
     if not services.db_sessionmaker:
         raise RuntimeError("Database sessionmaker not initialized in services.")
-    return ResearchAgent(
-        perplexity_client=perplexity,
+    return IntegratedResearchAgent(
         db_session_maker=services.db_sessionmaker
     )
 

@@ -53,9 +53,9 @@ Copy these from your `.env` file to Heroku Config Vars:
 DATABASE_URL=postgresql+asyncpg://...
 
 # API Keys
-PERPLEXITY_API_KEY=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
-OPENAI_API_KEY=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
-PINECONE_API_KEY=pcsk_2a2RC5_LQjvSf1cjgXbD5EnwNcQRAL6naCx7KTLcBvD2QAYuCPJjNiEELFksdCqgx8apUB
+PERPLEXITY_API_KEY=your_current_perplexity_api_key_here
+OPENAI_API_KEY=your_current_openai_api_key_here
+PINECONE_API_KEY=your_current_pinecone_api_key_here
 PINECONE_INDEX_NAME=grantcluster
 PINECONE_REGION=us-east-1
 PINECONE_CLOUD=aws
