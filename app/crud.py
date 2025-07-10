@@ -62,11 +62,12 @@ async def fetch_grants(
     grants_models = result.scalars().all()
     grants_data = []
     for grant_model in grants_models:
-        score_value = None
+        score_value = 0.0  # Default score value
         # Attempt to get score from related Analysis table if it exists
         if grant_model.analyses and len(grant_model.analyses) > 0:
             # Assuming the first analysis record is relevant, and it has a 'final_score'
-            score_value = grant_model.analyses[0].final_score 
+            if grant_model.analyses[0].final_score is not None:
+                score_value = grant_model.analyses[0].final_score
         elif hasattr(grant_model, 'overall_composite_score') and grant_model.overall_composite_score is not None:
             # Fallback to overall_composite_score on the grant itself if no analysis score
             score_value = grant_model.overall_composite_score

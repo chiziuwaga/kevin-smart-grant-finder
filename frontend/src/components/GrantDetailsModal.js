@@ -268,28 +268,32 @@ const GrantDetailsModal = ({ grant, open, onClose }) => {
                 </Box>
 
                 {/* Overall Score */}
-                {grant.overall_composite_score && (
-                  <Box
-                    sx={{
-                      textAlign: 'center',
-                      mt: 2,
-                      p: 2,
-                      bgcolor: 'primary.50',
-                      borderRadius: 1,
-                    }}
-                  >
-                    <Typography variant="caption" color="textSecondary">
-                      Overall Relevance Score
-                    </Typography>
-                    <Typography
-                      variant="h4"
-                      color="primary.main"
-                      fontWeight="bold"
+                {grant.overall_composite_score !== null &&
+                  grant.overall_composite_score !== undefined && (
+                    <Box
+                      sx={{
+                        textAlign: 'center',
+                        mt: 2,
+                        p: 2,
+                        bgcolor: 'primary.50',
+                        borderRadius: 1,
+                      }}
                     >
-                      {grant.overall_composite_score.toFixed(1)}
-                    </Typography>
-                  </Box>
-                )}
+                      <Typography variant="caption" color="textSecondary">
+                        Overall Relevance Score
+                      </Typography>
+                      <Typography
+                        variant="h4"
+                        color="primary.main"
+                        fontWeight="bold"
+                      >
+                        {grant.overall_composite_score !== null &&
+                        grant.overall_composite_score !== undefined
+                          ? grant.overall_composite_score.toFixed(1)
+                          : 'N/A'}
+                      </Typography>
+                    </Box>
+                  )}
               </CardContent>
             </Card>
           </Grid>

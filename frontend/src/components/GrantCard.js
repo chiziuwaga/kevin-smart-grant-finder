@@ -181,10 +181,12 @@ const GrantCard = ({
               fontSize: '0.8rem',
             }}
           >
-            {grant.overall_composite_score !== undefined
+            {grant.overall_composite_score !== undefined &&
+            grant.overall_composite_score !== null
               ? grant.overall_composite_score.toFixed(0)
-              : grant.relevanceScore !== undefined
-              ? grant.relevanceScore
+              : grant.relevanceScore !== undefined &&
+                grant.relevanceScore !== null
+              ? grant.relevanceScore.toString()
               : 'N/A'}
           </Box>
         </Box>

@@ -204,7 +204,7 @@ const generateGrantSummary = (grants) => {
     'Total Grants': grants.length,
     Categories: Object.keys(categories).length,
     'Upcoming Deadlines (30 days)': upcomingDeadlines,
-    'Average Relevance Score': `${avgScore.toFixed(1)}%`,
+    'Average Relevance Score': `${(avgScore || 0).toFixed(1)}%`,
     'Top Category':
       Object.entries(categories).sort(([, a], [, b]) => b - a)[0]?.[0] || 'N/A',
   };

@@ -479,7 +479,8 @@ const Dashboard = () => {
                 grant.geographic_scope || 'Not specified'
               }</div>
               <div class="grant-info"><strong>Relevance Score:</strong> ${
-                grant.overall_composite_score
+                grant.overall_composite_score !== null &&
+                grant.overall_composite_score !== undefined
                   ? grant.overall_composite_score.toFixed(1)
                   : grant.relevanceScore || 'N/A'
               }</div>
