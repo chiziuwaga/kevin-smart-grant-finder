@@ -43,9 +43,9 @@ const SearchHistoryTab = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [total, setTotal] = useState(0);
-  const [filter, setFilter] = useState({ days_back: 30 });
 
   const fetchSearchRuns = useCallback(async () => {
+    const filter = { days_back: 30 };
     try {
       setLoading(true);
       const response = await apiClient.getSearchRuns({
@@ -62,7 +62,7 @@ const SearchHistoryTab = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, rowsPerPage, filter, enqueueSnackbar]);
+  }, [page, rowsPerPage, enqueueSnackbar]);
 
   const fetchStatistics = useCallback(async () => {
     try {
