@@ -20,9 +20,9 @@ from fixes.database.robust_connection_manager import get_connection_manager, get
 from fixes.services.graceful_services import initialize_services, get_service_manager
 from fixes.services.circuit_breaker import get_circuit_manager, CIRCUIT_BREAKER_CONFIGS
 from fixes.error_handling.global_handlers import (
-    enhanced_global_exception_handler,
-    enhanced_http_exception_handler,
-    enhanced_validation_exception_handler,
+    global_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
     create_error_response
 )
 from fixes.error_handling.recovery_strategies import get_recovery_manager
@@ -196,19 +196,19 @@ async def error_monitoring_middleware(request: Request, call_next):
 
 # Enhanced global exception handlers
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
+async def graceful_exception_handler(request: Request, exc: Exception):
     """Global exception handler with recovery."""
-    return await enhanced_global_exception_handler(request, exc)
+    return await global_exception_handler(request, exc)
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
+async def graceful_http_exception_handler(request: Request, exc: HTTPException):
     """Enhanced HTTP exception handler."""
-    return await enhanced_http_exception_handler(request, exc)
+    return await http_exception_handler(request, exc)
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+async def graceful_validation_exception_handler(request: Request, exc: RequestValidationError):
     """Enhanced validation exception handler."""
-    return await enhanced_validation_exception_handler(request, exc)
+    return await validation_exception_handler(request, exc)
 
 # Health check endpoints
 app.include_router(health_router)
