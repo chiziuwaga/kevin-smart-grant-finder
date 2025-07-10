@@ -334,12 +334,21 @@ async def run_full_search_cycle(
         logger.info(f"Saving/updating {len(fully_analyzed_grants)} grants to the database...")
         for enriched_grant_data in fully_analyzed_grants:
             try:
+                # Convert EnrichedGrant to dict for database saving
+                grant_dict = enriched_grant_data.dict(exclude_none=True) if hasattr(enriched_grant_data, 'dict') else enriched_grant_data.__dict__
+                
                 # Call the dedicated create_or_update_grant function
-                saved_grant = await create_or_update_grant(session, enriched_grant_data)
+                saved_grant = await create_or_update_grant(session, grant_dict)
                 if saved_grant:
-                    processed_grants_for_return.append(saved_grant)
+                    # Convert saved grant back to EnrichedGrant for return
+                    enriched_saved = safe_convert_to_enriched_grant(saved_grant)
+                    if enriched_saved:
+                        processed_grants_for_return.append(enriched_saved)
                     saved_grants_count += 1
-                    logger.info(f"Successfully saved/updated grant via dedicated function: {saved_grant.title[:50] if saved_grant.title else 'N/A'} (ID: {saved_grant.id})")
+                    # Safe access to title attribute
+                    grant_title = getattr(saved_grant, 'title', None)
+                    title_display = grant_title[:50] if grant_title else 'N/A'
+                    logger.info(f"Successfully saved/updated grant via dedicated function: {title_display} (ID: {saved_grant.id})")
                 else:
                     logger.error(f"Failed to save/update grant: {enriched_grant_data.title[:50] if enriched_grant_data.title else 'N/A'} using dedicated function.")
             except Exception as e:
@@ -406,27 +415,44 @@ async def update_search_run_result(
     api_calls_made: int = 0,
     processing_time_ms: Optional[int] = None
 ) -> models.SearchRun:
-    """Update search run with results."""
-    query = select(models.SearchRun).where(models.SearchRun.id == search_run_id)
-    result = await db.execute(query)
-    search_run = result.scalar_one_or_none()
-    
-    if not search_run:
-        raise ValueError(f"SearchRun with id {search_run_id} not found")
-    
-    search_run.status = status
-    search_run.grants_found = grants_found
-    search_run.high_priority = high_priority
-    search_run.duration_seconds = duration_seconds
-    search_run.error_message = error_message
-    search_run.error_details = error_details
-    search_run.sources_searched = sources_searched
-    search_run.api_calls_made = api_calls_made
-    search_run.processing_time_ms = processing_time_ms
-    
-    await db.commit()
-    await db.refresh(search_run)
-    return search_run
+    """Update search run with results using safe SQL update."""
+    try:
+        # Prepare update data
+        update_data = {
+            'status': status,
+            'grants_found': grants_found,
+            'high_priority': high_priority,
+            'duration_seconds': duration_seconds,
+            'error_message': error_message,
+            'error_details': json.dumps(error_details) if error_details else None,
+            'sources_searched': sources_searched,
+            'api_calls_made': api_calls_made,
+            'processing_time_ms': processing_time_ms,
+            'updated_at': datetime.utcnow()
+        }
+        
+        # Use safe update helper
+        success = await safe_update_model(db, models.SearchRun, search_run_id, update_data)
+        
+        if not success:
+            raise ValueError(f"Failed to update SearchRun with id {search_run_id}")
+        
+        await db.commit()
+        
+        # Fetch and return updated search run
+        query = select(models.SearchRun).where(models.SearchRun.id == search_run_id)
+        result = await db.execute(query)
+        search_run = result.scalar_one_or_none()
+        
+        if not search_run:
+            raise ValueError(f"SearchRun with id {search_run_id} not found after update")
+            
+        return search_run
+        
+    except Exception as e:
+        logger.error(f"Error updating search run {search_run_id}: {str(e)}", exc_info=True)
+        await db.rollback()
+        raise
 
 async def get_search_runs(
     db: AsyncSession,
@@ -624,9 +650,14 @@ async def get_application_history_by_id(
     stmt = select(models.ApplicationHistory).filter(models.ApplicationHistory.id == history_id)
     result = await db.execute(stmt)
     entry = result.scalar_one_or_none()
-    if entry and entry.user_id != user_id: # Basic check, can be more robust
-        logger.warning(f"User {user_id} attempted to access history entry {history_id} owned by {entry.user_id}")
-        return None # Or raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Safe check for entry existence and user authorization
+    if entry is not None:
+        entry_user_id = getattr(entry, 'user_id', None)
+        if entry_user_id != user_id:
+            logger.warning(f"User {user_id} attempted to access history entry {history_id} owned by {entry_user_id}")
+            return None # Or raise HTTPException(status_code=403, detail="Not authorized")
+    
     return entry
 
 async def get_application_history_for_grant(
@@ -665,19 +696,23 @@ async def update_application_history_entry(
         logger.warning(f"Application history entry with id: {history_id} not found or user {user_id} not authorized.")
         return None
 
+    # Prepare update data
+    update_data = {}
+    
     if history_update_data.submission_date is not None:
-        db_entry.application_date = history_update_data.submission_date
+        update_data['application_date'] = history_update_data.submission_date
     
     if history_update_data.status:
         try:
             status_enum = models.ApplicationStatus(history_update_data.status)
-            db_entry.status = status_enum
+            update_data['status'] = status_enum.value
+            
             if status_enum == models.ApplicationStatus.AWARDED:
-                db_entry.is_successful_outcome = True
+                update_data['is_successful_outcome'] = True
             elif status_enum in [models.ApplicationStatus.REJECTED, models.ApplicationStatus.WITHDRAWN]:
-                db_entry.is_successful_outcome = False
+                update_data['is_successful_outcome'] = False
             else:
-                db_entry.is_successful_outcome = None # Reset if status changes to indeterminate
+                update_data['is_successful_outcome'] = None
         except ValueError:
             logger.error(f"Invalid application status for update: {history_update_data.status}")
             raise ValueError(f"Invalid application status for update: {history_update_data.status}")
@@ -688,25 +723,27 @@ async def update_application_history_entry(
     if history_update_data.feedback_for_profile_update:
         combined_feedback_notes += f"Feedback for Profile Update: {history_update_data.feedback_for_profile_update}"
     
-    if combined_feedback_notes: # Only update if new notes are provided
-        db_entry.feedback_notes = combined_feedback_notes.strip()
-    elif history_update_data.outcome_notes is None and history_update_data.feedback_for_profile_update is None:
-        # If both are explicitly None in an update, consider clearing, or leave as is.
-        # Current: only updates if new notes provided. To clear, schema might need explicit nulls.
-        pass
+    if combined_feedback_notes:
+        update_data['feedback_notes'] = combined_feedback_notes.strip()
 
-
-    # Fields like award_amount and status_reason are not in ApplicationHistoryCreate
-    # They would need to be part of the history_update_data schema or handled differently.
-    # For example, if history_update_data included 'award_amount':
-    # if history_update_data.award_amount is not None:
-    #     db_entry.award_amount = history_update_data.award_amount
-
-    db_entry.updated_at = datetime.utcnow()
+    update_data['updated_at'] = datetime.utcnow()
+    
+    # Use safe update helper
+    success = await safe_update_model(db, models.ApplicationHistory, history_id, update_data)
+    
+    if not success:
+        logger.error(f"Failed to update application history entry {history_id}")
+        return None
+    
     await db.commit()
-    await db.refresh(db_entry)
-    logger.info(f"Successfully updated application history entry with id: {db_entry.id}")
-    return db_entry
+    
+    # Fetch updated entry
+    query = select(models.ApplicationHistory).where(models.ApplicationHistory.id == history_id)
+    result = await db.execute(query)
+    updated_entry = result.scalar_one_or_none()
+    
+    logger.info(f"Successfully updated application history entry with id: {history_id}")
+    return updated_entry
 
 async def delete_application_history_entry(
     db: AsyncSession, 
@@ -727,3 +764,366 @@ async def delete_application_history_entry(
     await db.commit()
     logger.info(f"Successfully deleted application history entry id: {history_id}")
     return True
+
+# Grant retrieval and upsert functions
+
+async def get_grant_by_id(db: AsyncSession, grant_id: int) -> Optional[EnrichedGrant]:
+    """Get a single grant by ID with defensive programming"""
+    try:
+        logger.info(f"Fetching grant with ID: {grant_id}")
+        
+        query = select(DBGrant).options(selectinload(DBGrant.analyses)).where(DBGrant.id == grant_id)
+        result = await db.execute(query)
+        grant_model = result.scalar_one_or_none()
+
+        if not grant_model:
+            logger.warning(f"Grant with ID {grant_id} not found")
+            return None
+
+        # Defensive conversion with null checks
+        enriched_grant = safe_convert_to_enriched_grant(grant_model)
+        if enriched_grant:
+            logger.info(f"Successfully converted grant {grant_id} to EnrichedGrant")
+        else:
+            logger.warning(f"Failed to convert grant {grant_id} to EnrichedGrant")
+        
+        return enriched_grant
+
+    except Exception as e:
+        logger.error(f"Error fetching grant {grant_id}: {str(e)}", exc_info=True)
+        return None
+
+async def create_or_update_grant(db: AsyncSession, grant_data: dict) -> Optional[DBGrant]:
+    """Create or update a grant in the database with defensive programming"""
+    try:
+        grant_id = grant_data.get('id')
+        external_id = grant_data.get('grant_id_external')
+        
+        # Try to find existing grant by ID or external ID
+        existing_grant = None
+        if grant_id:
+            try:
+                query = select(DBGrant).where(DBGrant.id == grant_id)
+                result = await db.execute(query)
+                existing_grant = result.scalar_one_or_none()
+            except Exception:
+                pass
+        
+        if not existing_grant and external_id:
+            try:
+                query = select(DBGrant).where(DBGrant.grant_id_external == external_id)
+                result = await db.execute(query)
+                existing_grant = result.scalar_one_or_none()
+            except Exception:
+                pass
+        
+        if existing_grant:
+            # Update existing grant - use SQL UPDATE statement
+            update_data = {k: v for k, v in grant_data.items() if v is not None and hasattr(DBGrant, k)}
+            update_data['updated_at'] = datetime.utcnow()
+            
+            from sqlalchemy import update
+            update_stmt = update(DBGrant).where(DBGrant.id == existing_grant.id).values(**update_data)
+            await db.execute(update_stmt)
+            await db.flush()
+            
+            # Fetch updated grant
+            result = await db.execute(select(DBGrant).where(DBGrant.id == existing_grant.id))
+            updated_grant = result.scalar_one_or_none()
+            logger.info(f"Updated existing grant {existing_grant.id}")
+            return updated_grant
+        
+        else:
+            # Create new grant
+            create_data = {k: v for k, v in grant_data.items() if v is not None and hasattr(DBGrant, k)}
+            create_data['created_at'] = datetime.utcnow()
+            create_data['updated_at'] = datetime.utcnow()
+            
+            new_grant = DBGrant(**create_data)
+            db.add(new_grant)
+            await db.flush()
+            logger.info(f"Created new grant {new_grant.id}")
+            return new_grant
+            
+    except Exception as e:
+        logger.error(f"Error creating/updating grant: {str(e)}", exc_info=True)
+        return None
+
+# Defensive programming utility functions
+def safe_parse_json(json_field, default=None):
+    """Safely parse JSON field with default fallback"""
+    if json_field is None:
+        return default
+    try:
+        if isinstance(json_field, (dict, list)):
+            return json_field
+        return json.loads(json_field) if json_field else default
+    except (json.JSONDecodeError, TypeError) as e:
+        logger.warning(f"Failed to parse JSON field: {e}")
+        return default
+
+def safe_getattr(obj, attr, default=None):
+    """Safely get attribute with None check"""
+    if obj is None:
+        return default
+    return getattr(obj, attr, default)
+
+def safe_float_conversion(value, default=None):
+    """Safely convert value to float"""
+    if value is None:
+        return default
+    try:
+        return float(value) if value is not None else default
+    except (ValueError, TypeError):
+        return default
+
+def safe_datetime_conversion(value, default=None):
+    """Safely convert value to datetime"""
+    if value is None:
+        return default
+    if isinstance(value, datetime):
+        return value
+    return default
+
+def safe_list_conversion(value, default=None):
+    """Safely convert value to List[str]"""
+    if value is None:
+        return default or []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return default or []
+
+def safe_dict_conversion(value, default=None):
+    """Safely convert value to Dict[str, Any]"""
+    if value is None:
+        return default
+    if isinstance(value, dict):
+        return value
+    return default
+
+def safe_convert_to_enriched_grant(grant_model) -> Optional[EnrichedGrant]:
+    """Safely convert database grant model to EnrichedGrant schema with defensive checks"""
+    try:
+        if grant_model is None:
+            logger.warning("Received None grant_model in conversion")
+            return None
+        
+        # Safe attribute access with defaults
+        grant_id = safe_getattr(grant_model, 'id')
+        if grant_id is None:
+            logger.warning("Grant model missing required ID field")
+            return None
+        
+        # Extract scores with safe access
+        overall_composite_score = safe_getattr(grant_model, 'overall_composite_score', 0.0)
+        
+        # Safely access analysis data
+        analyses = safe_getattr(grant_model, 'analyses', [])
+        
+        # Build research context scores safely using correct field names
+        research_scores = None
+        compliance_scores = None
+        if analyses and len(analyses) > 0:
+            analysis = analyses[0]
+            research_scores = ResearchContextScores(
+                sector_relevance=safe_getattr(analysis, 'sector_relevance_score', 0.0),
+                geographic_relevance=safe_getattr(analysis, 'geographic_relevance_score', 0.0),
+                operational_alignment=safe_getattr(analysis, 'operational_alignment_score', 0.0)
+            )
+            
+            compliance_scores = ComplianceScores(
+                business_logic_alignment=safe_getattr(analysis, 'business_logic_alignment_score', 0.0),
+                feasibility_score=safe_getattr(analysis, 'feasibility_score', 0.0),
+                strategic_synergy=safe_getattr(analysis, 'strategic_synergy_score', 0.0),
+                final_weighted_score=safe_getattr(analysis, 'final_score', 0.0)
+            )
+        
+        # Build source details safely using correct field names
+        source_details = GrantSourceDetails(
+            source_name=safe_getattr(grant_model, 'source_name', ''),
+            source_url=safe_getattr(grant_model, 'source_url', ''),
+            retrieved_at=safe_datetime_conversion(safe_getattr(grant_model, 'retrieved_at'))
+        )
+        
+        # Create EnrichedGrant with correct field names from schema
+        enriched_grant = EnrichedGrant(
+            # Basic fields from Grant base class
+            id=str(grant_id),
+            title=safe_getattr(grant_model, 'title', 'Untitled Grant'),
+            description=safe_getattr(grant_model, 'description', ''),
+            funding_amount=safe_float_conversion(safe_getattr(grant_model, 'funding_amount')),
+            deadline=safe_datetime_conversion(safe_getattr(grant_model, 'deadline')),
+            eligibility_criteria=safe_getattr(grant_model, 'eligibility_summary_llm', ''),
+            category=safe_getattr(grant_model, 'identified_sector', 'General'),
+            source_url=safe_getattr(grant_model, 'source_url', ''),
+            source_name=safe_getattr(grant_model, 'source_name', 'Unknown'),
+            
+            # EnrichedGrant specific fields
+            grant_id_external=safe_getattr(grant_model, 'grant_id_external'),
+            summary_llm=safe_getattr(grant_model, 'summary_llm'),
+            eligibility_summary_llm=safe_getattr(grant_model, 'eligibility_summary_llm', ''),
+            funder_name=safe_getattr(grant_model, 'funder_name'),
+            
+            # Funding details
+            funding_amount_min=safe_float_conversion(safe_getattr(grant_model, 'funding_amount_min')),
+            funding_amount_max=safe_float_conversion(safe_getattr(grant_model, 'funding_amount_max')),
+            funding_amount_exact=safe_float_conversion(safe_getattr(grant_model, 'funding_amount_exact')),
+            funding_amount_display=safe_getattr(grant_model, 'funding_amount_display', 'Not specified'),
+            
+            # Date fields
+            deadline_date=safe_datetime_conversion(safe_getattr(grant_model, 'deadline_date')),
+            application_open_date=safe_datetime_conversion(safe_getattr(grant_model, 'application_open_date')),
+            
+            # Keywords and categories
+            keywords=safe_list_conversion(safe_parse_json(safe_getattr(grant_model, 'keywords_json'), [])),
+            categories_project=safe_list_conversion(safe_parse_json(safe_getattr(grant_model, 'categories_project_json'), [])),
+            
+            # Source details
+            source_details=source_details,
+            
+            # Contextual fields
+            identified_sector=safe_getattr(grant_model, 'identified_sector', 'General'),
+            identified_sub_sector=safe_getattr(grant_model, 'identified_sub_sector'),
+            geographic_scope=safe_getattr(grant_model, 'geographic_scope'),
+            specific_location_mentions=safe_list_conversion(safe_parse_json(safe_getattr(grant_model, 'specific_location_mentions_json'), [])),
+            
+            # Scoring systems
+            research_scores=research_scores,
+            compliance_scores=compliance_scores,
+            overall_composite_score=overall_composite_score,
+            
+            # Compliance and feasibility
+            compliance_summary=safe_dict_conversion(safe_parse_json(safe_getattr(grant_model, 'compliance_summary_json'))),
+            feasibility_score=safe_float_conversion(safe_getattr(grant_model, 'feasibility_score')),
+            risk_assessment=safe_dict_conversion(safe_parse_json(safe_getattr(grant_model, 'risk_assessment_json'))),
+            
+            # Additional metadata
+            raw_source_data=safe_dict_conversion(safe_parse_json(safe_getattr(grant_model, 'raw_source_data_json'))),
+            enrichment_log=safe_list_conversion(safe_parse_json(safe_getattr(grant_model, 'enrichment_log_json'), []))
+        )
+        
+        return enriched_grant
+        
+    except Exception as e:
+        logger.error(f"Error converting grant model to EnrichedGrant: {e}", exc_info=True)
+        return None
+
+async def get_grants_list(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 20,
+    sort_by: str = "overall_composite_score",
+    sort_order: str = "desc",
+    status_filter: Optional[str] = None,
+    min_overall_score: Optional[float] = None,
+    max_overall_score: Optional[float] = None,
+    category: Optional[str] = None,
+    search_query: Optional[str] = None
+) -> Tuple[List[EnrichedGrant], int]:
+    """
+    Get grants list with advanced filtering, sorting, and pagination.
+    Returns EnrichedGrant objects with defensive error handling.
+    """
+    try:
+        logger.info(f"get_grants_list called with skip={skip}, limit={limit}, sort_by={sort_by}")
+        
+        # Build base query with safe joins
+        query = select(DBGrant).outerjoin(Analysis).options(selectinload(DBGrant.analyses))
+        
+        # Apply filters with safe checks
+        if min_overall_score is not None:
+            query = query.filter(DBGrant.overall_composite_score >= min_overall_score)
+        
+        if max_overall_score is not None:
+            query = query.filter(DBGrant.overall_composite_score <= max_overall_score)
+        
+        if category:
+            query = query.filter(DBGrant.identified_sector == category)
+        
+        if status_filter:
+            query = query.filter(DBGrant.application_status == status_filter)
+        
+        if search_query:
+            search_filter = or_(
+                DBGrant.title.ilike(f"%{search_query}%"),
+                DBGrant.description.ilike(f"%{search_query}%")
+            )
+            query = query.filter(search_filter)
+        
+        # Get total count safely
+        count_query = select(func.count()).select_from(query.subquery())
+        try:
+            total_result = await db.execute(count_query)
+            total = total_result.scalar() or 0
+        except Exception as e:
+            logger.warning(f"Error getting total count, using 0: {e}")
+            total = 0
+        
+        # Apply sorting with safe attribute access
+        sort_column = None
+        if sort_by == "overall_composite_score":
+            sort_column = DBGrant.overall_composite_score
+        elif sort_by == "deadline":
+            sort_column = DBGrant.deadline
+        elif sort_by == "title":
+            sort_column = DBGrant.title
+        elif sort_by == "priority_score":
+            sort_column = DBGrant.priority_score
+        else:
+            # Default to overall_composite_score if invalid sort_by
+            sort_column = DBGrant.overall_composite_score
+        
+        if sort_order.lower() == "desc":
+            query = query.order_by(sort_column.desc())
+        else:
+            query = query.order_by(sort_column.asc())
+        
+        # Apply pagination
+        query = query.offset(skip).limit(limit)
+        
+        # Execute query safely
+        try:
+            result = await db.execute(query)
+            grant_models = result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error executing grants query: {e}")
+            return [], 0
+        
+        # Convert to EnrichedGrant objects with defensive programming
+        enriched_grants = []
+        for grant_model in grant_models:
+            try:
+                enriched_grant = safe_convert_to_enriched_grant(grant_model)
+                if enriched_grant is not None:
+                    enriched_grants.append(enriched_grant)
+            except Exception as e:
+                logger.warning(f"Skipping grant conversion due to error: {e}")
+                continue
+        
+        logger.info(f"Successfully converted {len(enriched_grants)} grants out of {len(grant_models)} models")
+        return enriched_grants, total
+        
+    except Exception as e:
+        logger.error(f"Error in get_grants_list: {e}", exc_info=True)
+        return [], 0
+
+async def safe_update_model(db: AsyncSession, model_class, model_id: int, update_data: dict):
+    """Safely update a SQLAlchemy model using UPDATE statement"""
+    try:
+        from sqlalchemy import update as sql_update
+        
+        # Filter out None values and non-existent columns
+        filtered_data = {k: v for k, v in update_data.items() 
+                        if v is not None and hasattr(model_class, k)}
+        
+        if not filtered_data:
+            return False
+            
+        # Use SQL UPDATE statement
+        update_stmt = sql_update(model_class).where(model_class.id == model_id).values(**filtered_data)
+        await db.execute(update_stmt)
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error updating {model_class.__name__} {model_id}: {e}")
+        return False

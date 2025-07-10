@@ -502,7 +502,8 @@ async def create_application_feedback(
         
         created_feedback = await crud.create_application_history_entry(
             db=db, 
-            application_history_data=application_data
+            history_entry_data=application_data,
+            user_id="default_user"  # TODO: Get from authentication
         )
         duration_req = time.time() - start_time_req
         log_api_metrics("/applications/feedback", duration_req, 201, grant_id=created_feedback.grant_id)
