@@ -1,6 +1,6 @@
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Table, TableBody, TableCell, TableHead, TableRow } from '@mui/material';
 import React, { useEffect, useState } from 'react';
-import API from '../../api/apiClient';
+import API from 'api/apiClient';
 
 const RunHistoryModal = ({ open, onClose }) => {
   const [history, setHistory] = useState([]);

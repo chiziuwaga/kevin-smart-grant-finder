@@ -31,8 +31,8 @@ import {
 } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import React, { useCallback, useEffect, useState } from 'react';
-import apiClient from '../../api/apiClient';
-import LoaderOverlay from '../common/LoaderOverlay';
+import apiClient from 'api/apiClient';
+import LoaderOverlay from 'components/common/LoaderOverlay';
 
 const SearchHistoryTab = () => {
   const { enqueueSnackbar } = useSnackbar();

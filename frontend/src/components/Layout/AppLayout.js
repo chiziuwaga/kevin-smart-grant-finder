@@ -45,7 +45,7 @@ const AppLayout = () => {
   useEffect(() => {
     const fetchLastRun = async () => {
       try {
-        const { getLastRun } = await import('../../api/apiClient');
+        const { getLastRun } = await import('api/apiClient');
         const data = await getLastRun();
         if(data.status!=='none'){
           document.getElementById('last-run-time').innerText = new Date(data.end || data.start).toLocaleString();
