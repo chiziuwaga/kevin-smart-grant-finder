@@ -17,11 +17,13 @@ import {
     CircularProgress,
     Divider,
     Grid,
+    LinearProgress,
     List,
     ListItem,
     ListItemIcon,
     ListItemText,
-    Typography
+    Typography,
+    Collapse
 } from '@mui/material';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useSnackbar } from 'notistack';
@@ -36,6 +38,9 @@ const CronJobStatus = () => {
   const [schedulerStatus, setSchedulerStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
+  const [searchProgress, setSearchProgress] = useState(0);
+  const [searchActive, setSearchActive] = useState(false);
+  const [searchStep, setSearchStep] = useState('');
 
   // Fetch scheduler status
   const fetchSchedulerStatus = useCallback(async () => {
@@ -59,7 +64,33 @@ const CronJobStatus = () => {
   // Trigger manual search
   const triggerManualSearch = async () => {
     setTriggering(true);
+    setSearchActive(true);
+    setSearchProgress(0);
+    setSearchStep('Initializing grant search...');
+    
     try {
+      // Simulate progressive search steps for better UX
+      const steps = [
+        'Initializing search agents...',
+        'Discovering grant opportunities...',
+        'Analyzing grant eligibility...',
+        'Calculating relevance scores...',
+        'Updating database...'
+      ];
+      
+      let progress = 0;
+      const stepIncrement = 80 / steps.length; // Reserve 20% for completion
+      
+      const progressInterval = setInterval(() => {
+        progress += stepIncrement;
+        setSearchProgress(Math.min(progress, 80));
+        
+        const currentStepIndex = Math.floor(progress / stepIncrement) - 1;
+        if (currentStepIndex >= 0 && currentStepIndex < steps.length) {
+          setSearchStep(steps[currentStepIndex]);
+        }
+      }, 2000);
+
       const response = await fetch('/api/system/run-search', {
         method: 'POST',
         headers: {
@@ -68,8 +99,11 @@ const CronJobStatus = () => {
       });
 
       const data = await response.json();
-
+      clearInterval(progressInterval);
+      
       if (response.ok) {
+        setSearchProgress(100);
+        setSearchStep('Search completed successfully!');
         enqueueSnackbar('Manual search initiated successfully', { variant: 'success' });
         // Refresh status after a delay
         setTimeout(fetchSchedulerStatus, 2000);
@@ -78,9 +112,16 @@ const CronJobStatus = () => {
       }
     } catch (error) {
       console.error('Error triggering search:', error);
+      setSearchStep('Search failed');
+      setSearchProgress(0);
       enqueueSnackbar('Failed to trigger manual search', { variant: 'error' });
     } finally {
-      setTriggering(false);
+      setTimeout(() => {
+        setTriggering(false);
+        setSearchActive(false);
+        setSearchProgress(0);
+        setSearchStep('');
+      }, 3000);
     }
   };
 
@@ -148,26 +189,52 @@ const CronJobStatus = () => {
             <Typography variant="h6">
               Automated Search Status
             </Typography>
+          </Box>        <Box display="flex" gap={1}>
+          <Button
+            size="small"
+            startIcon={<RefreshIcon />}
+            onClick={fetchSchedulerStatus}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={triggering ? <CircularProgress size={16} color="inherit" /> : <TriggerIcon />}
+            onClick={triggerManualSearch}
+            disabled={triggering}
+            sx={{ 
+              minWidth: 120,
+              bgcolor: triggering ? 'primary.main' : 'primary.main',
+              '&:hover': {
+                bgcolor: triggering ? 'primary.dark' : 'primary.dark'
+              }
+            }}
+          >
+            {triggering ? 'Searching...' : 'Run Grant Search'}
+          </Button>
+        </Box>
+
+        {/* Manual Search Progress */}
+        <Collapse in={searchActive}>
+          <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
+            <Typography variant="subtitle2" gutterBottom color="primary">
+              Manual Grant Search in Progress
+            </Typography>
+            <LinearProgress 
+              variant="determinate" 
+              value={searchProgress} 
+              sx={{ mb: 1, height: 6, borderRadius: 3 }}
+            />
+            <Typography variant="body2" color="text.secondary">
+              {searchStep}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Progress: {Math.round(searchProgress)}%
+            </Typography>
           </Box>
-          <Box display="flex" gap={1}>
-            <Button
-              size="small"
-              startIcon={<RefreshIcon />}
-              onClick={fetchSchedulerStatus}
-              disabled={loading}
-            >
-              Refresh
-            </Button>
-            <Button
-              size="small"
-              variant="contained"
-              startIcon={<TriggerIcon />}
-              onClick={triggerManualSearch}
-              disabled={triggering}
-            >
-              Run Now
-            </Button>
-          </Box>
+        </Collapse>
         </Box>
 
         {/* Overall Health Status */}

@@ -28,7 +28,8 @@ import { useEffect, useState } from 'react';
 import API from '../api/apiClient';
 import LoaderOverlay from '../components/common/LoaderOverlay';
 import CronJobStatus from '../components/CronJobStatus';
-import SearchHistory from '../components/SearchHistory';
+import SearchHistoryTab from '../components/SearchHistoryTab';
+import ManualSearchTrigger from '../components/ManualSearchTrigger';
 
 const SCHEDULE_OPTIONS = [
     { value: 'Mon/Thu', label: 'Twice a week (Monday & Thursday)' },
@@ -349,12 +350,29 @@ const SettingsPage = () => {
 
         {/* Search History Tab */}
         <TabPanel value={currentTab} index={2}>
-          <SearchHistory />
+          <SearchHistoryTab />
         </TabPanel>
 
         {/* System Status Tab */}
         <TabPanel value={currentTab} index={3}>
-          <CronJobStatus />
+          <Grid container spacing={3}>
+            {/* Manual Search Trigger */}
+            <Grid item xs={12} lg={6}>
+              <ManualSearchTrigger 
+                onSearchComplete={(results) => {
+                  enqueueSnackbar(
+                    `Search completed! Found ${results.grants_processed || 0} grants.`,
+                    { variant: 'success' }
+                  );
+                }}
+              />
+            </Grid>
+            
+            {/* System Status Monitor */}
+            <Grid item xs={12} lg={6}>
+              <CronJobStatus />
+            </Grid>
+          </Grid>
         </TabPanel>
       </LoaderOverlay>
     </Box>

@@ -266,7 +266,7 @@ const SearchPage = () => {
           <SearchStatusMonitor 
             searchRunId={searchRunId}
             onComplete={(result) => {
-              console.log('Search completed:', result);
+              // Search completed successfully
               setShowMonitor(false);
               // Could trigger a refresh of results here if needed
             }}
