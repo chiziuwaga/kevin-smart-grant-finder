@@ -62,34 +62,66 @@ app = FastAPI(
 )
 
 @app.get("/health", tags=["Health Check"])
-async def health_check(db: AsyncSession = Depends(get_db)):
+async def health_check():
     """
-    Health check endpoint to verify service and database connectivity.
+    Simple health check endpoint for load balancers
     """
-    start_time = time.time()
     try:
-        # Check database connection
-        await db.execute(text("SELECT 1"))
-        db_status = "ok"
+        # Quick database test if available
+        if services.db_sessionmaker:
+            async with services.db_sessionmaker() as session:
+                await session.execute(text("SELECT 1"))
+            db_status = "ok"
+        else:
+            db_status = "unavailable"
     except Exception as e:
-        logger.error(f"Database connection error: {e}")
+        logger.error(f"Health check database error: {e}")
         db_status = "error"
 
-    response_time = time.time() - start_time
-    
-    status_code = 200 if db_status == "ok" else 503
+    status_code = 200 if db_status in ["ok", "unavailable"] else 503
     
     return JSONResponse(
         status_code=status_code,
         content={
-            "status": "ok" if db_status == "ok" else "error",
+            "status": "ok" if db_status == "ok" else "degraded" if db_status == "unavailable" else "error",
             "timestamp": datetime.utcnow().isoformat(),
-            "dependencies": {
-                "database": db_status
-            },
-            "response_time": f"{response_time:.4f}s"
+            "database": db_status
         }
     )
+
+@app.get("/health/detailed", tags=["Health Check"])
+async def detailed_health_check():
+    """
+    Comprehensive health check with detailed service status
+    """
+    from app.health import HealthChecker
+    
+    try:
+        health_data = await HealthChecker.comprehensive_health_check()
+        
+        # Determine HTTP status based on overall health
+        if health_data["overall_status"] == "healthy":
+            status_code = 200
+        elif health_data["overall_status"] == "degraded":
+            status_code = 206  # Partial Content
+        else:
+            status_code = 503  # Service Unavailable
+            
+        return JSONResponse(
+            status_code=status_code,
+            content=health_data
+        )
+        
+    except Exception as e:
+        logger.error(f"Detailed health check failed: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "overall_status": "error",
+                "error": "Health check system failure",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
 
 # CORS middleware - configured for Vercel frontend
 allowed_origins = get_allowed_origins()
@@ -183,25 +215,53 @@ async def error_prediction_middleware(request: Request, call_next):
 # Initialize services on startup
 @app.on_event("startup")
 async def startup_event():
-    """Initialize services and verify connections on startup"""
-    logger.info("Starting service initialization steps...")
+    """Initialize services with graceful degradation on startup"""
+    logger.info("=== Kevin Smart Grant Finder Startup ===")
+    logger.info("Starting service initialization with graceful degradation...")
+    
     try:
-        logger.info("Initializing core services via init_services()...")
         await init_services()
-        logger.info("init_services() completed successfully")
+        logger.info("Service initialization completed")
         
-        # Verify database connectivity using services
+        # Log service status
         if services.db_sessionmaker:
-            async with services.db_sessionmaker() as session:
-                await session.execute(text("SELECT 1"))
-            logger.info("Database connection verified via services")
+            logger.info("✅ Database: Connected")
         else:
-            logger.warning("Database sessionmaker not initialized in services")
+            logger.warning("⚠️  Database: Not available")
             
+        if services.pinecone_client:
+            is_mock = getattr(services.pinecone_client, 'is_mock', False)
+            if is_mock:
+                logger.warning("⚠️  Pinecone: Using mock client")
+            else:
+                logger.info("✅ Pinecone: Connected")
+        else:
+            logger.warning("⚠️  Pinecone: Not available")
+            
+        if services.perplexity_client:
+            is_mock = getattr(services.perplexity_client, 'is_mock', False)
+            if is_mock:
+                logger.warning("⚠️  Perplexity: Using mock client")
+            else:
+                logger.info("✅ Perplexity: Connected")
+        else:
+            logger.warning("⚠️  Perplexity: Not available")
+            
+        if services.notifier:
+            is_mock = getattr(services.notifier, 'is_mock', False)
+            if is_mock:
+                logger.warning("⚠️  Notifications: Using mock manager")
+            else:
+                logger.info("✅ Notifications: Connected")
+        else:
+            logger.warning("⚠️  Notifications: Not available")
+            
+        logger.info("=== Startup Complete - Application Ready ===")
+        
     except Exception as e:
-        logger.error(f"Service initialization failed: {e}", exc_info=True)
-
-    logger.info("Service initialization steps completed")
+        logger.error(f"Critical startup error: {e}", exc_info=True)
+        logger.error("Application may have limited functionality")
+        # Don't raise - allow app to start with degraded functionality
 
 @app.on_event("shutdown")
 async def shutdown_event():

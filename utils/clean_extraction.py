@@ -50,6 +50,7 @@ async def extract_grant_data_clean(raw_perplexity_content: Optional[str], openai
                     "content": (
                         "You are a grant data extraction assistant. Extract all grant opportunities from the text. "
                         "Use creative reasoning and flexibility to identify grants even when information is incomplete.\n\n"
+                        "**CRITICAL: Only extract grants that have a valid, direct application URL. If no URL is provided, do not include the grant.**\n\n"
                         "Return a JSON object with this exact format:\n"
                         '{"grants": [{"title": "Grant Title", "description": "Grant description", "funding_amount": 50000, "deadline": "2024-12-31", "source_url": "https://example.com", "eligibility_criteria": "Requirements", "category": "nonprofit"}]}\n\n'
                         "Rules:\n"
@@ -57,10 +58,10 @@ async def extract_grant_data_clean(raw_perplexity_content: Optional[str], openai
                         "- description: Required string, detailed description\n"
                         "- funding_amount: Number (max of range if range given), null if unclear\n"
                         "- deadline: YYYY-MM-DD format, null if unclear\n"
-                        "- source_url: Complete URL starting with http, null if none\n"
+                        "- source_url: **MANDATORY** Complete URL starting with http/https. Skip grants without URLs.\n"
                         "- eligibility_criteria: String describing who can apply\n"
                         "- category: String like 'telecommunications', 'nonprofit', 'infrastructure'\n"
-                        "Only include clear grant opportunities. Use creative reasoning for missing details."
+                        "**IMPORTANT: Only include grants that have a direct application or information URL. No URL = skip the grant.**"
                     )
                 },
                 {

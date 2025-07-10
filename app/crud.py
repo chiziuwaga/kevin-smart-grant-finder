@@ -769,8 +769,10 @@ async def delete_application_history_entry(
 # Grant retrieval and upsert functions
 
 async def get_grant_by_id(db: AsyncSession, grant_id: int) -> Optional[EnrichedGrant]:
-    """Get a single grant by ID with defensive programming"""
+    """Get a single grant by ID with robust error handling"""
     try:
+        from app.defensive import RobustGrantConverter
+        
         logger.info(f"Fetching grant with ID: {grant_id}")
         
         query = select(DBGrant).options(selectinload(DBGrant.analyses)).where(DBGrant.id == grant_id)
@@ -781,8 +783,8 @@ async def get_grant_by_id(db: AsyncSession, grant_id: int) -> Optional[EnrichedG
             logger.warning(f"Grant with ID {grant_id} not found")
             return None
 
-        # Defensive conversion with null checks
-        enriched_grant = safe_convert_to_enriched_grant(grant_model)
+        # Use robust converter
+        enriched_grant = RobustGrantConverter.convert_db_grant_to_enriched(grant_model)
         if enriched_grant:
             logger.info(f"Successfully converted grant {grant_id} to EnrichedGrant")
         else:
@@ -795,8 +797,14 @@ async def get_grant_by_id(db: AsyncSession, grant_id: int) -> Optional[EnrichedG
         return None
 
 async def create_or_update_grant(db: AsyncSession, grant_data: dict) -> Optional[DBGrant]:
-    """Create or update a grant in the database with defensive programming"""
+    """Create or update a grant in the database with defensive programming. REQUIRES valid URL."""
     try:
+        # MANDATORY URL VALIDATION - Skip grants without valid URLs
+        source_url = (grant_data.get('source_url') or '').strip()
+        if not source_url or not source_url.startswith(('http://', 'https://')):
+            logger.warning(f"Skipping grant '{grant_data.get('title', 'Unknown')}' - no valid URL: {source_url}")
+            return None
+        
         grant_id = grant_data.get('id')
         external_id = grant_data.get('grant_id_external')
         
@@ -1028,8 +1036,13 @@ async def get_grants_list(
     try:
         logger.info(f"get_grants_list called with skip={skip}, limit={limit}, sort_by={sort_by}")
         
-        # Build base query with safe joins
+        # Build base query with safe joins - FILTER OUT GRANTS WITHOUT URLs
         query = select(DBGrant).outerjoin(Analysis).options(selectinload(DBGrant.analyses))
+        
+        # MANDATORY: Only include grants with valid source URLs
+        query = query.filter(DBGrant.source_url.isnot(None))
+        query = query.filter(DBGrant.source_url != "")
+        query = query.filter(DBGrant.source_url.like("http%"))  # Must be a valid URL
         
         # Apply filters with safe checks
         if min_overall_score is not None:

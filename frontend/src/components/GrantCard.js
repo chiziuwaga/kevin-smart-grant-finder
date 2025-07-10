@@ -377,15 +377,15 @@ const GrantCard = ({
 
             <Button
               size="small"
-              variant="outlined"
+              variant="contained" // Make it more prominent since URL is guaranteed
               color="primary"
               endIcon={<OpenInNewIcon />}
               href={grant.source_url || grant.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              disabled={!grant.source_url && !grant.sourceUrl}
+              sx={{ fontWeight: 'bold' }} // Make it stand out
             >
-              View Original
+              View Application
             </Button>
 
             <IconButton

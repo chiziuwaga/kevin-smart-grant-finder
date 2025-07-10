@@ -301,21 +301,23 @@ class RecursiveResearchAgent:
         if chunk.sector_focus in sector_reasoning:
             base_query += f"{sector_reasoning[chunk.sector_focus]}\n"
         
-        # Add recursive search instructions
+        # Add recursive search instructions with URL requirement
         base_query += (
             f"\nUsing recursive reasoning:\n"
             f"1. First, search for direct matches to the keywords\n"
             f"2. Then, expand to related terms and synonyms\n"
             f"3. Cross-reference with geographic and sector requirements\n"
             f"4. Validate funding amounts are reasonable ($5,000-$100,000 preferred)\n"
-            f"5. Ensure deadlines are future-dated and realistic for application\n\n"
+            f"5. Ensure deadlines are future-dated and realistic for application\n"
+            f"6. **CRITICAL: Only include grants with direct application URLs**\n\n"
             f"For each grant found, provide:\n"
             f"- Exact title\n"
             f"- Funding amount or range\n"
             f"- Application deadline\n"
             f"- Eligibility requirements\n"
-            f"- Direct application URL\n"
-            f"- Brief rationale for why this grant matches the criteria"
+            f"- **MANDATORY: Direct application URL (must start with http/https)**\n"
+            f"- Brief rationale for why this grant matches the criteria\n\n"
+            f"**IMPORTANT: Skip any grants that don't have a direct application URL. No URL = no grant.**"
         )
         
         return base_query
@@ -403,8 +405,14 @@ class RecursiveResearchAgent:
         return unique_grants
 
     async def _create_enriched_grant(self, grant_data: Dict[str, Any]) -> Optional[EnrichedGrant]:
-        """Create an EnrichedGrant object from grant data."""
+        """Create an EnrichedGrant object from grant data. ONLY creates grants with valid URLs."""
         try:
+            # MANDATORY URL VALIDATION - Skip grants without valid URLs
+            source_url = (grant_data.get("source_url") or "").strip()
+            if not source_url or not source_url.startswith(("http://", "https://")):
+                logger.info(f"Skipping grant '{grant_data.get('title', 'Unknown')}' - no valid URL: {source_url}")
+                return None
+            
             # Calculate relevance score based on chunk context
             relevance_score = self._calculate_relevance_score(grant_data)
             
@@ -424,7 +432,7 @@ class RecursiveResearchAgent:
                 funding_amount_display=grant_data.get("funding_amount_display", ""),
                 deadline=deadline_parsed,
                 eligibility_criteria=grant_data.get("eligibility", ""),
-                source_url=grant_data.get("source_url", ""),
+                source_url=source_url,  # Use validated URL
                 keywords=grant_data.get("keywords", []),
                 geographic_scope=grant_data.get("geographic_focus", ""),
                 identified_sector=grant_data.get("sector_focus", ""),
@@ -432,7 +440,8 @@ class RecursiveResearchAgent:
                 enrichment_log=[
                     f"Created from recursive search chunk: {grant_data.get('search_chunk_id', 'unknown')}",
                     f"Geographic focus: {grant_data.get('geographic_focus', 'unknown')}",
-                    f"Sector focus: {grant_data.get('sector_focus', 'unknown')}"
+                    f"Sector focus: {grant_data.get('sector_focus', 'unknown')}",
+                    f"URL validated: {source_url}"
                 ],
                 last_enriched_at=datetime.now(timezone.utc),
                 created_at=datetime.now(timezone.utc)

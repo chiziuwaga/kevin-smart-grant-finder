@@ -1,0 +1,1 @@
+# Fixes module initialization
