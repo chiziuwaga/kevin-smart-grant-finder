@@ -129,6 +129,140 @@ async def list_grants(
         logging.error(f"Error in /grants endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/grants/saved", response_model=PaginatedEnrichedGrantResponse)
+async def get_saved_grants(
+    page: int = 1,
+    page_size: int = 20,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Get user's saved grants"""
+    try:
+        logger.info(f"Getting saved grants for page {page}, page_size {page_size}")
+        
+        # For now, we'll use a default user_settings_id = 1
+        # In a real application, this would come from authentication
+        default_user_id = 1
+        
+        # Query saved grants with join to get full grant data
+        query = (
+            select(DBGrant)
+            .join(SavedGrants, DBGrant.id == SavedGrants.grant_id)
+            .where(SavedGrants.user_settings_id == default_user_id)
+            .options(selectinload(DBGrant.analyses))
+        )
+        
+        # Get total count
+        count_query = select(func.count()).select_from(query.subquery())
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
+        
+        # Apply pagination
+        query = query.offset((page - 1) * page_size).limit(page_size)
+        
+        # Execute query
+        result = await db.execute(query)
+        grant_models = result.scalars().all()
+        
+        # Convert to EnrichedGrant objects
+        enriched_grants = []
+        for grant_model in grant_models:
+            enriched_grant = safe_convert_to_enriched_grant(grant_model)
+            if enriched_grant:
+                enriched_grants.append(enriched_grant)
+        
+        logger.info(f"Successfully retrieved {len(enriched_grants)} saved grants")
+        return PaginatedEnrichedGrantResponse(
+            items=enriched_grants,
+            total=total,
+            page=page,
+            pageSize=page_size
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting saved grants: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/grants/{grant_id}/save")
+async def save_grant(
+    grant_id: int,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Save a grant for the user"""
+    try:
+        # Check if grant exists
+        grant_query = select(DBGrant).where(DBGrant.id == grant_id)
+        grant_result = await db.execute(grant_query)
+        grant = grant_result.scalar_one_or_none()
+        
+        if not grant:
+            raise HTTPException(status_code=404, detail="Grant not found")
+        
+        # For now, use default user_settings_id = 1
+        default_user_id = 1
+        
+        # Check if already saved
+        existing_query = select(SavedGrants).where(
+            SavedGrants.user_settings_id == default_user_id,
+            SavedGrants.grant_id == grant_id
+        )
+        existing_result = await db.execute(existing_query)
+        existing = existing_result.scalar_one_or_none()
+        
+        if existing:
+            return {"message": "Grant already saved", "saved": True}
+        
+        # Save the grant
+        saved_grant = SavedGrants(
+            user_settings_id=default_user_id,
+            grant_id=grant_id
+        )
+        db.add(saved_grant)
+        await db.commit()
+        
+        logger.info(f"Grant {grant_id} saved for user {default_user_id}")
+        return {"message": "Grant saved successfully", "saved": True}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error saving grant {grant_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.delete("/grants/{grant_id}/save")
+async def unsave_grant(
+    grant_id: int,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """Remove a grant from user's saved grants"""
+    try:
+        # For now, use default user_settings_id = 1
+        default_user_id = 1
+        
+        # Find and delete the saved grant record
+        delete_query = select(SavedGrants).where(
+            SavedGrants.user_settings_id == default_user_id,
+            SavedGrants.grant_id == grant_id
+        )
+        result = await db.execute(delete_query)
+        saved_grant = result.scalar_one_or_none()
+        
+        if not saved_grant:
+            raise HTTPException(status_code=404, detail="Grant not found in saved grants")
+        
+        await db.delete(saved_grant)
+        await db.commit()
+        
+        logger.info(f"Grant {grant_id} removed from saved grants for user {default_user_id}")
+        return {"message": "Grant removed from saved grants", "saved": False}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error unsaving grant {grant_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @api_router.get("/grants/{grant_id}", response_model=SingleEnrichedGrantResponse) # Changed to SingleEnrichedGrantResponse
 async def get_grant_detail(
     grant_id: int,
@@ -960,136 +1094,4 @@ async def get_scheduler_status(db: AsyncSession = Depends(get_db_session)):
         raise HTTPException(status_code=500, detail=f"Failed to fetch scheduler status: {str(e)}")
 
 # User saved grants endpoints
-@api_router.get("/grants/saved", response_model=PaginatedEnrichedGrantResponse)
-async def get_saved_grants(
-    page: int = 1,
-    page_size: int = 20,
-    db: AsyncSession = Depends(get_db_session)
-):
-    """Get user's saved grants"""
-    try:
-        logger.info(f"Getting saved grants for page {page}, page_size {page_size}")
-        
-        # For now, we'll use a default user_settings_id = 1
-        # In a real application, this would come from authentication
-        default_user_id = 1
-        
-        # Query saved grants with join to get full grant data
-        query = (
-            select(DBGrant)
-            .join(SavedGrants, DBGrant.id == SavedGrants.grant_id)
-            .where(SavedGrants.user_settings_id == default_user_id)
-            .options(selectinload(DBGrant.analyses))
-        )
-        
-        # Get total count
-        count_query = select(func.count()).select_from(query.subquery())
-        total_result = await db.execute(count_query)
-        total = total_result.scalar() or 0
-        
-        # Apply pagination
-        query = query.offset((page - 1) * page_size).limit(page_size)
-        
-        # Execute query
-        result = await db.execute(query)
-        grant_models = result.scalars().all()
-        
-        # Convert to EnrichedGrant objects
-        enriched_grants = []
-        for grant_model in grant_models:
-            enriched_grant = safe_convert_to_enriched_grant(grant_model)
-            if enriched_grant:
-                enriched_grants.append(enriched_grant)
-        
-        logger.info(f"Successfully retrieved {len(enriched_grants)} saved grants")
-        return PaginatedEnrichedGrantResponse(
-            items=enriched_grants,
-            total=total,
-            page=page,
-            pageSize=page_size
-        )
-        
-    except Exception as e:
-        logger.error(f"Error getting saved grants: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.post("/grants/{grant_id}/save")
-async def save_grant(
-    grant_id: int,
-    db: AsyncSession = Depends(get_db_session)
-):
-    """Save a grant for the user"""
-    try:
-        # Check if grant exists
-        grant_query = select(DBGrant).where(DBGrant.id == grant_id)
-        grant_result = await db.execute(grant_query)
-        grant = grant_result.scalar_one_or_none()
-        
-        if not grant:
-            raise HTTPException(status_code=404, detail="Grant not found")
-        
-        # For now, use default user_settings_id = 1
-        default_user_id = 1
-        
-        # Check if already saved
-        existing_query = select(SavedGrants).where(
-            SavedGrants.user_settings_id == default_user_id,
-            SavedGrants.grant_id == grant_id
-        )
-        existing_result = await db.execute(existing_query)
-        existing = existing_result.scalar_one_or_none()
-        
-        if existing:
-            return {"message": "Grant already saved", "saved": True}
-        
-        # Save the grant
-        saved_grant = SavedGrants(
-            user_settings_id=default_user_id,
-            grant_id=grant_id
-        )
-        db.add(saved_grant)
-        await db.commit()
-        
-        logger.info(f"Grant {grant_id} saved for user {default_user_id}")
-        return {"message": "Grant saved successfully", "saved": True}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Error saving grant {grant_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-@api_router.delete("/grants/{grant_id}/save")
-async def unsave_grant(
-    grant_id: int,
-    db: AsyncSession = Depends(get_db_session)
-):
-    """Remove a grant from user's saved grants"""
-    try:
-        # For now, use default user_settings_id = 1
-        default_user_id = 1
-        
-        # Find and delete the saved grant record
-        delete_query = select(SavedGrants).where(
-            SavedGrants.user_settings_id == default_user_id,
-            SavedGrants.grant_id == grant_id
-        )
-        result = await db.execute(delete_query)
-        saved_grant = result.scalar_one_or_none()
-        
-        if not saved_grant:
-            raise HTTPException(status_code=404, detail="Grant not found in saved grants")
-        
-        await db.delete(saved_grant)
-        await db.commit()
-        
-        logger.info(f"Grant {grant_id} removed from saved grants for user {default_user_id}")
-        return {"message": "Grant removed from saved grants", "saved": False}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        logger.error(f"Error unsaving grant {grant_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
