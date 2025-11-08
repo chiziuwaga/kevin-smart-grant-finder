@@ -1,0 +1,466 @@
+// Prisma schema for Smart Grant Finder Multi-Tenant SaaS
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER MANAGEMENT & AUTHENTICATION
+// ============================================================================
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum WhitelistStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  BLOCKED
+}
+
+model User {
+  id                String          @id @default(cuid())
+  email             String          @unique
+  emailVerified     DateTime?
+  name              String?
+  password          String?
+  role              Role            @default(USER)
+  whitelistStatus   WhitelistStatus @default(PENDING)
+  whitelistedAt     DateTime?
+  whitelistedBy     String?         // Admin user ID
+  
+  // Profile info from onboarding
+  organizationType  String?         // "nonprofit", "research", "business"
+  organizationName  String?
+  grantTypes        String[]        // ["research", "education", "health"]
+  geographicFocus   String[]        // ["NYC", "California", "National"]
+  fundingRange      Json?           // {min: 5000, max: 100000}
+  
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  lastLoginAt       DateTime?
+  
+  // Relations
+  accounts          Account[]
+  sessions          Session[]
+  credits           Credit?
+  creditTransactions CreditTransaction[]
+  documents         Document[]
+  grants            Grant[]
+  searches          GrantSearch[]
+  settings          UserSettings?
+  applications      Application[]
+  chatHistories     ChatHistory[]
+  
+  @@index([email])
+  @@index([whitelistStatus])
+  @@index([role])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================================================
+// CREDIT SYSTEM
+// ============================================================================
+
+enum CreditTier {
+  TIER_1  // $10 = 10 credits
+  TIER_2  // $20 = 22 credits (11% bonus)
+}
+
+enum TransactionType {
+  DEPOSIT
+  DEDUCTION
+  REFUND
+  BONUS
+}
+
+model Credit {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  balance         Decimal   @default(0) @db.Decimal(10, 2)
+  lifetimeSpent   Decimal   @default(0) @db.Decimal(10, 2)
+  lifetimeAdded   Decimal   @default(0) @db.Decimal(10, 2)
+  lastTopUpAt     DateTime?
+  lastTopUpTier   CreditTier?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+}
+
+model CreditTransaction {
+  id              String          @id @default(cuid())
+  userId          String
+  type            TransactionType
+  amount          Decimal         @db.Decimal(10, 2)
+  balanceBefore   Decimal         @db.Decimal(10, 2)
+  balanceAfter    Decimal         @db.Decimal(10, 2)
+  tier            CreditTier?
+  
+  // For tracking what consumed credits
+  searchId        String?
+  description     String
+  metadata        Json?           // {service: "deepseek", tokens: 1500, etc}
+  
+  createdAt       DateTime        @default(now())
+  
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  search          GrantSearch?    @relation(fields: [searchId], references: [id])
+  
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// DOCUMENTS & STORAGE
+// ============================================================================
+
+enum DocumentType {
+  RESUME
+  CV
+  ORG_PROFILE
+  PAST_APPLICATION
+  FINANCIAL_STATEMENT
+  OTHER
+}
+
+model Document {
+  id              String        @id @default(cuid())
+  userId          String
+  filename        String
+  originalName    String
+  fileType        DocumentType
+  mimeType        String
+  size            Int           // In bytes, max 50MB
+  r2Key           String        // Cloudflare R2 object key
+  r2Url           String
+  
+  // AI-extracted metadata
+  extractedData   Json?         // Profile data extracted from doc
+  isProcessed     Boolean       @default(false)
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([fileType])
+}
+
+// ============================================================================
+// GRANT MANAGEMENT
+// ============================================================================
+
+enum GrantStatus {
+  ACTIVE
+  EXPIRED
+  DRAFT
+  ARCHIVED
+}
+
+model Grant {
+  id                String        @id @default(cuid())
+  userId            String
+  
+  // Grant details
+  title             String
+  description       String        @db.Text
+  fundingAmount     Decimal?      @db.Decimal(12, 2)
+  deadline          DateTime?
+  sourceUrl         String?
+  sourceName        String?
+  category          String?
+  eligibilityCriteria Json?
+  
+  // Scoring
+  relevanceScore    Decimal?      @db.Decimal(4, 3) // 0.000 to 1.000
+  deadlineScore     Decimal?      @db.Decimal(4, 3)
+  fundingScore      Decimal?      @db.Decimal(4, 3)
+  finalScore        Decimal?      @db.Decimal(4, 3)
+  
+  status            GrantStatus   @default(ACTIVE)
+  isSaved           Boolean       @default(false)
+  
+  // Metadata
+  searchId          String?
+  pineconeId        String?       // For vector search
+  rawData           Json?         // Original scraped/API data
+  
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  search            GrantSearch?  @relation(fields: [searchId], references: [id])
+  applications      Application[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([deadline])
+  @@index([finalScore])
+  @@index([searchId])
+}
+
+// ============================================================================
+// GRANT SEARCHES
+// ============================================================================
+
+enum SearchStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SearchTrigger {
+  MANUAL      // User triggered via chat
+  CRON        // Automated scheduled search
+}
+
+model GrantSearch {
+  id              String        @id @default(cuid())
+  userId          String
+  
+  trigger         SearchTrigger
+  status          SearchStatus  @default(QUEUED)
+  
+  // Search parameters
+  query           String?
+  filters         Json?         // Category, location, funding range, etc.
+  
+  // Results
+  grantsFound     Int           @default(0)
+  highPriority    Int           @default(0) // Score > 0.8
+  mediumPriority  Int           @default(0) // Score 0.5-0.8
+  lowPriority     Int           @default(0) // Score < 0.5
+  
+  // Cost tracking
+  costDeepSeek    Decimal       @default(0) @db.Decimal(10, 6)
+  costAgentQL     Decimal       @default(0) @db.Decimal(10, 6)
+  costOpenAI      Decimal       @default(0) @db.Decimal(10, 6)
+  costPinecone    Decimal       @default(0) @db.Decimal(10, 6)
+  totalCost       Decimal       @default(0) @db.Decimal(10, 6)
+  creditsCharged  Decimal       @default(0) @db.Decimal(10, 2) // With 1.5x markup
+  
+  // Execution tracking
+  startedAt       DateTime?
+  completedAt     DateTime?
+  error           String?       @db.Text
+  logs            Json[]        // Real-time execution logs
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grants          Grant[]
+  creditTransactions CreditTransaction[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([trigger])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// USER SETTINGS
+// ============================================================================
+
+model UserSettings {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  
+  // Cron job settings
+  cronEnabled     Boolean   @default(false)
+  cronSchedule    String[]  // ["09:00", "18:00"] - max 2 times per day
+  cronTimezone    String    @default("UTC")
+  
+  // Notification preferences
+  emailNotifications Boolean @default(true)
+  telegramEnabled    Boolean @default(false)
+  telegramChatId     String?
+  notifyOnNewGrants  Boolean @default(true)
+  notifyOnLowCredits Boolean @default(true)
+  lowCreditThreshold Decimal @default(2) @db.Decimal(10, 2)
+  
+  // Search preferences
+  minGrantScore      Decimal @default(0.5) @db.Decimal(4, 3)
+  autoSaveHighScore  Boolean @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+}
+
+// ============================================================================
+// APPLICATION TRACKING
+// ============================================================================
+
+enum ApplicationStatus {
+  DRAFT
+  IN_PROGRESS
+  READY_TO_SUBMIT
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model Application {
+  id              String            @id @default(cuid())
+  userId          String
+  grantId         String
+  
+  status          ApplicationStatus @default(DRAFT)
+  
+  // Application data
+  projectTitle    String?
+  projectDescription String?       @db.Text
+  budgetRequest   Decimal?          @db.Decimal(12, 2)
+  
+  // AI-generated content
+  generatedDraft  Json?             // Full application draft
+  userEdits       Json?             // User modifications
+  
+  // Submission tracking
+  submittedAt     DateTime?
+  decisionDate    DateTime?
+  decisionNotes   String?           @db.Text
+  
+  notes           String?           @db.Text
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  grant           Grant             @relation(fields: [grantId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([grantId])
+  @@index([status])
+}
+
+// ============================================================================
+// CHAT HISTORY
+// ============================================================================
+
+model ChatHistory {
+  id              String    @id @default(cuid())
+  userId          String
+
+  title           String    @default("New Chat")
+  messages        Json[]    // [{role: "user", content: "..."}, {role: "assistant", content: "..."}]
+  messageCount    Int       @default(0) // Track count, MAX 50 per thread
+
+  // Context
+  searchId        String?
+  grantIds        String[]  // Grants discussed in this chat
+
+  isArchived      Boolean   @default(false)
+  isActive        Boolean   @default(true) // False when hits 50 message limit
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastMessageAt   DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([isActive])
+}
+
+// Chat limits configuration
+// MAX_MESSAGES_PER_THREAD = 50
+// MAX_ACTIVE_THREADS_PER_USER = 10
+
+// ============================================================================
+// API USAGE TRACKING
+// ============================================================================
+
+enum APIService {
+  DEEPSEEK
+  AGENTQL
+  OPENAI
+  PINECONE
+  STRIPE
+  RESEND
+  R2
+}
+
+model APIUsageLog {
+  id              String      @id @default(cuid())
+  userId          String?
+  searchId        String?
+  
+  service         APIService
+  operation       String      // "chat", "scrape", "embed", "search"
+  
+  tokensUsed      Int?
+  costUSD         Decimal     @db.Decimal(10, 6)
+  
+  requestData     Json?       // Request payload (sanitized)
+  responseData    Json?       // Response summary
+  
+  duration        Int?        // Milliseconds
+  success         Boolean     @default(true)
+  error           String?
+  
+  createdAt       DateTime    @default(now())
+  
+  @@index([userId])
+  @@index([service])
+  @@index([createdAt])
+}
