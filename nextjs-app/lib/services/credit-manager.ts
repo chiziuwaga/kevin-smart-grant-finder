@@ -3,7 +3,7 @@
  * Handles credit balance, transactions, and tier system
  *
  * TIER 1: $10 = 10 credits (1:1)
- * TIER 2: $20 = 22 credits (11% bonus)
+ * TIER 2: $20 = 22.2 credits (11% bonus)
  * Markup: 1.5x actual cost charged to user
  * Block at: $0 balance
  * Top-up min: $5

@@ -35,7 +35,9 @@
     "nuqs": "^2.2.3",
     "react-hook-form": "^7.54.0",
     "@hookform/resolvers": "^3.9.1",
-    "vaul": "^1.1.1"
+    "vaul": "^1.1.1",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
@@ -54,6 +56,8 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@vitejs/plugin-react": "^4.3.4",
     "playwright": "^1.49.1",
-    "@playwright/test": "^1.49.1"
+    "@playwright/test": "^1.49.1",
+    "@types/jspdf": "^2.0.0",
+    "@types/jspdf-autotable": "^3.3.0"
   }
 }
