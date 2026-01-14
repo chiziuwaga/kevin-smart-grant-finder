@@ -30,7 +30,7 @@ agentql==0.3.0  # Web scraping
 # API Integration
 aiohttp==3.9.3
 python-dotenv==1.0.0
-httpx==0.24.1  # For async HTTP requests
+httpx==0.26.0  # For async HTTP requests (compatible with openai + agentql)
 requests==2.31.0
 
 # Vector Database
