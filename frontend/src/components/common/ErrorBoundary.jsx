@@ -1,8 +1,7 @@
-import React from 'react';
-import { Box, Typography, Button } from '@mui/material';
-import { ErrorOutline as ErrorIcon } from '@mui/icons-material';
+import { Component } from 'react';
+import './ErrorBoundary.css';
 
-class ErrorBoundary extends React.Component {
+class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -19,32 +18,19 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100vh',
-            p: 3,
-            textAlign: 'center',
-          }}
-        >
-          <ErrorIcon sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
-          <Typography variant="h5" color="error" gutterBottom>
-            Something went wrong (Boundary v2)
-          </Typography>
-          <Typography color="text.secondary" sx={{ mb: 2 }}>
+        <div className="error-boundary">
+          <div className="error-boundary-icon">⚠</div>
+          <h2 className="error-boundary-title">Something went wrong</h2>
+          <div className="error-boundary-message">
             {this.state.error?.message || 'An unexpected error occurred'}
-          </Typography>
-          <Button
-            variant="contained"
+          </div>
+          <button
+            className="btn btn-primary"
             onClick={() => window.location.reload()}
-            color="primary"
           >
             Reload Page
-          </Button>
-        </Box>
+          </button>
+        </div>
       );
     }
 

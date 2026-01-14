@@ -96,7 +96,7 @@ class EnrichedGrant(Grant):
     risk_assessment: Optional[Dict[str, Any]] = None # e.g., {"financial": "Low", "legal": "Medium"}
 
     # Additional metadata
-    raw_source_data: Optional[Dict[str, Any]] = None # Original data from Perplexity or other sources
+    raw_source_data: Optional[Dict[str, Any]] = None # Original data from AI research sources
     enrichment_log: List[str] = Field(default_factory=list) # Log of enrichment steps
     last_enriched_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
@@ -200,7 +200,6 @@ class DistributionData(BaseModel):
 
 # User settings models
 class UserSettings(BaseModel):
-    telegram_enabled: bool = Field(..., alias="telegramEnabled")
     email_notifications: bool = Field(..., alias="emailNotifications")
     deadline_reminders: bool = Field(..., alias="deadlineReminders")
     search_frequency: str = Field(..., alias="searchFrequency")

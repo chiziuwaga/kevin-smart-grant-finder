@@ -1,22 +1,24 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { Skeleton, TableRow, TableCell } from '@mui/material';
+import './TableSkeleton.css';
 
 function TableSkeleton({ rows = 5, columns = 4 }) {
   return (
     <>
       {Array.from(new Array(rows)).map((_, index) => (
-        <TableRow key={index}>
+        <tr key={index} className="skeleton-row">
           {Array.from(new Array(columns)).map((_, cellIndex) => (
-            <TableCell key={cellIndex}>
-              <Skeleton 
-                animation="wave" 
-                width={cellIndex === 0 ? '60%' : '40%'} 
-                height={24}
+            <td key={cellIndex}>
+              <div
+                className="skeleton-loader"
+                style={{
+                  width: cellIndex === 0 ? '60%' : '40%',
+                  height: '20px',
+                }}
               />
-            </TableCell>
+            </td>
           ))}
-        </TableRow>
+        </tr>
       ))}
     </>
   );

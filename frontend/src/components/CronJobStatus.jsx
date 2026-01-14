@@ -1,33 +1,7 @@
-import {
-    Error as ErrorIcon,
-    Info as InfoIcon,
-    Refresh as RefreshIcon,
-    Schedule as ScheduleIcon,
-    CheckCircle as SuccessIcon,
-    PlayArrow as TriggerIcon,
-    Warning as WarningIcon
-} from '@mui/icons-material';
-import {
-    Alert,
-    Box,
-    Button,
-    Card,
-    CardContent,
-    Chip,
-    CircularProgress,
-    Divider,
-    Grid,
-    LinearProgress,
-    List,
-    ListItem,
-    ListItemIcon,
-    ListItemText,
-    Typography,
-    Collapse
-} from '@mui/material';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useSnackbar } from 'notistack';
 import { useCallback, useEffect, useState } from 'react';
+import './CronJobStatus.css';
 
 /**
  * Cron Job Status Widget
@@ -67,7 +41,7 @@ const CronJobStatus = () => {
     setSearchActive(true);
     setSearchProgress(0);
     setSearchStep('Initializing grant search...');
-    
+
     try {
       // Simulate progressive search steps for better UX
       const steps = [
@@ -77,14 +51,14 @@ const CronJobStatus = () => {
         'Calculating relevance scores...',
         'Updating database...'
       ];
-      
+
       let progress = 0;
       const stepIncrement = 80 / steps.length; // Reserve 20% for completion
-      
+
       const progressInterval = setInterval(() => {
         progress += stepIncrement;
         setSearchProgress(Math.min(progress, 80));
-        
+
         const currentStepIndex = Math.floor(progress / stepIncrement) - 1;
         if (currentStepIndex >= 0 && currentStepIndex < steps.length) {
           setSearchStep(steps[currentStepIndex]);
@@ -100,7 +74,7 @@ const CronJobStatus = () => {
 
       const data = await response.json();
       clearInterval(progressInterval);
-      
+
       if (response.ok) {
         setSearchProgress(100);
         setSearchStep('Search completed successfully!');
@@ -128,7 +102,7 @@ const CronJobStatus = () => {
   // Effects
   useEffect(() => {
     fetchSchedulerStatus();
-    
+
     // Auto-refresh every 60 seconds
     const interval = setInterval(fetchSchedulerStatus, 60000);
     return () => clearInterval(interval);
@@ -144,272 +118,228 @@ const CronJobStatus = () => {
     }
   };
 
-  const getHealthIcon = (health) => {
-    switch (health) {
-      case 'healthy': return <SuccessIcon />;
-      case 'warning': return <WarningIcon />;
-      case 'error': return <ErrorIcon />;
-      default: return <InfoIcon />;
-    }
-  };
-
   if (loading) {
     return (
-      <Card>
-        <CardContent>
-          <Box display="flex" alignItems="center" gap={2}>
-            <CircularProgress size={24} />
-            <Typography>Loading scheduler status...</Typography>
-          </Box>
-        </CardContent>
-      </Card>
+      <div className="cron-status-card">
+        <div className="cron-status-loading">
+          <div className="spinner"></div>
+          <span>Loading scheduler status...</span>
+        </div>
+      </div>
     );
   }
 
   if (!schedulerStatus) {
     return (
-      <Card>
-        <CardContent>
-          <Alert severity="error">
-            Failed to load scheduler status. Please try refreshing.
-          </Alert>
-        </CardContent>
-      </Card>
+      <div className="cron-status-card">
+        <div className="alert alert-error">
+          Failed to load scheduler status. Please try refreshing.
+        </div>
+      </div>
     );
   }
 
   const { scheduler_health, issues, data } = schedulerStatus;
 
   return (
-    <Card>
-      <CardContent>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <Box display="flex" alignItems="center" gap={2}>
-            <ScheduleIcon color="primary" />
-            <Typography variant="h6">
-              Automated Search Status
-            </Typography>
-          </Box>        <Box display="flex" gap={1}>
-          <Button
-            size="small"
-            startIcon={<RefreshIcon />}
+    <div className="cron-status-card">
+      <div className="cron-status-header">
+        <div className="cron-status-title-section">
+          <span className="icon">⏰</span>
+          <h3>Automated Search Status</h3>
+        </div>
+        <div className="cron-status-actions">
+          <button
+            className="btn btn-secondary btn-sm"
             onClick={fetchSchedulerStatus}
             disabled={loading}
           >
-            Refresh
-          </Button>
-          <Button
-            size="small"
-            variant="contained"
-            startIcon={triggering ? <CircularProgress size={16} color="inherit" /> : <TriggerIcon />}
+            <span className="icon">↻</span> Refresh
+          </button>
+          <button
+            className="btn btn-primary btn-sm"
             onClick={triggerManualSearch}
             disabled={triggering}
-            sx={{ 
-              minWidth: 120,
-              bgcolor: triggering ? 'primary.main' : 'primary.main',
-              '&:hover': {
-                bgcolor: triggering ? 'primary.dark' : 'primary.dark'
-              }
-            }}
           >
-            {triggering ? 'Searching...' : 'Run Grant Search'}
-          </Button>
-        </Box>
+            {triggering ? (
+              <>
+                <span className="spinner spinner-sm"></span> Searching...
+              </>
+            ) : (
+              <>
+                <span className="icon">▶</span> Run Grant Search
+              </>
+            )}
+          </button>
+        </div>
+      </div>
 
-        {/* Manual Search Progress */}
-        <Collapse in={searchActive}>
-          <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
-            <Typography variant="subtitle2" gutterBottom color="primary">
-              Manual Grant Search in Progress
-            </Typography>
-            <LinearProgress 
-              variant="determinate" 
-              value={searchProgress} 
-              sx={{ mb: 1, height: 6, borderRadius: 3 }}
-            />
-            <Typography variant="body2" color="text.secondary">
-              {searchStep}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Progress: {Math.round(searchProgress)}%
-            </Typography>
-          </Box>
-        </Collapse>
-        </Box>
+      {/* Manual Search Progress */}
+      {searchActive && (
+        <div className="search-progress-section">
+          <div className="search-progress-header">
+            <strong>Manual Grant Search in Progress</strong>
+          </div>
+          <div className="progress-bar progress-bar-lg">
+            <div
+              className="progress-bar-fill"
+              style={{ width: `${searchProgress}%` }}
+            ></div>
+          </div>
+          <div className="search-progress-info">
+            <span className="search-step">{searchStep}</span>
+            <span className="search-percent">Progress: {Math.round(searchProgress)}%</span>
+          </div>
+        </div>
+      )}
 
-        {/* Overall Health Status */}
-        <Box display="flex" alignItems="center" gap={2} mb={2}>
-          <Chip
-            icon={getHealthIcon(scheduler_health)}
-            label={`Scheduler ${scheduler_health}`}
-            color={getHealthColor(scheduler_health)}
-            variant="outlined"
-          />
-        </Box>
+      {/* Overall Health Status */}
+      <div className="cron-status-health">
+        <span className={`badge badge-${getHealthColor(scheduler_health)}`}>
+          {scheduler_health === 'healthy' && '✓'}
+          {scheduler_health === 'warning' && '⚠'}
+          {scheduler_health === 'error' && '✗'}
+          {' '}Scheduler {scheduler_health}
+        </span>
+      </div>
 
-        {/* Issues Alert */}
-        {issues && issues.length > 0 && (
-          <Alert 
-            severity={scheduler_health === 'error' ? 'error' : 'warning'} 
-            sx={{ mb: 2 }}
-          >
-            <Typography variant="subtitle2" gutterBottom>
-              Issues Detected:
-            </Typography>
-            <List dense>
-              {issues.map((issue, index) => (
-                <ListItem key={index} sx={{ pl: 0 }}>
-                  <ListItemText primary={issue} />
-                </ListItem>
-              ))}
-            </List>
-          </Alert>
-        )}
+      {/* Issues Alert */}
+      {issues && issues.length > 0 && (
+        <div className={`alert alert-${scheduler_health === 'error' ? 'error' : 'warning'}`}>
+          <div className="alert-title">Issues Detected:</div>
+          <ul className="issues-list">
+            {issues.map((issue, index) => (
+              <li key={index}>{issue}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-        <Grid container spacing={2}>
-          {/* Last Run Information */}
-          <Grid item xs={12} md={6}>
-            <Typography variant="subtitle2" gutterBottom>
-              Last Automated Run
-            </Typography>
-            {data.last_automated_run?.timestamp ? (
-              <Box>
-                <Typography variant="body2">
+      <div className="cron-status-grid">
+        {/* Last Run Information */}
+        <div className="cron-status-section">
+          <h4 className="section-title">Last Automated Run</h4>
+          {data.last_automated_run?.timestamp ? (
+            <div className="section-content">
+              <div className="stat-row">
+                <span className="stat-label">Time:</span>
+                <span className="stat-value">
                   {format(new Date(data.last_automated_run.timestamp), 'MMM dd, yyyy HH:mm')}
-                </Typography>
-                <Typography variant="caption" color="textSecondary">
+                </span>
+              </div>
+              <div className="stat-row">
+                <span className="stat-label">Relative:</span>
+                <span className="stat-value text-muted">
                   {formatDistanceToNow(new Date(data.last_automated_run.timestamp))} ago
-                </Typography>
-                <Box display="flex" gap={1} mt={1}>
-                  <Chip
-                    label={data.last_automated_run.status || 'Unknown'}
-                    color={getHealthColor(
-                      data.last_automated_run.status === 'success' ? 'healthy' : 
-                      data.last_automated_run.status === 'failed' ? 'error' : 'warning'
-                    )}
-                    size="small"
-                  />
-                  {data.last_automated_run.grants_found !== undefined && (
-                    <Chip
-                      label={`${data.last_automated_run.grants_found} grants found`}
-                      size="small"
-                      variant="outlined"
-                    />
-                  )}
-                </Box>
-                {data.last_automated_run.error_message && (
-                  <Alert severity="error" sx={{ mt: 1 }} variant="outlined">
-                    <Typography variant="caption">
-                      {data.last_automated_run.error_message}
-                    </Typography>
-                  </Alert>
+                </span>
+              </div>
+              <div className="badge-group">
+                <span className={`badge badge-${getHealthColor(
+                  data.last_automated_run.status === 'success' ? 'healthy' :
+                  data.last_automated_run.status === 'failed' ? 'error' : 'warning'
+                )}`}>
+                  {data.last_automated_run.status || 'Unknown'}
+                </span>
+                {data.last_automated_run.grants_found !== undefined && (
+                  <span className="badge badge-default">
+                    {data.last_automated_run.grants_found} grants found
+                  </span>
                 )}
-              </Box>
-            ) : (
-              <Typography variant="body2" color="textSecondary">
-                No automated runs found
-              </Typography>
-            )}
-          </Grid>
+              </div>
+              {data.last_automated_run.error_message && (
+                <div className="alert alert-error alert-compact">
+                  {data.last_automated_run.error_message}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="section-content text-muted">
+              No automated runs found
+            </div>
+          )}
+        </div>
 
-          {/* Next Run Information */}
-          <Grid item xs={12} md={6}>
-            <Typography variant="subtitle2" gutterBottom>
-              Next Expected Run
-            </Typography>
-            {data.next_expected_run ? (
-              <Box>
-                <Typography variant="body2">
+        {/* Next Run Information */}
+        <div className="cron-status-section">
+          <h4 className="section-title">Next Expected Run</h4>
+          {data.next_expected_run ? (
+            <div className="section-content">
+              <div className="stat-row">
+                <span className="stat-label">Time:</span>
+                <span className="stat-value">
                   {format(new Date(data.next_expected_run), 'MMM dd, yyyy HH:mm')}
-                </Typography>
-                <Typography variant="caption" color="textSecondary">
+                </span>
+              </div>
+              <div className="stat-row">
+                <span className="stat-label">Relative:</span>
+                <span className="stat-value text-muted">
                   in {formatDistanceToNow(new Date(data.next_expected_run))}
-                </Typography>
-              </Box>
-            ) : (
-              <Typography variant="body2" color="textSecondary">
-                Schedule not determined
-              </Typography>
-            )}
-          </Grid>
-        </Grid>
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="section-content text-muted">
+              Schedule not determined
+            </div>
+          )}
+        </div>
+      </div>
 
-        <Divider sx={{ my: 2 }} />
+      <div className="cron-divider"></div>
 
-        {/* Recent Statistics */}
-        <Typography variant="subtitle2" gutterBottom>
-          Past Week Statistics
-        </Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={4}>
-            <Box textAlign="center">
-              <Typography variant="h6" color="primary">
-                {data.recent_week_stats?.total_runs || 0}
-              </Typography>
-              <Typography variant="caption" color="textSecondary">
-                Total Runs
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={4}>
-            <Box textAlign="center">
-              <Typography variant="h6" color="success.main">
-                {data.recent_week_stats?.successful_runs || 0}
-              </Typography>
-              <Typography variant="caption" color="textSecondary">
-                Successful
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={4}>
-            <Box textAlign="center">
-              <Typography variant="h6" color="info.main">
-                {data.recent_week_stats?.success_rate?.toFixed(1) || 0}%
-              </Typography>
-              <Typography variant="caption" color="textSecondary">
-                Success Rate
-              </Typography>
-            </Box>
-          </Grid>
-        </Grid>
+      {/* Recent Statistics */}
+      <div>
+        <h4 className="section-title">Past Week Statistics</h4>
+        <div className="stats-grid">
+          <div className="stat-box">
+            <div className="stat-value-large">{data.recent_week_stats?.total_runs || 0}</div>
+            <div className="stat-label-small">Total Runs</div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-value-large stat-value-success">
+              {data.recent_week_stats?.successful_runs || 0}
+            </div>
+            <div className="stat-label-small">Successful</div>
+          </div>
+          <div className="stat-box">
+            <div className="stat-value-large stat-value-info">
+              {data.recent_week_stats?.success_rate?.toFixed(1) || 0}%
+            </div>
+            <div className="stat-label-small">Success Rate</div>
+          </div>
+        </div>
+      </div>
 
-        <Divider sx={{ my: 2 }} />
+      <div className="cron-divider"></div>
 
-        {/* Configuration Information */}
-        <Typography variant="subtitle2" gutterBottom>
-          Configuration
-        </Typography>
-        <List dense>
-          <ListItem sx={{ pl: 0 }}>
-            <ListItemIcon>
-              <ScheduleIcon />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Schedule"
-              secondary={data.configuration?.schedule || 'Not configured'}
-            />
-          </ListItem>
-          <ListItem sx={{ pl: 0 }}>
-            <ListItemIcon>
-              <InfoIcon />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Type"
-              secondary={data.configuration?.type || 'Unknown'}
-            />
-          </ListItem>
-          <ListItem sx={{ pl: 0 }}>
-            <ListItemIcon>
-              <InfoIcon />
-            </ListItemIcon>
-            <ListItemText 
-              primary="Command"
-              secondary={data.configuration?.command || 'Not specified'}
-            />
-          </ListItem>
-        </List>
-      </CardContent>
-    </Card>
+      {/* Configuration Information */}
+      <div>
+        <h4 className="section-title">Configuration</h4>
+        <div className="config-list">
+          <div className="config-item">
+            <span className="icon">⏰</span>
+            <div className="config-content">
+              <div className="config-label">Schedule</div>
+              <div className="config-value">{data.configuration?.schedule || 'Not configured'}</div>
+            </div>
+          </div>
+          <div className="config-item">
+            <span className="icon">ℹ</span>
+            <div className="config-content">
+              <div className="config-label">Type</div>
+              <div className="config-value">{data.configuration?.type || 'Unknown'}</div>
+            </div>
+          </div>
+          <div className="config-item">
+            <span className="icon">⚙</span>
+            <div className="config-content">
+              <div className="config-label">Command</div>
+              <div className="config-value">{data.configuration?.command || 'Not specified'}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
 

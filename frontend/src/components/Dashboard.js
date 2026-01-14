@@ -1,50 +1,9 @@
-import {
-  AddComment as AddCommentIcon,
-  CheckBox as CheckboxIcon,
-  CloudDownload as CloudDownloadIcon,
-  Refresh as RefreshIcon,
-  Visibility as VisibilityIcon,
-} from '@mui/icons-material';
-import {
-  Alert,
-  Box,
-  Button,
-  Checkbox,
-  CircularProgress,
-  Container,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  FormControl,
-  FormControlLabel,
-  Grid,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  Snackbar,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TablePagination,
-  TableRow,
-  TextField,
-  Typography,
-} from '@mui/material';
 import { useCallback, useEffect, useState } from 'react';
-import apiClient from '../api/apiClient'; // apiClient will be the compiled JS version of apiClient.ts
+import apiClient from '../api/apiClient';
 import GrantCard from './GrantCard';
 import GrantDetailsModal from './GrantDetailsModal';
-// Types are for JSDoc and understanding, not enforced by JS runtime directly
-/**
- * @typedef {import('../api/types').EnrichedGrant} EnrichedGrant
- * @typedef {import('../api/types').ApplicationFeedbackData} ApplicationFeedbackData
- * @typedef {import('../api/types').ApplicationHistory} ApplicationHistory
- * @typedef {import('../api/types').GrantSearchFilters} GrantSearchFilters
- */
+import '../styles/swiss-theme.css';
+import './Dashboard.css';
 
 const Dashboard = () => {
   const [grants, setGrants] = useState([]);
@@ -61,18 +20,19 @@ const Dashboard = () => {
   const [filters, setFilters] = useState({
     searchText: '',
     category: '',
-    minOverallScore: '', // New filter for minimum overall_composite_score
-    maxOverallScore: '', // New filter for maximum overall_composite_score
-    includeExpired: false, // Filter to include/exclude expired grants
+    minOverallScore: '',
+    maxOverallScore: '',
+    includeExpired: false,
   });
-  // Add state for Application Feedback Modal
+
+  // Application Feedback Modal state
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [currentGrantForFeedback, setCurrentGrantForFeedback] = useState(null);
   const [feedbackData, setFeedbackData] = useState({});
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [feedbackError, setFeedbackError] = useState(null);
 
-  // Add state for Application History
+  // Application History state
   const [applicationHistory, setApplicationHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(null);
@@ -99,7 +59,6 @@ const Dashboard = () => {
     setLoading(true);
     setError(null);
     try {
-      // Use searchText and category from filters state
       const {
         searchText,
         category,
@@ -108,29 +67,24 @@ const Dashboard = () => {
         includeExpired,
         ...otherFilters
       } = filters;
+
       const params = {
         searchText: searchText || undefined,
         category: category || undefined,
-        min_overall_score: minOverallScore
-          ? parseFloat(minOverallScore)
-          : undefined, // Pass to backend
-        max_overall_score: maxOverallScore
-          ? parseFloat(maxOverallScore)
-          : undefined, // Pass to backend
+        min_overall_score: minOverallScore ? parseFloat(minOverallScore) : undefined,
+        max_overall_score: maxOverallScore ? parseFloat(maxOverallScore) : undefined,
         ...otherFilters,
       };
+
       const response = await apiClient.getGrants(params);
       let grantsData = response.items;
 
-      // Client-side filtering for expired grants if not including expired
+      // Client-side filtering for expired grants
       if (!includeExpired) {
         grantsData = grantsData.filter((grant) => {
           const deadline = grant.deadline || grant.deadline_date;
-          if (!deadline) return true; // Include grants without deadlines
-
-          const deadlineDate = new Date(deadline);
-          const today = new Date();
-          return deadlineDate >= today; // Only include non-expired grants
+          if (!deadline) return true;
+          return new Date(deadline) >= new Date();
         });
       }
 
@@ -139,7 +93,7 @@ const Dashboard = () => {
       setError(err.message || 'Failed to fetch grants');
     }
     setLoading(false);
-  }, [filters]); // Dependency is now just filters
+  }, [filters]);
 
   useEffect(() => {
     fetchGrants();
@@ -172,106 +126,30 @@ const Dashboard = () => {
       }
     } catch (err) {
       console.error(`Failed to ${save ? 'save' : 'unsave'} grant:`, err);
-      setError(
-        `Failed to ${save ? 'save' : 'unsave'} grant. Please try again.`
-      );
+      setError(`Failed to ${save ? 'save' : 'unsave'} grant. Please try again.`);
     }
   };
 
   const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFilters((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
 
   const handleSearch = () => {
     fetchGrants();
   };
 
-  // Application Feedback Modal Handlers
-  const openFeedbackModal = (grant) => {
-    setCurrentGrantForFeedback(grant);
-    setFeedbackData({ grant_id: grant.id });
-    setFeedbackError(null);
-    setFeedbackModalOpen(true);
-  };
-
-  const closeFeedbackModal = () => {
-    setFeedbackModalOpen(false);
-    setCurrentGrantForFeedback(null);
-    setFeedbackData({});
-  };
-
-  const handleFeedbackChange = (e) => {
-    const { name, value } = e.target;
-    setFeedbackData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleFeedbackSubmit = async () => {
-    if (
-      !currentGrantForFeedback ||
-      !feedbackData.grant_id ||
-      !feedbackData.status ||
-      !feedbackData.submission_date
-    ) {
-      setFeedbackError(
-        'Please fill in all required fields (status, submission date).'
-      );
-      return;
-    }
-    setFeedbackSubmitting(true);
-    setFeedbackError(null);
-    try {
-      await apiClient.submitApplicationFeedback(feedbackData);
-      closeFeedbackModal();
-      alert('Feedback submitted successfully!');
-      // Optionally, refresh history if the current grant's history was open
-      if (
-        currentGrantForHistory &&
-        currentGrantForHistory.id === feedbackData.grant_id
-      ) {
-        fetchApplicationHistory(feedbackData.grant_id);
-      }
-    } catch (err) {
-      setFeedbackError(err.message || 'Failed to submit feedback.');
-    }
-    setFeedbackSubmitting(false);
-  };
-
-  // Application History Modal Handlers
-  const fetchApplicationHistory = async (grantId) => {
-    setHistoryLoading(true);
-    setHistoryError(null);
-    try {
-      const response = await apiClient.getApplicationHistoryForGrant(grantId);
-      setApplicationHistory(response.items);
-    } catch (err) {
-      setHistoryError(err.message || 'Failed to fetch application history.');
-      setApplicationHistory([]); // Clear history on error
-    }
-    setHistoryLoading(false);
-  };
-
-  const openHistoryModal = (grant) => {
-    setCurrentGrantForHistory(grant);
-    fetchApplicationHistory(grant.id);
-    setHistoryModalOpen(true);
-  };
-
-  const closeHistoryModal = () => {
-    setHistoryModalOpen(false);
-    setCurrentGrantForHistory(null);
-    setApplicationHistory([]);
-    setHistoryPage(0);
-    setHistoryRowsPerPage(5);
-  };
-
-  const handleChangeHistoryPage = (event, newPage) => {
-    setHistoryPage(newPage);
-  };
-
-  const handleChangeHistoryRowsPerPage = (event) => {
-    setHistoryRowsPerPage(parseInt(event.target.value, 10));
-    setHistoryPage(0);
+  const handleClearFilters = () => {
+    setFilters({
+      searchText: '',
+      category: '',
+      minOverallScore: '',
+      maxOverallScore: '',
+      includeExpired: false,
+    });
   };
 
   // Bulk operations handlers
@@ -303,7 +181,6 @@ const Dashboard = () => {
       );
       await Promise.all(savePromises);
 
-      // Update saved grants state
       setSavedGrants((prev) => {
         const newSet = new Set(prev);
         selectedGrants.forEach((id) => newSet.add(id));
@@ -313,6 +190,7 @@ const Dashboard = () => {
       setSelectedGrants(new Set());
       setBulkActionMode(false);
       setSuccessMessage(`Successfully saved ${selectedGrants.size} grants`);
+      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
       setError('Failed to save selected grants');
     }
@@ -327,7 +205,6 @@ const Dashboard = () => {
       );
       await Promise.all(unsavePromises);
 
-      // Update saved grants state
       setSavedGrants((prev) => {
         const newSet = new Set(prev);
         selectedGrants.forEach((id) => newSet.delete(id));
@@ -337,6 +214,7 @@ const Dashboard = () => {
       setSelectedGrants(new Set());
       setBulkActionMode(false);
       setSuccessMessage(`Successfully unsaved ${selectedGrants.size} grants`);
+      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
       setError('Failed to unsave selected grants');
     }
@@ -348,784 +226,460 @@ const Dashboard = () => {
       selectedGrants.has(grant.id)
     );
     const csvContent = generateCSV(selectedGrantsData);
-    downloadCSV(
+    downloadFile(
       csvContent,
-      `grants_export_${new Date().toISOString().split('T')[0]}.csv`
+      `grants_export_${new Date().toISOString().split('T')[0]}.csv`,
+      'text/csv'
     );
     setSelectedGrants(new Set());
     setBulkActionMode(false);
-    setSuccessMessage(
-      `Successfully exported ${selectedGrantsData.length} grants to CSV`
-    );
-  };
-
-  const handleBulkExportICS = () => {
-    const selectedGrantsData = grants.filter((grant) =>
-      selectedGrants.has(grant.id)
-    );
-    const icsContent = generateICS(selectedGrantsData);
-    downloadICS(
-      icsContent,
-      `grant_deadlines_${new Date().toISOString().split('T')[0]}.ics`
-    );
-    setSelectedGrants(new Set());
-    setBulkActionMode(false);
-    setSuccessMessage(
-      `Successfully exported ${selectedGrantsData.length} grant deadlines to calendar`
-    );
-  };
-
-  const generateICS = (grantsData) => {
-    const icsHeader = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//Smart Grant Finder//Grant Calendar//EN',
-      'CALSCALE:GREGORIAN',
-      'METHOD:PUBLISH',
-    ].join('\r\n');
-
-    const icsFooter = 'END:VCALENDAR';
-
-    const events = grantsData
-      .filter((grant) => grant.deadline || grant.deadline_date)
-      .map((grant) => {
-        const deadline = grant.deadline || grant.deadline_date;
-        const deadlineDate = new Date(deadline);
-        const formattedDate =
-          deadlineDate.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-
-        return [
-          'BEGIN:VEVENT',
-          `UID:grant-${grant.id}@smartgrantfinder.com`,
-          `DTSTAMP:${
-            new Date().toISOString().replace(/[-:]/g, '').split('.')[0]
-          }Z`,
-          `DTSTART:${formattedDate}`,
-          `SUMMARY:Grant Deadline: ${grant.title}`,
-          `DESCRIPTION:Grant application deadline for ${
-            grant.title
-          }\\nFunder: ${grant.funder_name || 'Unknown'}\\nAmount: ${
-            grant.funding_amount_display || 'Not specified'
-          }\\nScore: ${grant.overall_composite_score || 'N/A'}`,
-          `LOCATION:${grant.geographic_scope || 'Various'}`,
-          `URL:${grant.source_url || ''}`,
-          'STATUS:CONFIRMED',
-          'TRANSP:TRANSPARENT',
-          'END:VEVENT',
-        ].join('\r\n');
-      });
-
-    return [icsHeader, ...events, icsFooter].join('\r\n');
-  };
-
-  const handleBulkExportPDF = () => {
-    const selectedGrantsData = grants.filter((grant) =>
-      selectedGrants.has(grant.id)
-    );
-    generatePDF(selectedGrantsData);
-    setSelectedGrants(new Set());
-    setBulkActionMode(false);
-    setSuccessMessage(
-      `Successfully exported ${selectedGrantsData.length} grants to PDF`
-    );
-  };
-
-  const generatePDF = (grantsData) => {
-    // Create a new window with the grant data formatted for printing
-    const printWindow = window.open('', '_blank');
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Grant Details Export</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .grant { border: 1px solid #ddd; margin: 20px 0; padding: 15px; page-break-inside: avoid; }
-            .grant-title { font-size: 18px; font-weight: bold; color: #1976d2; margin-bottom: 10px; }
-            .grant-info { margin: 5px 0; }
-            .grant-description { margin: 10px 0; line-height: 1.5; }
-            .scores { background: #f5f5f5; padding: 10px; margin: 10px 0; }
-            .score-item { display: inline-block; margin: 5px 10px 5px 0; }
-            @media print {
-              body { margin: 0; }
-              .grant { margin: 10px 0; page-break-inside: avoid; }
-            }
-          </style>
-        </head>
-        <body>
-          <h1>Grant Details Export</h1>
-          <p>Exported on: ${new Date().toLocaleDateString()}</p>
-          <p>Total Grants: ${grantsData.length}</p>
-          ${grantsData
-            .map(
-              (grant) => `
-            <div class="grant">
-              <div class="grant-title">${grant.title || 'Untitled Grant'}</div>
-              <div class="grant-info"><strong>Funder:</strong> ${
-                grant.funder_name || 'Unknown'
-              }</div>
-              <div class="grant-info"><strong>Category:</strong> ${
-                grant.category || grant.identified_sector || 'Other'
-              }</div>
-              <div class="grant-info"><strong>Deadline:</strong> ${
-                grant.deadline || grant.deadline_date || 'Not specified'
-              }</div>
-              <div class="grant-info"><strong>Funding Amount:</strong> ${
-                grant.funding_amount_display ||
-                grant.fundingAmount ||
-                'Not specified'
-              }</div>
-              <div class="grant-info"><strong>Geographic Scope:</strong> ${
-                grant.geographic_scope || 'Not specified'
-              }</div>
-              <div class="grant-info"><strong>Relevance Score:</strong> ${
-                grant.overall_composite_score !== null &&
-                grant.overall_composite_score !== undefined
-                  ? grant.overall_composite_score.toFixed(1)
-                  : grant.relevanceScore || 'N/A'
-              }</div>
-              <div class="grant-description">
-                <strong>Description:</strong><br>
-                ${grant.description || 'No description available'}
-              </div>
-              ${
-                grant.summary_llm
-                  ? `
-                <div class="grant-description">
-                  <strong>AI Summary:</strong><br>
-                  ${grant.summary_llm}
-                </div>
-              `
-                  : ''
-              }
-              ${
-                grant.eligibility_summary_llm
-                  ? `
-                <div class="grant-description">
-                  <strong>Eligibility Requirements:</strong><br>
-                  ${grant.eligibility_summary_llm}
-                </div>
-              `
-                  : ''
-              }
-              ${
-                grant.keywords && grant.keywords.length > 0
-                  ? `
-                <div class="grant-info"><strong>Keywords:</strong> ${grant.keywords.join(
-                  ', '
-                )}</div>
-              `
-                  : ''
-              }
-              ${
-                grant.source_url || grant.sourceUrl
-                  ? `
-                <div class="grant-info"><strong>Source:</strong> <a href="${
-                  grant.source_url || grant.sourceUrl
-                }" target="_blank">${
-                      grant.source_url || grant.sourceUrl
-                    }</a></div>
-              `
-                  : ''
-              }
-            </div>
-          `
-            )
-            .join('')}
-        </body>
-      </html>
-    `;
-
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-
-    // Auto-print the window
-    printWindow.onload = () => {
-      printWindow.print();
-    };
-  };
-
-  const downloadICS = (content, filename) => {
-    const blob = new Blob([content], { type: 'text/calendar;charset=utf-8;' });
-    const link = document.createElement('a');
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', filename);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+    setSuccessMessage(`Successfully exported ${selectedGrantsData.length} grants to CSV`);
+    setTimeout(() => setSuccessMessage(''), 3000);
   };
 
   const generateCSV = (grantsData) => {
-    const headers = [
-      'Title',
-      'Category',
-      'Funder',
-      'Deadline',
-      'Funding Amount',
-      'Relevance Score',
-      'Description',
-      'Source URL',
-    ];
-
-    const rows = grantsData.map((grant) => [
+    const headers = ['Title', 'Funder', 'Category', 'Deadline', 'Funding Amount', 'Score', 'Source URL'];
+    const rows = grantsData.map(grant => [
       grant.title || '',
-      grant.category || grant.identified_sector || '',
       grant.funder_name || '',
+      grant.category || grant.identified_sector || '',
       grant.deadline || grant.deadline_date || '',
       grant.funding_amount_display || grant.fundingAmount || '',
       grant.overall_composite_score || grant.relevanceScore || '',
-      grant.description || '',
-      grant.source_url || grant.sourceUrl || '',
+      grant.source_url || ''
     ]);
 
-    return [headers, ...rows]
-      .map((row) =>
-        row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')
-      )
-      .join('\n');
+    return [headers, ...rows].map(row =>
+      row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+    ).join('\n');
   };
 
-  const downloadCSV = (content, filename) => {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const downloadFile = (content, filename, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
-    if (link.download !== undefined) {
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', filename);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
 
-  if (loading && grants.length === 0) {
+  // Application Feedback Modal Handlers
+  const openFeedbackModal = (grant) => {
+    setCurrentGrantForFeedback(grant);
+    setFeedbackData({ grant_id: grant.id });
+    setFeedbackError(null);
+    setFeedbackModalOpen(true);
+  };
+
+  const closeFeedbackModal = () => {
+    setFeedbackModalOpen(false);
+    setCurrentGrantForFeedback(null);
+    setFeedbackData({});
+  };
+
+  const handleFeedbackChange = (e) => {
+    const { name, value } = e.target;
+    setFeedbackData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackData.grant_id || !feedbackData.status || !feedbackData.submission_date) {
+      setFeedbackError('Please fill in all required fields (status, submission date).');
+      return;
+    }
+
+    setFeedbackSubmitting(true);
+    setFeedbackError(null);
+    try {
+      await apiClient.submitApplicationFeedback(feedbackData);
+      closeFeedbackModal();
+      setSuccessMessage('Feedback submitted successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      setFeedbackError(err.message || 'Failed to submit feedback.');
+    }
+    setFeedbackSubmitting(false);
+  };
+
+  // Application History Modal Handlers
+  const fetchApplicationHistory = async (grantId) => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const response = await apiClient.getApplicationHistoryForGrant(grantId);
+      setApplicationHistory(response.items);
+    } catch (err) {
+      setHistoryError(err.message || 'Failed to fetch application history.');
+      setApplicationHistory([]);
+    }
+    setHistoryLoading(false);
+  };
+
+  const openHistoryModal = (grant) => {
+    setCurrentGrantForHistory(grant);
+    fetchApplicationHistory(grant.id);
+    setHistoryModalOpen(true);
+  };
+
+  const closeHistoryModal = () => {
+    setHistoryModalOpen(false);
+    setCurrentGrantForHistory(null);
+    setApplicationHistory([]);
+    setHistoryPage(0);
+  };
+
+  if (loading) {
     return (
-      <Container sx={{ textAlign: 'center', mt: 5 }}>
-        <CircularProgress />
-      </Container>
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p className="mt-2">Loading grants...</p>
+      </div>
     );
   }
 
-  // ... existing rendering for stats, charts etc. ...
-
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          mb: 3,
-        }}
-      >
-        <Typography variant="h4" component="h1">
-          Grant Dashboard
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant={bulkActionMode ? 'contained' : 'outlined'}
+    <div className="dashboard">
+      <div className="dashboard-header">
+        <h1>Grant Dashboard</h1>
+        <div className="dashboard-actions">
+          <button
+            className="btn btn-primary"
+            onClick={() => fetchGrants()}
+            disabled={loading}
+          >
+            ↻ Refresh
+          </button>
+          <button
+            className={`btn ${bulkActionMode ? 'btn-secondary' : 'btn-text'}`}
             onClick={() => setBulkActionMode(!bulkActionMode)}
-            startIcon={<CheckboxIcon />}
           >
-            {bulkActionMode ? 'Exit Bulk Mode' : 'Bulk Actions'}
-          </Button>
-        </Box>
-      </Box>
+            {bulkActionMode ? 'Cancel Bulk Mode' : 'Bulk Actions'}
+          </button>
+        </div>
+      </div>
 
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={4} md={3}>
-            <TextField
-              fullWidth
-              label="Search Grants"
-              variant="outlined"
-              name="searchText" // Add name attribute
-              value={filters.searchText || ''} // Use filters.searchText
-              onChange={handleFilterChange} // Use handleFilterChange
-            />
-          </Grid>
-          <Grid item xs={12} sm={3} md={2}>
-            <FormControl fullWidth>
-              <InputLabel>Category</InputLabel>
-              <Select
-                name="category" // Ensure name attribute is set
-                value={filters.category || ''} // Use filters.category
-                label="Category"
-                onChange={handleFilterChange} // Use handleFilterChange
-              >
-                <MenuItem value="">
-                  <em>All</em>
-                </MenuItem>
-                <MenuItem value="Research">Research</MenuItem>
-                <MenuItem value="Education">Education</MenuItem>
-                <MenuItem value="Community">Community</MenuItem>
-                {/* Add more categories as needed */}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} sm={2} md={2}>
-            <TextField
-              fullWidth
-              label="Min Score"
-              name="minOverallScore"
-              type="number"
-              value={filters.minOverallScore || ''}
-              onChange={handleFilterChange}
-              InputProps={{ inputProps: { min: 0, max: 100, step: 1 } }}
-            />
-          </Grid>
-          <Grid item xs={12} sm={2} md={2}>
-            <TextField
-              fullWidth
-              label="Max Score"
-              name="maxOverallScore"
-              type="number"
-              value={filters.maxOverallScore || ''}
-              onChange={handleFilterChange}
-              InputProps={{ inputProps: { min: 0, max: 100, step: 1 } }}
-            />
-          </Grid>
-          <Grid item xs={12} sm={2} md={2}>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  name="includeExpired"
-                  checked={filters.includeExpired}
-                  onChange={(e) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      includeExpired: e.target.checked,
-                    }))
-                  }
-                />
-              }
-              label="Include Expired"
-            />
-          </Grid>
-          <Grid item xs={12} sm={1} md={1}>
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={handleSearch}
-              startIcon={<RefreshIcon />}
-            >
-              Search
-            </Button>
-          </Grid>
-        </Grid>
-      </Paper>
-
+      {/* Success/Error Messages */}
+      {successMessage && (
+        <div className="alert alert-success">
+          {successMessage}
+        </div>
+      )}
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <div className="alert alert-error">
           {error}
-        </Alert>
-      )}
-      {loading && grants.length > 0 && (
-        <CircularProgress sx={{ display: 'block', margin: 'auto', mb: 2 }} />
+          <button className="btn-text" onClick={() => setError(null)}>✕</button>
+        </div>
       )}
 
-      {bulkActionMode ? (
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              mb: 2,
-            }}
-          >
-            <Typography variant="h6">
-              Bulk Actions ({selectedGrants.size} selected)
-            </Typography>
-            <Button variant="outlined" size="small" onClick={handleSelectAll}>
-              {selectedGrants.size === grants.length
-                ? 'Deselect All'
-                : 'Select All'}
-            </Button>
-          </Box>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={6}>
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={handleBulkSave}
-                disabled={selectedGrants.size === 0 || bulkLoading}
-                startIcon={
-                  bulkLoading ? (
-                    <CircularProgress size={16} />
-                  ) : (
-                    <AddCommentIcon />
-                  )
-                }
-              >
-                Save Grants
-              </Button>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Button
-                fullWidth
-                variant="outlined"
-                onClick={handleBulkUnsave}
-                disabled={selectedGrants.size === 0 || bulkLoading}
-                startIcon={
-                  bulkLoading ? (
-                    <CircularProgress size={16} />
-                  ) : (
-                    <VisibilityIcon />
-                  )
-                }
-              >
-                Unsave Grants
-              </Button>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <Button
-                fullWidth
-                variant="outlined"
-                onClick={handleBulkExportCSV}
-                disabled={selectedGrants.size === 0 || bulkLoading}
-                startIcon={
-                  bulkLoading ? (
-                    <CircularProgress size={16} />
-                  ) : (
-                    <CloudDownloadIcon />
-                  )
-                }
-              >
-                Export CSV
-              </Button>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <Button
-                fullWidth
-                variant="outlined"
-                onClick={handleBulkExportICS}
-                disabled={selectedGrants.size === 0 || bulkLoading}
-                startIcon={
-                  bulkLoading ? (
-                    <CircularProgress size={16} />
-                  ) : (
-                    <CloudDownloadIcon />
-                  )
-                }
-              >
-                Export Calendar
-              </Button>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <Button
-                fullWidth
-                variant="outlined"
-                onClick={handleBulkExportPDF}
-                disabled={selectedGrants.size === 0 || bulkLoading}
-                startIcon={
-                  bulkLoading ? (
-                    <CircularProgress size={16} />
-                  ) : (
-                    <CloudDownloadIcon />
-                  )
-                }
-              >
-                Export PDF
-              </Button>
-            </Grid>
-          </Grid>
-          <Button
-            variant="text"
-            onClick={() => setBulkActionMode(false)}
-            sx={{ mt: 2 }}
-          >
-            Cancel
-          </Button>
-        </Paper>
-      ) : null}
-
-      <Grid container spacing={3}>
-        {grants.map((grant) => (
-          <Grid item key={grant.id} xs={12} sm={6} md={4}>
-            <GrantCard
-              grant={grant}
-              onSave={handleSaveGrant}
-              isSaved={savedGrants.has(grant.id)}
-              onViewDetails={handleViewDetails}
-              onSelect={handleSelectGrant}
-              isSelected={selectedGrants.has(grant.id)}
-              bulkActionMode={bulkActionMode}
+      {/* Filters */}
+      <div className="card mb-3">
+        <div className="card-header">
+          <h3 className="card-title">Filters</h3>
+        </div>
+        <div className="filter-grid">
+          <div className="form-group">
+            <label className="label" htmlFor="searchText">Search</label>
+            <input
+              type="text"
+              id="searchText"
+              name="searchText"
+              className="input"
+              placeholder="Search grants..."
+              value={filters.searchText}
+              onChange={handleFilterChange}
             />
-            <Box
-              sx={{ mt: 1, display: 'flex', justifyContent: 'space-around' }}
+          </div>
+
+          <div className="form-group">
+            <label className="label" htmlFor="category">Category</label>
+            <select
+              id="category"
+              name="category"
+              className="input"
+              value={filters.category}
+              onChange={handleFilterChange}
             >
-              <Button
-                size="small"
-                startIcon={<AddCommentIcon />}
-                onClick={() => openFeedbackModal(grant)}
-              >
-                Add Feedback
-              </Button>
-              <Button
-                size="small"
-                startIcon={<VisibilityIcon />}
-                onClick={() => openHistoryModal(grant)}
-              >
-                View History
-              </Button>
-            </Box>
-          </Grid>
-        ))}
-      </Grid>
-      {grants.length === 0 && !loading && !error && (
-        <Typography sx={{ textAlign: 'center', mt: 5 }}>
-          No grants found matching your criteria.
-        </Typography>
+              <option value="">All Categories</option>
+              <option value="Research">Research</option>
+              <option value="Education">Education</option>
+              <option value="Community">Community</option>
+              <option value="Healthcare">Healthcare</option>
+              <option value="Environment">Environment</option>
+              <option value="Arts">Arts</option>
+              <option value="Business">Business</option>
+              <option value="Energy">Energy</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="label" htmlFor="minOverallScore">Min Score</label>
+            <input
+              type="number"
+              id="minOverallScore"
+              name="minOverallScore"
+              className="input"
+              placeholder="0"
+              min="0"
+              max="100"
+              value={filters.minOverallScore}
+              onChange={handleFilterChange}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label" htmlFor="maxOverallScore">Max Score</label>
+            <input
+              type="number"
+              id="maxOverallScore"
+              name="maxOverallScore"
+              className="input"
+              placeholder="100"
+              min="0"
+              max="100"
+              value={filters.maxOverallScore}
+              onChange={handleFilterChange}
+            />
+          </div>
+
+          <div className="form-group flex items-center">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="includeExpired"
+                checked={filters.includeExpired}
+                onChange={handleFilterChange}
+              />
+              <span>Include Expired</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="flex gap-2 mt-3">
+          <button className="btn btn-primary" onClick={handleSearch}>
+            Search
+          </button>
+          <button className="btn btn-secondary" onClick={handleClearFilters}>
+            Clear Filters
+          </button>
+        </div>
+      </div>
+
+      {/* Bulk Actions Bar */}
+      {bulkActionMode && (
+        <div className="bulk-actions-bar card mb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={selectedGrants.size === grants.length && grants.length > 0}
+                  onChange={handleSelectAll}
+                />
+                <span>Select All ({selectedGrants.size} selected)</span>
+              </label>
+            </div>
+            {selectedGrants.size > 0 && (
+              <div className="flex gap-2">
+                <button
+                  className="btn btn-sm btn-primary"
+                  onClick={handleBulkSave}
+                  disabled={bulkLoading}
+                >
+                  💾 Save Selected
+                </button>
+                <button
+                  className="btn btn-sm btn-secondary"
+                  onClick={handleBulkUnsave}
+                  disabled={bulkLoading}
+                >
+                  Remove Selected
+                </button>
+                <button
+                  className="btn btn-sm btn-text"
+                  onClick={handleBulkExportCSV}
+                  disabled={bulkLoading}
+                >
+                  📥 Export CSV
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Grants Grid */}
+      <div className="grants-grid">
+        {grants.length === 0 ? (
+          <div className="empty-state">
+            <p>No grants found matching your criteria.</p>
+            <button className="btn btn-primary mt-3" onClick={handleClearFilters}>
+              Clear Filters
+            </button>
+          </div>
+        ) : (
+          grants.map((grant) => (
+            <GrantCard
+              key={grant.id}
+              grant={grant}
+              isSaved={savedGrants.has(grant.id)}
+              onSave={handleSaveGrant}
+              onViewDetails={handleViewDetails}
+              onSelect={bulkActionMode ? handleSelectGrant : null}
+              isSelected={selectedGrants.has(grant.id)}
+            />
+          ))
+        )}
+      </div>
+
+      {/* Grant Details Modal */}
+      {detailsModalOpen && currentGrantForDetails && (
+        <GrantDetailsModal
+          grant={currentGrantForDetails}
+          onClose={handleCloseDetails}
+          onSave={handleSaveGrant}
+          isSaved={savedGrants.has(currentGrantForDetails.id)}
+          onProvideFeedback={openFeedbackModal}
+          onViewHistory={openHistoryModal}
+        />
       )}
 
       {/* Application Feedback Modal */}
-      {currentGrantForFeedback && (
-        <Dialog
-          open={feedbackModalOpen}
-          onClose={closeFeedbackModal}
-          fullWidth
-          maxWidth="sm"
-        >
-          <DialogTitle>
-            Submit Application Feedback for: {currentGrantForFeedback.title}
-          </DialogTitle>
-          <DialogContent>
-            {feedbackError && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {feedbackError}
-              </Alert>
-            )}
-            <TextField
-              autoFocus
-              margin="dense"
-              name="submission_date"
-              label="Submission Date *"
-              type="date"
-              fullWidth
-              variant="standard"
-              value={feedbackData.submission_date || ''}
-              onChange={handleFeedbackChange}
-              InputLabelProps={{
-                shrink: true,
-              }}
-            />
-            <FormControl fullWidth margin="dense" variant="standard">
-              <InputLabel id="status-label">Status *</InputLabel>
-              <Select
-                labelId="status-label"
-                name="status"
-                value={feedbackData.status || ''}
-                onChange={handleFeedbackChange}
-                label="Status"
+      {feedbackModalOpen && (
+        <div className="modal-backdrop" onClick={closeFeedbackModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Provide Application Feedback</h3>
+              <button className="modal-close" onClick={closeFeedbackModal}>✕</button>
+            </div>
+            <div className="modal-body">
+              {feedbackError && <div className="alert alert-error mb-2">{feedbackError}</div>}
+
+              <div className="form-group">
+                <label className="label">Grant</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={currentGrantForFeedback?.title || ''}
+                  disabled
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Status *</label>
+                <select
+                  name="status"
+                  className="input"
+                  value={feedbackData.status || ''}
+                  onChange={handleFeedbackChange}
+                >
+                  <option value="">Select status...</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="in_progress">In Progress</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="label">Submission Date *</label>
+                <input
+                  type="date"
+                  name="submission_date"
+                  className="input"
+                  value={feedbackData.submission_date || ''}
+                  onChange={handleFeedbackChange}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Notes</label>
+                <textarea
+                  name="notes"
+                  className="input"
+                  rows="4"
+                  value={feedbackData.notes || ''}
+                  onChange={handleFeedbackChange}
+                  placeholder="Optional notes about this application..."
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={closeFeedbackModal}>
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleFeedbackSubmit}
+                disabled={feedbackSubmitting}
               >
-                <MenuItem value="Draft">Draft</MenuItem>
-                <MenuItem value="Submitted">Submitted</MenuItem>
-                <MenuItem value="Under Review">Under Review</MenuItem>
-                <MenuItem value="Awarded">Awarded</MenuItem>
-                <MenuItem value="Rejected">Rejected</MenuItem>
-                <MenuItem value="Withdrawn">Withdrawn</MenuItem>
-                <MenuItem value="Other">Other</MenuItem>
-              </Select>
-            </FormControl>
-            <TextField
-              margin="dense"
-              name="outcome_notes"
-              label="Outcome Notes"
-              type="text"
-              fullWidth
-              multiline
-              rows={3}
-              variant="standard"
-              value={feedbackData.outcome_notes || ''}
-              onChange={handleFeedbackChange}
-            />
-            <TextField
-              margin="dense"
-              name="feedback_for_profile_update"
-              label="Feedback for Profile Update"
-              type="text"
-              fullWidth
-              multiline
-              rows={3}
-              variant="standard"
-              value={feedbackData.feedback_for_profile_update || ''}
-              onChange={handleFeedbackChange}
-            />
-            <TextField
-              margin="dense"
-              name="status_reason"
-              label="Status Reason (e.g., why rejected)"
-              type="text"
-              fullWidth
-              multiline
-              rows={2}
-              variant="standard"
-              value={feedbackData.status_reason || ''}
-              onChange={handleFeedbackChange}
-            />
-            <FormControl fullWidth margin="dense" variant="standard">
-              <InputLabel id="is_successful_outcome-label">
-                Was this a successful outcome?
-              </InputLabel>
-              <Select
-                labelId="is_successful_outcome-label"
-                name="is_successful_outcome"
-                value={
-                  feedbackData.is_successful_outcome === undefined
-                    ? ''
-                    : String(feedbackData.is_successful_outcome)
-                }
-                onChange={(e) =>
-                  setFeedbackData((prev) => ({
-                    ...prev,
-                    is_successful_outcome:
-                      e.target.value === 'true'
-                        ? true
-                        : e.target.value === 'false'
-                        ? false
-                        : undefined,
-                  }))
-                }
-                label="Successful Outcome?"
-              >
-                <MenuItem value="">
-                  <em>Select...</em>
-                </MenuItem>
-                <MenuItem value="true">Yes</MenuItem>
-                <MenuItem value="false">No</MenuItem>
-              </Select>
-            </FormControl>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={closeFeedbackModal}>Cancel</Button>
-            <Button
-              onClick={handleFeedbackSubmit}
-              disabled={feedbackSubmitting}
-            >
-              {feedbackSubmitting ? <CircularProgress size={24} /> : 'Submit'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+                {feedbackSubmitting ? 'Submitting...' : 'Submit Feedback'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Application History Modal */}
-      {currentGrantForHistory && (
-        <Dialog
-          open={historyModalOpen}
-          onClose={closeHistoryModal}
-          fullWidth
-          maxWidth="md"
-        >
-          <DialogTitle>
-            Application History for: {currentGrantForHistory.title}
-          </DialogTitle>
-          <DialogContent>
-            {historyError && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {historyError}
-              </Alert>
-            )}
-            {historyLoading ? (
-              <CircularProgress />
-            ) : applicationHistory.length > 0 ? (
-              <TableContainer component={Paper}>
-                <Table
-                  sx={{ minWidth: 650 }}
-                  aria-label="application history table"
-                >
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Submission Date</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Outcome Notes</TableCell>
-                      <TableCell>Profile Feedback</TableCell>
-                      <TableCell>Reason</TableCell>
-                      <TableCell>Successful?</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {applicationHistory
-                      .slice(
-                        historyPage * historyRowsPerPage,
-                        historyPage * historyRowsPerPage + historyRowsPerPage
-                      )
-                      .map((entry) => (
-                        <TableRow key={entry.id}>
-                          <TableCell>
-                            {entry.submission_date
-                              ? new Date(
-                                  entry.submission_date
-                                ).toLocaleDateString()
-                              : 'N/A'}
-                          </TableCell>
-                          <TableCell>{entry.status}</TableCell>
-                          <TableCell>{entry.outcome_notes || '-'}</TableCell>
-                          <TableCell>
-                            {entry.feedback_for_profile_update || '-'}
-                          </TableCell>
-                          <TableCell>{entry.status_reason || '-'}</TableCell>
-                          <TableCell>
-                            {entry.is_successful_outcome === undefined
-                              ? 'N/A'
-                              : entry.is_successful_outcome
-                              ? 'Yes'
-                              : 'No'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-                <TablePagination
-                  rowsPerPageOptions={[5, 10, 25]}
-                  component="div"
-                  count={applicationHistory.length}
-                  rowsPerPage={historyRowsPerPage}
-                  page={historyPage}
-                  onPageChange={handleChangeHistoryPage}
-                  onRowsPerPageChange={handleChangeHistoryRowsPerPage}
-                />
-              </TableContainer>
-            ) : (
-              <Typography>
-                No application history found for this grant.
-              </Typography>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={closeHistoryModal}>Close</Button>
-          </DialogActions>
-        </Dialog>
+      {historyModalOpen && (
+        <div className="modal-backdrop" onClick={closeHistoryModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Application History</h3>
+              <button className="modal-close" onClick={closeHistoryModal}>✕</button>
+            </div>
+            <div className="modal-body">
+              {historyError && <div className="alert alert-error mb-2">{historyError}</div>}
+
+              <h4 className="mb-2">{currentGrantForHistory?.title}</h4>
+
+              {historyLoading ? (
+                <div className="loading-container">
+                  <div className="spinner"></div>
+                </div>
+              ) : applicationHistory.length === 0 ? (
+                <div className="empty-state">
+                  <p>No application history found for this grant.</p>
+                </div>
+              ) : (
+                <div className="table-container">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Submission Date</th>
+                        <th>Notes</th>
+                        <th>Created</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {applicationHistory
+                        .slice(historyPage * historyRowsPerPage, historyPage * historyRowsPerPage + historyRowsPerPage)
+                        .map((item, idx) => (
+                          <tr key={idx}>
+                            <td><span className="chip chip-info">{item.status}</span></td>
+                            <td>{item.submission_date || 'N/A'}</td>
+                            <td>{item.notes || '-'}</td>
+                            <td>{item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A'}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={closeHistoryModal}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-
-      {/* Grant Details Modal */}
-      <GrantDetailsModal
-        grant={currentGrantForDetails}
-        open={detailsModalOpen}
-        onClose={handleCloseDetails}
-      />
-
-      {/* Success Snackbar */}
-      <Snackbar
-        open={Boolean(successMessage)}
-        autoHideDuration={4000}
-        onClose={() => setSuccessMessage('')}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          onClose={() => setSuccessMessage('')}
-          severity="success"
-          sx={{ width: '100%' }}
-        >
-          {successMessage}
-        </Alert>
-      </Snackbar>
-    </Container>
+    </div>
   );
 };
 

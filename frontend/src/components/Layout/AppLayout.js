@@ -1,198 +1,204 @@
-import {
-    AssignmentOutlined as AssignmentIcon,
-    BarChart as BarChartIcon,
-    Bookmarks as BookmarksIcon,
-    ChevronLeft as ChevronLeftIcon,
-    Dashboard as DashboardIcon,
-    Menu as MenuIcon,
-    Search as SearchIcon,
-    Settings as SettingsIcon
-} from '@mui/icons-material';
-import {
-    AppBar,
-    Box,
-    Button,
-    Divider,
-    Drawer,
-    IconButton,
-    List,
-    ListItem,
-    ListItemButton,
-    ListItemIcon,
-    ListItemText,
-    Toolbar,
-    Typography,
-    useMediaQuery,
-    useTheme
-} from '@mui/material';
 import React, { useEffect, useState } from 'react';
-import { Outlet, Link as RouterLink, useLocation } from 'react-router-dom';
-import RunHistoryModal from './RunHistoryModal';
-
-const drawerWidth = 240;
+import { Outlet, Link, useLocation } from 'react-router-dom';
+import UserProfile from '../Auth/UserProfile';
 
 const AppLayout = () => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const [open, setOpen] = useState(!isMobile);
+  const [open, setOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const location = useLocation();
+  const [lastRunTime, setLastRunTime] = useState('—');
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Handle responsive behavior
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleDrawerToggle = () => {
     setOpen(!open);
   };
 
+  // Fetch last run time
   useEffect(() => {
     const fetchLastRun = async () => {
       try {
         const { getLastRun } = await import('api/apiClient');
         const data = await getLastRun();
-        if(data.status!=='none'){
-          document.getElementById('last-run-time').innerText = new Date(data.end || data.start).toLocaleString();
+        if (data.status !== 'none') {
+          setLastRunTime(new Date(data.end || data.start).toLocaleString());
         }
-      } catch(e) {
+      } catch (e) {
         console.error(e);
       }
     };
     fetchLastRun();
     const interval = setInterval(fetchLastRun, 60000);
     return () => clearInterval(interval);
-  },[]);
+  }, []);
 
   const menuItems = [
-    { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-    { text: 'All Grants', icon: <AssignmentIcon />, path: '/grants' },
-    { text: 'Search', icon: <SearchIcon />, path: '/search' },
-    { text: 'Saved Grants', icon: <BookmarksIcon />, path: '/saved' },
-    { text: 'Analytics', icon: <BarChartIcon />, path: '/analytics' },
-    { text: 'Settings', icon: <SettingsIcon />, path: '/settings' }
+    { text: 'Dashboard', path: '/' },
+    { text: 'All Grants', path: '/grants' },
+    { text: 'Search', path: '/search' },
+    { text: 'Saved Grants', path: '/saved' },
+    { text: 'Applications', path: '/applications' },
+    { text: 'Business Profile', path: '/profile' },
+    { text: 'Analytics', path: '/analytics' },
+    { text: 'Settings', path: '/settings' }
   ];
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh' }}>
-      <AppBar
-        position="fixed"
-        sx={{
-          width: { sm: open ? `calc(100% - ${drawerWidth}px)` : '100%' },
-          ml: { sm: open ? `${drawerWidth}px` : 0 },
-          zIndex: (theme) => theme.zIndex.drawer + 1,
-          transition: theme.transitions.create(['width', 'margin'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-        }}
-      >
-        <Toolbar>
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2 }}
-          >
-            {open ? <ChevronLeftIcon /> : <MenuIcon />}
-          </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+    <div className="app-layout">
+      {/* Sidebar */}
+      <aside className={`app-sidebar ${!open ? 'closed' : ''}`}>
+        <div className="sidebar-header">
+          <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0 }}>
             Smart Grant Finder
-          </Typography>
-        </Toolbar>
-      </AppBar>
-      <Drawer
-        variant={isMobile ? "temporary" : "persistent"}
-        open={isMobile ? false : open}
-        onClose={isMobile ? handleDrawerToggle : undefined}
-        sx={{
-          width: drawerWidth,
-          flexShrink: 0,
-          [`& .MuiDrawer-paper`]: {
-            width: drawerWidth,
-            boxSizing: 'border-box',
-            backgroundColor: theme.palette.background.default,
-            borderRight: `1px solid ${theme.palette.divider}`,
-          },
-        }}
-      >
-        <Toolbar />
-        <Box sx={{ overflow: 'auto', mt: 2 }}>
-          <List>
+          </h2>
+        </div>
+
+        <nav style={{ flex: 1, overflowY: 'auto' }}>
+          <ul className="nav-list">
             {menuItems.map((item) => (
-              <ListItem key={item.text} disablePadding>
-                <ListItemButton
-                  component={RouterLink}
+              <li key={item.text} className="nav-item">
+                <Link
                   to={item.path}
-                  selected={location.pathname === item.path}
-                  sx={{
-                    borderRadius: '0 24px 24px 0',
-                    mr: 1,
-                    '&.Mui-selected': {
-                      backgroundColor: theme.palette.primary.light,
-                      color: theme.palette.primary.contrastText,
-                      '& .MuiListItemIcon-root': {
-                        color: theme.palette.primary.contrastText,
-                      },
-                    },
-                    '&:hover': {
-                      backgroundColor: theme.palette.primary.light + '40', // 25% opacity
-                      color: theme.palette.primary.main,
-                      '& .MuiListItemIcon-root': {
-                        color: theme.palette.primary.main,
-                      },
-                    },
-                  }}
+                  className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
+                  onClick={isMobile ? handleDrawerToggle : undefined}
                 >
-                  <ListItemIcon
-                    sx={{
-                      color: location.pathname === item.path
-                        ? theme.palette.primary.contrastText
-                        : theme.palette.text.secondary,
-                    }}
-                  >
-                    {item.icon}
-                  </ListItemIcon>
-                  <ListItemText primary={item.text} />
-                </ListItemButton>
-              </ListItem>
+                  {item.text}
+                </Link>
+              </li>
             ))}
-          </List>
-          <Divider sx={{ my: 2 }} />
-          <Box sx={{ p: 2 }}>
-            <Typography variant="body2" color="textSecondary">
+          </ul>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div style={{ marginBottom: '8px' }}>
+            <p className="text-sm text-secondary" style={{ margin: 0 }}>
               System Status: All Good
-            </Typography>
-            <Box sx={{display:'flex',alignItems:'center',columnGap:1}}>
-              <Typography variant="caption" color="textSecondary">
-                Last run: <span id="last-run-time">—</span>
-              </Typography>
-              <Button size="small" variant="text" onClick={()=>setHistoryOpen(true)}>History</Button>
-            </Box>
-            <Typography variant="caption" color="textSecondary">
-              Version 1.0.0
-            </Typography>
-          </Box>
-        </Box>
-      </Drawer>
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          p: 0,
-          width: { sm: open ? `calc(100% - ${drawerWidth}px)` : '100%' },
-          transition: theme.transitions.create('margin', {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
-          ml: open ? 0 : `-${drawerWidth}px`,
-          height: '100vh',
-          overflow: 'auto',
-        }}
-      >
-        <Toolbar /> {/* Spacer for fixed app bar */}
-        <Box sx={{ p: 0 }}>
-          <Outlet />
-        </Box>
-      </Box>
-      <RunHistoryModal open={historyOpen} onClose={()=>setHistoryOpen(false)} />
-    </Box>
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <p className="text-xs text-secondary" style={{ margin: 0 }}>
+              Last run: {lastRunTime}
+            </p>
+            <button
+              className="btn-text btn-small"
+              onClick={() => setHistoryOpen(true)}
+              style={{ padding: '4px 8px' }}
+            >
+              History
+            </button>
+          </div>
+          <p className="text-xs text-secondary" style={{ margin: 0 }}>
+            Version 1.0.0
+          </p>
+        </div>
+      </aside>
+
+      {/* Mobile Overlay */}
+      {isMobile && open && (
+        <div
+          className="sidebar-overlay"
+          onClick={handleDrawerToggle}
+        />
+      )}
+
+      {/* Header */}
+      <header className={`app-header ${!open ? 'sidebar-closed' : ''}`}>
+        <button
+          className="menu-toggle"
+          onClick={handleDrawerToggle}
+          aria-label="Toggle menu"
+        >
+          <svg
+            className="menu-icon"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            {open ? (
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            ) : (
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            )}
+          </svg>
+        </button>
+
+        <h1 style={{ fontSize: '18px', fontWeight: 600, margin: 0, flex: 1 }}>
+          Smart Grant Finder
+        </h1>
+
+        <UserProfile />
+      </header>
+
+      {/* Main Content */}
+      <main className={`app-main ${!open ? 'sidebar-closed' : ''}`}>
+        <Outlet />
+      </main>
+
+      {/* Run History Modal - placeholder for now */}
+      {historyOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setHistoryOpen(false)}
+        >
+          <div
+            className="card"
+            style={{
+              minWidth: '400px',
+              maxWidth: '600px',
+              maxHeight: '80vh',
+              overflow: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0 }}>Run History</h3>
+              <button
+                className="btn-text"
+                onClick={() => setHistoryOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <p className="text-secondary">Run history will be displayed here.</p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

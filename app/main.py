@@ -43,12 +43,11 @@ def get_allowed_origins() -> List[str]:
             'http://localhost:3000'
         ]
     else:
-        # Development - allow localhost and production frontend for testing
+        # Development - localhost only (remove production URL for security)
         return [
             'http://localhost:3000',
             'http://127.0.0.1:3000',
-            'http://localhost:8000',
-            'https://smartgrantfinder.vercel.app'
+            'http://localhost:8000'
         ]
 
 # Create FastAPI app
@@ -60,6 +59,15 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json"
 )
+
+# Rate limiting setup
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.get("/health", tags=["Health Check"])
 async def health_check():
@@ -123,6 +131,10 @@ async def detailed_health_check():
             }
         )
 
+# Security headers middleware - MUST be before CORS
+from app.middleware import SecurityHeadersMiddleware
+app.add_middleware(SecurityHeadersMiddleware)
+
 # CORS middleware - configured for Vercel frontend
 allowed_origins = get_allowed_origins()
 
@@ -130,11 +142,21 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "User-Agent",
+        "DNT",
+        "Cache-Control",
+        "X-Requested-With",
+        "X-CSRF-Token"
+    ],  # Explicit whitelist instead of "*" for security
     expose_headers=[
         "Content-Length",
-        "X-Total-Count", 
+        "X-Total-Count",
         "X-Rate-Limit-Remaining"
     ],
     max_age=600
@@ -237,24 +259,28 @@ async def startup_event():
                 logger.info("✅ Pinecone: Connected")
         else:
             logger.warning("⚠️  Pinecone: Not available")
-            
-        if services.perplexity_client:
-            is_mock = getattr(services.perplexity_client, 'is_mock', False)
-            if is_mock:
-                logger.warning("⚠️  Perplexity: Using mock client")
+
+        # Check DeepSeek AI (replaces Perplexity)
+        try:
+            from services.deepseek_client import get_deepseek_client
+            deepseek = get_deepseek_client()
+            if deepseek.api_key:
+                logger.info("✅ DeepSeek AI: Connected")
             else:
-                logger.info("✅ Perplexity: Connected")
-        else:
-            logger.warning("⚠️  Perplexity: Not available")
-            
-        if services.notifier:
-            is_mock = getattr(services.notifier, 'is_mock', False)
-            if is_mock:
-                logger.warning("⚠️  Notifications: Using mock manager")
+                logger.warning("⚠️  DeepSeek AI: API key not configured")
+        except Exception as e:
+            logger.warning(f"⚠️  DeepSeek AI: Not available - {str(e)}")
+
+        # Check Resend Email (replaces Telegram notifications)
+        try:
+            from services.resend_client import get_resend_client
+            resend = get_resend_client()
+            if resend.api_key:
+                logger.info("✅ Resend Email: Connected")
             else:
-                logger.info("✅ Notifications: Connected")
-        else:
-            logger.warning("⚠️  Notifications: Not available")
+                logger.warning("⚠️  Resend Email: API key not configured")
+        except Exception as e:
+            logger.warning(f"⚠️  Resend Email: Not available - {str(e)}")
             
         logger.info("=== Startup Complete - Application Ready ===")
         

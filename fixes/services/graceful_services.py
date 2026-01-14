@@ -13,7 +13,7 @@ from enum import Enum
 
 from fixes.services.fallback_clients import (
     FallbackPineconeClient,
-    FallbackPerplexityClient, 
+    FallbackDeepSeekClient,
     FallbackNotificationManager,
     FallbackResearchAgent,
     FallbackAnalysisAgent,
@@ -23,8 +23,8 @@ from fixes.services.fallback_clients import (
 # Import actual service classes
 try:
     from utils.pinecone_client import PineconeClient
-    from utils.perplexity_client import PerplexityClient
-    from utils.notification_manager import NotificationManager
+    from services.deepseek_client import DeepSeekClient
+    from services.resend_client import ResendEmailClient
     from agents.integrated_research_agent import IntegratedResearchAgent
     from agents.analysis_agent import AnalysisAgent
 except ImportError as e:
@@ -280,20 +280,15 @@ class GracefulServiceManager:
         try:
             if service_name == "pinecone":
                 return PineconeClient()
-            elif service_name == "perplexity":
-                return PerplexityClient()
+            elif service_name == "deepseek":
+                from services.deepseek_client import DeepSeekClient
+                return DeepSeekClient()
             elif service_name == "notification":
-                if settings.telegram_bot_token and settings.telegram_chat_id:
-                    return NotificationManager(
-                        telegram_token=settings.telegram_bot_token,
-                        telegram_chat_id=settings.telegram_chat_id
-                    )
-                else:
-                    logger.warning("Telegram credentials not available for NotificationManager")
-                    return None
+                from services.resend_client import ResendEmailClient
+                return ResendEmailClient()
             elif service_name == "research_agent":
                 # Create research agent with proper dependencies
-                if "pinecone" in self.services and "perplexity" in self.services:
+                if "pinecone" in self.services and "deepseek" in self.services:
                     return IntegratedResearchAgent(
                         db_session_maker=self.services["database"].sessionmaker
                     )
@@ -321,8 +316,8 @@ class GracefulServiceManager:
         """Create fallback service instance"""
         if service_name == "pinecone":
             return FallbackPineconeClient(self.fallback_config)
-        elif service_name == "perplexity":
-            return FallbackPerplexityClient(self.fallback_config)
+        elif service_name == "deepseek":
+            return FallbackDeepSeekClient(self.fallback_config)
         elif service_name == "notification":
             return FallbackNotificationManager(self.fallback_config)
         elif service_name == "research_agent":

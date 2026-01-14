@@ -1,0 +1,26 @@
+/* Table Skeleton Loader - Swiss Design */
+
+.skeleton-row {
+  opacity: 0.7;
+}
+
+.skeleton-loader {
+  background: linear-gradient(
+    90deg,
+    #F5F5F5 0%,
+    #E0E0E0 50%,
+    #F5F5F5 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  border-radius: 2px;
+}
+
+@keyframes skeleton-pulse {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

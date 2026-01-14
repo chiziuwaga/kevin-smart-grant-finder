@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useRef, useState, useCallback } from 'react';
-import { Backdrop, CircularProgress, Snackbar, Alert } from '@mui/material';
+import './LoadingProvider.css';
 
 const LoadingContext = createContext();
 
@@ -62,41 +62,46 @@ export function LoadingProvider({ children }) {
     };
   }, []);
 
-  const value = React.useMemo(() => ({
-    isLoading,
-    startLoading,
-    stopLoading,
-    showError,
-    clearError
-  }), [isLoading, startLoading, stopLoading, showError, clearError]);
+  const value = React.useMemo(
+    () => ({
+      isLoading,
+      startLoading,
+      stopLoading,
+      showError,
+      clearError,
+    }),
+    [isLoading, startLoading, stopLoading, showError, clearError]
+  );
 
   return (
     <LoadingContext.Provider value={value}>
       {children}
-      <Backdrop
-        sx={{ 
-          color: '#fff', 
-          zIndex: (theme) => theme.zIndex.drawer + 1,
-          flexDirection: 'column',
-          gap: 2 
-        }}
-        open={isLoading}
-      >
-        <CircularProgress color="inherit" />
-        {isLoading && loadingRef.current > 1 && (
-          <div>{`Processing ${loadingRef.current} requests...`}</div>
-        )}
-      </Backdrop>
-      <Snackbar
-        open={!!error}
-        autoHideDuration={6000}
-        onClose={clearError}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert onClose={clearError} severity="error" sx={{ width: '100%' }}>
-          {error}
-        </Alert>
-      </Snackbar>
+
+      {/* Loading Backdrop */}
+      {isLoading && (
+        <div className="loading-backdrop">
+          <div className="loading-spinner"></div>
+          {loadingRef.current > 1 && (
+            <div className="loading-text">
+              Processing {loadingRef.current} requests...
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Error Snackbar */}
+      {error && (
+        <div className="snackbar snackbar-error">
+          <span className="snackbar-message">{error}</span>
+          <button
+            className="snackbar-close"
+            onClick={clearError}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </LoadingContext.Provider>
   );
 }

@@ -1,27 +1,16 @@
-import { Refresh as RefreshIcon } from '@mui/icons-material';
-import {
-    Alert,
-    Box,
-    Button,
-    Card,
-    CardContent,
-    Chip,
-    CircularProgress,
-    LinearProgress,
-    Typography
-} from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useCallback, useEffect, useState } from 'react';
+import './SearchStatusMonitor.css';
 
 /**
  * Real-time search monitoring component
  * Polls search status and provides immediate feedback
  */
-const SearchStatusMonitor = ({ 
-  searchRunId, 
-  onComplete, 
+const SearchStatusMonitor = ({
+  searchRunId,
+  onComplete,
   onError,
-  autoRefresh = true 
+  autoRefresh = true
 }) => {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -54,18 +43,9 @@ const SearchStatusMonitor = ({
           onError?.(data.data);
           enqueueSnackbar(
             `Search failed: ${data.data.error_message || 'Unknown error'}`,
-            { 
+            {
               variant: 'error',
               persist: true,
-              action: (
-                <Button 
-                  color="inherit" 
-                  size="small" 
-                  onClick={() => window.location.reload()}
-                >
-                  Retry
-                </Button>
-              )
             }
           );
         }
@@ -124,133 +104,114 @@ const SearchStatusMonitor = ({
 
   if (loading && !status) {
     return (
-      <Box display="flex" alignItems="center" gap={2}>
-        <CircularProgress size={20} />
-        <Typography variant="body2">Loading search status...</Typography>
-      </Box>
+      <div className="search-status-loading">
+        <div className="spinner"></div>
+        <span>Loading search status...</span>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Alert 
-        severity="error" 
-        action={
-          <Button 
-            color="inherit" 
-            size="small" 
-            startIcon={<RefreshIcon />}
-            onClick={fetchStatus}
-          >
-            Retry
-          </Button>
-        }
-      >
-        Error: {error}
-      </Alert>
+      <div className={`alert alert-error`}>
+        <div className="alert-content">
+          <strong>Error:</strong> {error}
+        </div>
+        <button className="btn btn-secondary btn-sm" onClick={fetchStatus}>
+          <span className="icon">↻</span> Retry
+        </button>
+      </div>
     );
   }
 
   if (!status) {
     return (
-      <Alert severity="info">
+      <div className="alert alert-info">
         No search status available for run ID: {searchRunId}
-      </Alert>
+      </div>
     );
   }
 
   return (
-    <Card elevation={1}>
-      <CardContent>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <Typography variant="h6">
-            Search Status
-          </Typography>
-          <Chip
-            label={status.status.replace('_', ' ').toUpperCase()}
-            color={getStatusColor(status.status)}
-            size="small"
-          />
-        </Box>
+    <div className="search-status-card">
+      <div className="search-status-header">
+        <h3 className="search-status-title">Search Status</h3>
+        <span className={`badge badge-${getStatusColor(status.status)}`}>
+          {status.status.replace('_', ' ').toUpperCase()}
+        </span>
+      </div>
 
-        {status.status === 'in_progress' && (
-          <Box mb={2}>
-            <Box display="flex" justifyContent="space-between" mb={1}>
-              <Typography variant="body2" color="textSecondary">
-                {status.current_step}
-              </Typography>
-              <Typography variant="body2" color="textSecondary">
-                {Math.round(status.progress_percentage)}%
-              </Typography>
-            </Box>
-            <LinearProgress 
-              variant="determinate" 
-              value={status.progress_percentage} 
-              sx={{ height: 8, borderRadius: 4 }}
-            />
-          </Box>
+      {status.status === 'in_progress' && (
+        <div className="search-status-progress">
+          <div className="search-status-progress-info">
+            <span className="search-status-progress-step">{status.current_step}</span>
+            <span className="search-status-progress-percent">
+              {Math.round(status.progress_percentage)}%
+            </span>
+          </div>
+          <div className="progress-bar">
+            <div
+              className="progress-bar-fill"
+              style={{ width: `${status.progress_percentage}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+
+      <div className="search-status-stats">
+        <div className="stat-item">
+          <strong>Grants Found:</strong> {status.grants_found}
+        </div>
+        <div className="stat-item">
+          <strong>High Priority:</strong> {status.high_priority}
+        </div>
+        {status.duration_seconds && (
+          <div className="stat-item">
+            <strong>Duration:</strong> {Math.round(status.duration_seconds)}s
+          </div>
         )}
+      </div>
 
-        <Box display="flex" gap={2} flexWrap="wrap">
-          <Typography variant="body2">
-            <strong>Grants Found:</strong> {status.grants_found}
-          </Typography>
-          <Typography variant="body2">
-            <strong>High Priority:</strong> {status.high_priority}
-          </Typography>
-          {status.duration_seconds && (
-            <Typography variant="body2">
-              <strong>Duration:</strong> {Math.round(status.duration_seconds)}s
-            </Typography>
-          )}
-        </Box>
+      {status.status === 'failed' && status.error_message && (
+        <div className="alert alert-error">
+          <div className="alert-content">
+            <div><strong>Error:</strong> {status.error_message}</div>
+            <div className="alert-secondary">{getRecoveryAction(status.error_message)}</div>
+          </div>
+        </div>
+      )}
 
-        {status.status === 'failed' && status.error_message && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            <Typography variant="body2" gutterBottom>
-              <strong>Error:</strong> {status.error_message}
-            </Typography>
-            <Typography variant="body2" color="textSecondary">
-              {getRecoveryAction(status.error_message)}
-            </Typography>
-          </Alert>
-        )}
+      {status.status === 'success' && (
+        <div className="alert alert-success">
+          Search completed successfully! Found {status.grants_found} grants
+          {status.high_priority > 0 && ` (${status.high_priority} high priority)`}.
+        </div>
+      )}
 
-        {status.status === 'success' && (
-          <Alert severity="success" sx={{ mt: 2 }}>
-            Search completed successfully! Found {status.grants_found} grants
-            {status.high_priority > 0 && ` (${status.high_priority} high priority)`}.
-          </Alert>
-        )}
-
-        {autoRefresh && status.status === 'in_progress' && (
-          <Box display="flex" alignItems="center" gap={1} mt={2}>
-            <CircularProgress size={16} />
-            <Typography variant="caption" color="textSecondary">
-              Auto-refreshing every 2 seconds...
-            </Typography>
-            <Button 
-              size="small" 
-              onClick={() => setPolling(false)}
-              sx={{ ml: 'auto' }}
-            >
-              Stop Auto-refresh
-            </Button>
-          </Box>
-        )}
-
-        {(!autoRefresh || (status.status !== 'in_progress' && !polling)) && (
-          <Button
-            startIcon={<RefreshIcon />}
-            onClick={fetchStatus}
-            size="small"
-            sx={{ mt: 2 }}
+      {autoRefresh && status.status === 'in_progress' && (
+        <div className="search-status-footer">
+          <div className="auto-refresh-indicator">
+            <div className="spinner spinner-sm"></div>
+            <span>Auto-refreshing every 2 seconds...</span>
+          </div>
+          <button
+            className="btn btn-text btn-sm"
+            onClick={() => setPolling(false)}
           >
-            Refresh Status
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+            Stop Auto-refresh
+          </button>
+        </div>
+      )}
+
+      {(!autoRefresh || (status.status !== 'in_progress' && !polling)) && (
+        <button
+          className="btn btn-secondary"
+          onClick={fetchStatus}
+        >
+          <span className="icon">↻</span> Refresh Status
+        </button>
+      )}
+    </div>
   );
 };
 

@@ -1,0 +1,284 @@
+services:
+  # ==============================================================================
+  # WEB SERVICE - FastAPI Application
+  # ==============================================================================
+  - type: web
+    name: grant-finder-api
+    runtime: python
+    plan: starter  # Can upgrade to standard/pro as needed
+    region: oregon  # Choose your preferred region
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    healthCheckPath: /health
+
+    envVars:
+      # Python
+      - key: PYTHON_VERSION
+        value: 3.11
+
+      # Application
+      - key: ENVIRONMENT
+        value: production
+
+      - key: APP_DEBUG
+        value: false
+
+      - key: SECRET_KEY
+        generateValue: true  # Auto-generate secure secret
+
+      # Database (auto-populated by Render)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: grant-finder-db
+          property: connectionString
+
+      # Redis (auto-populated by Render)
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: grant-finder-redis
+          property: connectionString
+
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: grant-finder-redis
+          property: connectionString
+
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: grant-finder-redis
+          property: connectionString
+
+      # Auth0 (add in Render dashboard)
+      - key: AUTH0_DOMAIN
+        sync: false  # Set manually in dashboard
+
+      - key: AUTH0_API_AUDIENCE
+        sync: false
+
+      - key: AUTH0_ALGORITHMS
+        value: RS256
+
+      # Stripe (add in Render dashboard)
+      - key: STRIPE_SECRET_KEY
+        sync: false  # Set manually - keep secret!
+
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+      - key: STRIPE_PRICE_ID
+        sync: false  # Your $35/month price ID
+
+      # Email - Resend (add in Render dashboard)
+      - key: RESEND_API_KEY
+        sync: false
+
+      - key: FROM_EMAIL
+        value: noreply@grantfinder.com
+
+      # AI Services (add in Render dashboard)
+      - key: DEEPSEEK_API_KEY
+        sync: false
+
+      - key: DEEPSEEK_API_BASE
+        value: https://api.deepseek.com
+
+      - key: AGENTQL_API_KEY
+        sync: false
+
+      - key: PINECONE_API_KEY
+        sync: false
+
+      - key: PINECONE_INDEX_NAME
+        value: grantcluster
+
+      - key: OPENAI_API_KEY
+        sync: false  # Optional fallback
+
+      # Frontend URL (update with your actual frontend URL)
+      - key: FRONTEND_URL
+        value: https://app.grantfinder.com  # Update this!
+
+      # CORS Origins
+      - key: ALLOWED_ORIGINS
+        value: https://app.grantfinder.com,http://localhost:3000
+
+  # ==============================================================================
+  # CELERY WORKER - Background Task Processing
+  # ==============================================================================
+  - type: worker
+    name: grant-finder-worker
+    runtime: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A celery_app worker --loglevel=info --concurrency=2
+
+    envVars:
+      # Python
+      - key: PYTHON_VERSION
+        value: 3.11
+
+      # Application
+      - key: ENVIRONMENT
+        value: production
+
+      - key: SECRET_KEY
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: SECRET_KEY
+
+      # Database
+      - key: DATABASE_URL
+        fromDatabase:
+          name: grant-finder-db
+          property: connectionString
+
+      # Redis
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: grant-finder-redis
+          property: connectionString
+
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: grant-finder-redis
+          property: connectionString
+
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: grant-finder-redis
+          property: connectionString
+
+      # Copy all other env vars from web service
+      - key: AUTH0_DOMAIN
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: AUTH0_DOMAIN
+
+      - key: AUTH0_API_AUDIENCE
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: AUTH0_API_AUDIENCE
+
+      - key: STRIPE_SECRET_KEY
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: STRIPE_SECRET_KEY
+
+      - key: RESEND_API_KEY
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: RESEND_API_KEY
+
+      - key: FROM_EMAIL
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: FROM_EMAIL
+
+      - key: DEEPSEEK_API_KEY
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: DEEPSEEK_API_KEY
+
+      - key: AGENTQL_API_KEY
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: AGENTQL_API_KEY
+
+      - key: PINECONE_API_KEY
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: PINECONE_API_KEY
+
+      - key: PINECONE_INDEX_NAME
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: PINECONE_INDEX_NAME
+
+  # ==============================================================================
+  # CELERY BEAT - Scheduled Tasks (Cron Jobs)
+  # ==============================================================================
+  - type: cron
+    name: grant-finder-scheduler
+    runtime: python
+    plan: starter
+    region: oregon
+    schedule: "*/30 * * * *"  # Every 30 minutes (Beat will handle actual scheduling)
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A celery_app beat --loglevel=info
+
+    envVars:
+      # Same env vars as worker (copy from above)
+      - key: PYTHON_VERSION
+        value: 3.11
+
+      - key: DATABASE_URL
+        fromDatabase:
+          name: grant-finder-db
+          property: connectionString
+
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: grant-finder-redis
+          property: connectionString
+
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: redis
+          name: grant-finder-redis
+          property: connectionString
+
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: redis
+          name: grant-finder-redis
+          property: connectionString
+
+      # Copy key env vars
+      - key: DEEPSEEK_API_KEY
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: DEEPSEEK_API_KEY
+
+      - key: RESEND_API_KEY
+        fromService:
+          type: web
+          name: grant-finder-api
+          envVarKey: RESEND_API_KEY
+
+# ==============================================================================
+# DATABASES
+# ==============================================================================
+databases:
+  - name: grant-finder-db
+    databaseName: grantfinder
+    user: grantfinder
+    plan: starter  # 1GB storage, can upgrade
+    region: oregon
+    ipAllowList: []  # Allow all Render services
+
+  - name: grant-finder-redis
+    plan: starter  # 25MB, can upgrade
+    region: oregon
+    ipAllowList: []  # Allow all Render services

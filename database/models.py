@@ -1,5 +1,6 @@
 """
 Database models for the application.
+Multi-user support with Auth0 authentication, Stripe subscriptions, and AI application generation.
 """
 
 from datetime import datetime
@@ -25,11 +26,269 @@ class SearchFrequency(str, PyEnum):
     TWICE_WEEKLY = "twice_weekly"
     MONTHLY = "monthly"
 
+class SubscriptionStatus(str, PyEnum):
+    ACTIVE = "active"
+    CANCELED = "canceled"
+    PAST_DUE = "past_due"
+    TRIALING = "trialing"
+    INCOMPLETE = "incomplete"
+    INCOMPLETE_EXPIRED = "incomplete_expired"
+    UNPAID = "unpaid"
+
+class ApplicationGenerationStatus(str, PyEnum):
+    DRAFT = "draft"
+    GENERATED = "generated"
+    EDITED = "edited"
+    SUBMITTED = "submitted"
+    AWARDED = "awarded"
+    REJECTED = "rejected"
+
+
+# ============================================================================
+# USER & AUTHENTICATION MODELS
+# ============================================================================
+
+class User(Base):
+    """User account with Auth0 authentication and subscription management."""
+    __tablename__ = 'users'
+
+    id = Column(Integer, primary_key=True)
+    auth0_id = Column(String, unique=True, nullable=False, index=True)  # Auth0 user ID
+    email = Column(String, unique=True, nullable=False, index=True)
+    full_name = Column(String, nullable=True)
+    company_name = Column(String, nullable=True)
+
+    # Subscription tier and status
+    subscription_tier = Column(String, default="free")  # free, basic, pro
+    subscription_status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.INCOMPLETE)
+
+    # Usage tracking (monthly counters)
+    searches_used = Column(Integer, default=0)
+    applications_used = Column(Integer, default=0)
+    searches_limit = Column(Integer, default=50)
+    applications_limit = Column(Integer, default=20)
+
+    # Usage period tracking
+    usage_period_start = Column(DateTime, default=func.now())
+    usage_period_end = Column(DateTime, nullable=True)
+
+    # Account status
+    is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)
+
+    # Cost tracking
+    monthly_ai_cost_cents = Column(Integer, default=0)  # Track AI costs in cents
+    last_cost_reset = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    last_login = Column(DateTime, nullable=True)
+
+    # Relationships
+    business_profile = relationship("BusinessProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    subscription = relationship("Subscription", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    grants = relationship("Grant", back_populates="user", cascade="all, delete-orphan")
+    generated_applications = relationship("GeneratedApplication", back_populates="user", cascade="all, delete-orphan")
+    search_runs = relationship("SearchRun", back_populates="user", cascade="all, delete-orphan")
+    user_settings = relationship("UserSettings", back_populates="user", uselist=False, cascade="all, delete-orphan")
+
+    def to_dict(self):
+        """Convert User model to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "email": self.email,
+            "fullName": self.full_name,
+            "companyName": self.company_name,
+            "subscriptionTier": self.subscription_tier,
+            "subscriptionStatus": self.subscription_status.value if self.subscription_status is not None else None,
+            "searchesUsed": self.searches_used,
+            "applicationsUsed": self.applications_used,
+            "searchesLimit": self.searches_limit,
+            "applicationsLimit": self.applications_limit,
+            "isActive": self.is_active,
+            "createdAt": self.created_at.isoformat() if self.created_at is not None else None,
+            "lastLogin": self.last_login.isoformat() if self.last_login else None,
+        }
+
+
+class BusinessProfile(Base):
+    """User's business profile for RAG-based grant application generation."""
+    __tablename__ = 'business_profiles'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), unique=True, nullable=False)
+
+    # Basic business information
+    business_name = Column(String, nullable=False)
+    mission_statement = Column(Text, nullable=True)
+    service_description = Column(Text, nullable=True)
+    website_url = Column(String, nullable=True)  # Business website URL
+
+    # Business details
+    target_sectors = Column(JSON, nullable=True)  # List of sectors
+    revenue_range = Column(String, nullable=True)  # e.g., "100k-500k"
+    years_in_operation = Column(Integer, nullable=True)
+    geographic_focus = Column(String, nullable=True)
+    team_size = Column(Integer, nullable=True)
+
+    # Long-form narrative for RAG (2000 char limit enforced in application)
+    narrative_text = Column(Text, nullable=True)  # Comprehensive business description
+
+    # Document uploads (supporting documents for grant applications)
+    uploaded_documents = Column(JSON, nullable=True)  # Array of {filename, url, size, uploaded_at}
+    documents_total_size_bytes = Column(Integer, default=0)  # Track total size (10MB limit)
+
+    # Vector embeddings reference
+    vector_embeddings_id = Column(String, nullable=True)  # Pinecone namespace/ID
+    embeddings_generated_at = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    user = relationship("User", back_populates="business_profile")
+
+    def to_dict(self):
+        """Convert BusinessProfile to dictionary."""
+        return {
+            "id": self.id,
+            "businessName": self.business_name,
+            "missionStatement": self.mission_statement,
+            "serviceDescription": self.service_description,
+            "websiteUrl": self.website_url,
+            "targetSectors": self.target_sectors if self.target_sectors is not None else [],
+            "revenueRange": self.revenue_range,
+            "yearsInOperation": self.years_in_operation,
+            "geographicFocus": self.geographic_focus,
+            "teamSize": self.team_size,
+            "narrativeText": self.narrative_text,
+            "uploadedDocuments": self.uploaded_documents if self.uploaded_documents is not None else [],
+            "documentsTotalSize": self.documents_total_size_bytes or 0,
+            "embeddingsGenerated": self.embeddings_generated_at is not None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at is not None else None,
+        }
+
+
+class Subscription(Base):
+    """Stripe subscription management."""
+    __tablename__ = 'subscriptions'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), unique=True, nullable=False)
+
+    # Stripe identifiers
+    stripe_customer_id = Column(String, unique=True, nullable=True)
+    stripe_subscription_id = Column(String, unique=True, nullable=True)
+
+    # Plan details
+    plan_name = Column(String, default="basic")  # basic, pro
+    amount = Column(Integer, default=3500)  # Amount in cents ($35.00)
+    currency = Column(String, default="usd")
+
+    # Subscription status
+    status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.INCOMPLETE)
+
+    # Billing period
+    current_period_start = Column(DateTime, nullable=True)
+    current_period_end = Column(DateTime, nullable=True)
+
+    # Usage limits for this subscription
+    searches_remaining = Column(Integer, default=50)
+    applications_remaining = Column(Integer, default=20)
+
+    # Subscription management
+    auto_renew = Column(Boolean, default=True)
+    cancel_at_period_end = Column(Boolean, default=False)
+    canceled_at = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    user = relationship("User", back_populates="subscription")
+
+    def to_dict(self):
+        """Convert Subscription to dictionary."""
+        return {
+            "id": self.id,
+            "planName": self.plan_name,
+            "amount": self.amount / 100,  # Convert to dollars
+            "currency": self.currency,
+            "status": self.status.value if self.status is not None else None,
+            "currentPeriodStart": self.current_period_start.isoformat() if self.current_period_start is not None else None,
+            "currentPeriodEnd": self.current_period_end.isoformat() if self.current_period_end is not None else None,
+            "searchesRemaining": self.searches_remaining,
+            "applicationsRemaining": self.applications_remaining,
+            "autoRenew": self.auto_renew,
+            "cancelAtPeriodEnd": self.cancel_at_period_end,
+        }
+
+
+class GeneratedApplication(Base):
+    """AI-generated grant applications using RAG."""
+    __tablename__ = 'generated_applications'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    grant_id = Column(Integer, ForeignKey('grants.id', ondelete='CASCADE'), nullable=False, index=True)
+
+    # Application content
+    generated_content = Column(Text, nullable=True)  # Full application text
+
+    # Structured sections (JSON)
+    sections = Column(JSON, nullable=True)  # {executive_summary, needs_statement, etc.}
+
+    # Application metadata
+    generation_date = Column(DateTime, server_default=func.now())
+    last_edited = Column(DateTime, nullable=True)
+    status = Column(Enum(ApplicationGenerationStatus), default=ApplicationGenerationStatus.DRAFT)
+
+    # User feedback and notes
+    feedback_notes = Column(Text, nullable=True)
+    user_edits = Column(JSON, nullable=True)  # Track which sections were edited
+
+    # Generation metadata
+    model_used = Column(String, default="deepseek")  # AI model used
+    generation_time_seconds = Column(Float, nullable=True)
+    tokens_used = Column(Integer, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    user = relationship("User", back_populates="generated_applications")
+    grant = relationship("Grant", back_populates="generated_applications")
+
+    def to_dict(self):
+        """Convert GeneratedApplication to dictionary."""
+        return {
+            "id": self.id,
+            "grantId": self.grant_id,
+            "generatedContent": self.generated_content,
+            "sections": self.sections if self.sections is not None else {},
+            "generationDate": self.generation_date.isoformat() if self.generation_date is not None else None,
+            "lastEdited": self.last_edited.isoformat() if self.last_edited is not None else None,
+            "status": self.status.value if self.status is not None else None,
+            "feedbackNotes": self.feedback_notes,
+            "modelUsed": self.model_used,
+            "generationTime": self.generation_time_seconds,
+        }
+
+
+# ============================================================================
+# GRANT MODELS (Updated for multi-user)
+# ============================================================================
+
 class Grant(Base):
     __tablename__ = 'grants'
 
     id = Column(Integer, primary_key=True)
-    
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)  # NULL for legacy grants
+
     # Basic grant information
     title = Column(String, nullable=False, index=True)
     description = Column(String)
@@ -93,10 +352,12 @@ class Grant(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
+    # Relationships
+    user = relationship("User", back_populates="grants")
     analyses = relationship("Analysis", back_populates="grant", cascade="all, delete-orphan")
     saved_by = relationship("UserSettings", secondary="saved_grants", back_populates="saved_grants")
-    # Relationship to ApplicationHistory
     application_history = relationship("ApplicationHistory", back_populates="grant", cascade="all, delete-orphan")
+    generated_applications = relationship("GeneratedApplication", back_populates="grant", cascade="all, delete-orphan")
 
 
 class Analysis(Base):
@@ -144,7 +405,7 @@ class ApplicationHistory(Base):
 
     id = Column(Integer, primary_key=True)
     grant_id = Column(Integer, ForeignKey('grants.id', ondelete='CASCADE'), nullable=False)
-    user_id = Column(String, index=True, nullable=False) # Link to Kevin's profile (e.g., "kevin_default")
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)  # Now FK to users table
     
     application_date = Column(DateTime, nullable=True)
     status = Column(Enum(ApplicationStatus), default=ApplicationStatus.NOT_APPLIED, nullable=False)
@@ -165,7 +426,12 @@ class UserSettings(Base):
     __tablename__ = 'user_settings'
 
     id = Column(Integer, primary_key=True)
-    telegram_enabled = Column(Boolean, default=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), unique=True, nullable=False)
+
+    # Notification preferences (Telegram removed, email added)
+    email_notifications = Column(Boolean, default=True)
+    deadline_reminders = Column(Boolean, default=True)
+
     minimum_score = Column(Float, default=0.7)
     notify_categories = Column(JSON, default=list)
     schedule_frequency = Column(Enum(SearchFrequency), default=SearchFrequency.WEEKLY)
@@ -174,17 +440,18 @@ class UserSettings(Base):
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
+    # Relationships
+    user = relationship("User", back_populates="user_settings")
     saved_grants = relationship("Grant", secondary="saved_grants", back_populates="saved_by")
 
     def to_dict(self):
         """Convert UserSettings model to dictionary format for API responses"""
         return {
-            "telegramEnabled": self.telegram_enabled,
-            "emailNotifications": True,  # Default value since not in DB model
-            "deadlineReminders": True,   # Default value since not in DB model
-            "searchFrequency": self.schedule_frequency.value if self.schedule_frequency else "weekly",
-            "categories": self.notify_categories or [],
-            "minimumScore": self.minimum_score or 0.7
+            "emailNotifications": self.email_notifications,
+            "deadlineReminders": self.deadline_reminders,
+            "searchFrequency": self.schedule_frequency.value if self.schedule_frequency is not None else "weekly",
+            "categories": self.notify_categories if self.notify_categories is not None else [],
+            "minimumScore": self.minimum_score if self.minimum_score is not None else 0.7
         }
 
 class SavedGrants(Base):
@@ -209,6 +476,8 @@ class SearchRun(Base):
     __tablename__ = 'search_runs'
 
     id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)  # NULL for legacy searches
+
     timestamp = Column(DateTime, server_default=func.now())
     grants_found = Column(Integer, default=0)
     high_priority = Column(Integer, default=0)
@@ -228,3 +497,6 @@ class SearchRun(Base):
     sources_searched = Column(Integer, default=0)
     api_calls_made = Column(Integer, default=0)
     processing_time_ms = Column(Integer, nullable=True)
+
+    # Relationships
+    user = relationship("User", back_populates="search_runs")

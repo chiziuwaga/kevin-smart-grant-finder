@@ -92,69 +92,59 @@ class HealthChecker:
             }
     
     @staticmethod
-    async def check_perplexity() -> Dict[str, Any]:
-        """Check Perplexity service health"""
+    async def check_deepseek() -> Dict[str, Any]:
+        """Check DeepSeek AI service health"""
         try:
-            if not services.perplexity_client:
+            if not services.deepseek_client:
                 return {
                     "status": "unavailable",
-                    "message": "Perplexity client not initialized",
+                    "message": "DeepSeek client not initialized",
                     "details": None
                 }
-            
-            is_mock = getattr(services.perplexity_client, 'is_mock', False)
-            
-            if is_mock:
-                return {
-                    "status": "degraded",
-                    "message": "Using mock Perplexity client",
-                    "details": {"mock_mode": True}
-                }
-            
-            # Test with a simple query
-            rate_limit = services.perplexity_client.get_rate_limit_status()
-            
+
+            # Test basic client availability
+            has_api_key = bool(services.deepseek_client.api_key)
+
             return {
-                "status": "healthy",
-                "message": "Perplexity client operational",
+                "status": "healthy" if has_api_key else "degraded",
+                "message": "DeepSeek client operational" if has_api_key else "DeepSeek client missing API key",
                 "details": {
-                    "rate_limit_remaining": rate_limit,
-                    "mock_mode": False
+                    "api_key_configured": has_api_key
                 }
             }
-            
+
         except Exception as e:
-            logger.error(f"Perplexity health check failed: {e}")
+            logger.error(f"DeepSeek health check failed: {e}")
             return {
                 "status": "unhealthy",
-                "message": f"Perplexity error: {str(e)}",
+                "message": f"DeepSeek error: {str(e)}",
                 "details": {"error_type": type(e).__name__}
             }
     
     @staticmethod
     async def check_notifications() -> Dict[str, Any]:
-        """Check notification service health"""
+        """Check email notification service health (Resend)"""
         try:
             if not services.notifier:
                 return {
                     "status": "unavailable",
-                    "message": "Notification manager not initialized",
+                    "message": "Email notification service not initialized",
                     "details": None
                 }
-            
+
             is_mock = getattr(services.notifier, 'is_mock', False)
-            
+
             return {
                 "status": "degraded" if is_mock else "healthy",
-                "message": "Using mock notification manager" if is_mock else "Notification manager operational",
+                "message": "Using fallback email notifications" if is_mock else "Resend email service operational",
                 "details": {"mock_mode": is_mock}
             }
-            
+
         except Exception as e:
-            logger.error(f"Notification health check failed: {e}")
+            logger.error(f"Email notification health check failed: {e}")
             return {
                 "status": "unhealthy",
-                "message": f"Notification error: {str(e)}",
+                "message": f"Email notification error: {str(e)}",
                 "details": {"error_type": type(e).__name__}
             }
     
@@ -166,7 +156,7 @@ class HealthChecker:
             "services": {
                 "database": await HealthChecker.check_database(),
                 "pinecone": await HealthChecker.check_pinecone(),
-                "perplexity": await HealthChecker.check_perplexity(),
+                "deepseek": await HealthChecker.check_deepseek(),
                 "notifications": await HealthChecker.check_notifications()
             }
         }

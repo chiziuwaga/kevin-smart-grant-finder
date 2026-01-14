@@ -1,0 +1,243 @@
+/* SearchHistoryTab Component - Swiss Design */
+
+.search-history-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Statistics Cards */
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.stat-card {
+  background: var(--color-white);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-3);
+  text-align: center;
+}
+
+.stat-value {
+  font-size: var(--font-size-2xl, 32px);
+  font-weight: 600;
+  color: var(--color-gray-900);
+  margin-bottom: var(--space-1);
+}
+
+.stat-value-primary {
+  color: var(--color-accent-blue);
+}
+
+.stat-value-success {
+  color: var(--color-success);
+}
+
+.stat-value-info {
+  color: var(--color-accent-blue);
+}
+
+.stat-label {
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-600);
+}
+
+/* Alert */
+.alert-details {
+  font-size: var(--font-size-sm);
+  margin-top: 4px;
+  font-weight: normal;
+}
+
+/* Search History Card */
+.search-history-card {
+  background: var(--color-white);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-3);
+}
+
+.search-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.search-history-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.search-history-title .icon {
+  font-size: 24px;
+}
+
+.search-history-title h3 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-gray-900);
+}
+
+/* Table Styles */
+.table-container {
+  overflow-x: auto;
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-base);
+}
+
+.data-table thead {
+  background: var(--color-gray-100);
+}
+
+.data-table th {
+  padding: var(--space-2) var(--space-2);
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-gray-900);
+  border-bottom: var(--border-width) solid var(--border-color);
+}
+
+.data-table td {
+  padding: var(--space-2) var(--space-2);
+  border-bottom: var(--border-width) solid var(--border-color);
+  color: var(--color-gray-900);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr:hover {
+  background: var(--color-gray-50, #f9f9f9);
+}
+
+/* Table Cell Styles */
+.status-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.type-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.type-icon {
+  font-size: 18px;
+}
+
+.timestamp-cell {
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+.query-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+}
+
+.badge-outlined {
+  background: transparent;
+  border: var(--border-width) solid var(--border-color);
+  color: var(--color-gray-700);
+}
+
+.badge-tooltip {
+  cursor: help;
+}
+
+/* Utility Classes */
+.text-center {
+  text-align: center;
+}
+
+.font-weight-medium {
+  font-weight: 500;
+}
+
+.text-primary {
+  color: var(--color-accent-blue);
+}
+
+.text-muted {
+  color: var(--color-gray-600);
+}
+
+/* Pagination */
+.table-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) 0;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pagination-info {
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-600);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.pagination-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-700);
+}
+
+.pagination-select {
+  padding: 4px var(--space-1);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-sm);
+  background: var(--color-white);
+  cursor: pointer;
+}
+
+.pagination-select:focus {
+  outline: none;
+  border-color: var(--color-accent-blue);
+}
+
+.pagination-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pagination-page {
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-700);
+  white-space: nowrap;
+}
+
+/* Additional Badge Styles */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}

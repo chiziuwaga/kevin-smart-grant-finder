@@ -1,26 +1,26 @@
-import React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
-import { Box, CircularProgress, Typography, Fade } from '@mui/material';
+import './LoaderOverlay.css';
 
-function LoaderOverlay({ 
-  loading, 
-  children, 
-  height = '300px', 
+function LoaderOverlay({
+  loading,
+  children,
+  height = '300px',
   blur = false,
   message = '',
   minDisplayTime = 500
 }) {
-  const [shouldShow, setShouldShow] = React.useState(loading);
-  const loadStartTime = React.useRef(null);
+  const [shouldShow, setShouldShow] = useState(loading);
+  const loadStartTime = useRef(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (loading) {
       loadStartTime.current = Date.now();
       setShouldShow(true);
     } else if (loadStartTime.current) {
       const elapsed = Date.now() - loadStartTime.current;
       const remaining = Math.max(0, minDisplayTime - elapsed);
-      
+
       if (remaining > 0) {
         const timer = setTimeout(() => {
           setShouldShow(false);
@@ -33,41 +33,18 @@ function LoaderOverlay({
   }, [loading, minDisplayTime]);
 
   return (
-    <Box sx={{ position: 'relative' }}>
+    <div className="loader-overlay-container">
       {children}
-      <Fade in={shouldShow} timeout={300}>
-        <Box
-          sx={{
-            position: 'absolute',
-            inset: 0,
-            bgcolor: blur ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.6)',
-            backdropFilter: blur ? 'blur(4px)' : 'none',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 2,
-            height,
-            zIndex: (theme) => theme.zIndex.drawer + 1,
-            transition: (theme) =>
-              theme.transitions.create(['backdrop-filter', 'background-color'], {
-                duration: theme.transitions.duration.standard,
-              }),
-          }}
+      {shouldShow && (
+        <div
+          className={`loader-overlay ${blur ? 'loader-overlay-blur' : ''} ${shouldShow ? 'loader-overlay-visible' : ''}`}
+          style={{ height }}
         >
-          <CircularProgress size={40} />
-          {message && (
-            <Typography 
-              variant="body2" 
-              color="text.secondary"
-              sx={{ mt: 1 }}
-            >
-              {message}
-            </Typography>
-          )}
-        </Box>
-      </Fade>
-    </Box>
+          <div className="spinner"></div>
+          {message && <div className="loader-message">{message}</div>}
+        </div>
+      )}
+    </div>
   );
 }
 

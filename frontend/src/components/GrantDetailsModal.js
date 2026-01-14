@@ -1,32 +1,8 @@
-import {
-  AccessTime as AccessTimeIcon,
-  Assessment as AssessmentIcon,
-  AttachMoney as AttachMoneyIcon,
-  Business as BusinessIcon,
-  Category as CategoryIcon,
-  LocationOn as LocationOnIcon,
-  OpenInNew as OpenInNewIcon,
-} from '@mui/icons-material';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Grid,
-  List,
-  ListItem,
-  ListItemText,
-  Typography,
-} from '@mui/material';
 import { differenceInDays, format, parseISO } from 'date-fns';
+import './styles/GrantDetailsModal.css';
 
 const GrantDetailsModal = ({ grant, open, onClose }) => {
-  if (!grant) return null;
+  if (!grant || !open) return null;
 
   const daysToDeadline =
     grant.deadline || grant.deadline_date
@@ -50,315 +26,207 @@ const GrantDetailsModal = ({ grant, open, onClose }) => {
     }
 
     return (
-      <Card sx={{ mb: 2 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom startIcon={<AssessmentIcon />}>
-            {title}
-          </Typography>
-          <Grid container spacing={2}>
-            {Object.entries(scores).map(([key, value]) => (
-              <Grid item xs={6} sm={4} key={key}>
-                <Typography variant="body2" color="textSecondary">
-                  {key
-                    .replace(/_/g, ' ')
-                    .replace(/\b\w/g, (c) => c.toUpperCase())}
-                </Typography>
-                <Typography variant="h6" color="primary">
-                  {typeof value === 'number' ? value.toFixed(2) : value}
-                </Typography>
-              </Grid>
-            ))}
-          </Grid>
-        </CardContent>
-      </Card>
+      <div className="score-section">
+        <h3>{title}</h3>
+        <div className="score-grid">
+          {Object.entries(scores).map(([key, value]) => (
+            <div className="score-item" key={key}>
+              <div className="score-label">
+                {key
+                  .replace(/_/g, ' ')
+                  .replace(/\b\w/g, (c) => c.toUpperCase())}
+              </div>
+              <div className="score-value">
+                {typeof value === 'number' ? value.toFixed(2) : value}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     );
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle sx={{ pb: 1 }}>
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-          }}
-        >
-          <Typography variant="h5" component="div" sx={{ flexGrow: 1, pr: 2 }}>
-            {grant.title}
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            {isExpired && <Chip label="EXPIRED" size="small" color="error" />}
-            {isUrgent && (
-              <Chip
-                label={`${daysToDeadline} days left`}
-                size="small"
-                color="warning"
-              />
-            )}
-            <Chip
-              label={grant.category || grant.identified_sector || 'Other'}
-              size="small"
-              color="primary"
-            />
-          </Box>
-        </Box>
-      </DialogTitle>
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content modal-content-large"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <div className="grant-title-section">
+            <h2>{grant.title}</h2>
+            <div className="grant-badges">
+              {isExpired && <span className="badge badge-error">EXPIRED</span>}
+              {isUrgent && (
+                <span className="badge badge-warning">
+                  {daysToDeadline} days left
+                </span>
+              )}
+              <span className="badge badge-primary">
+                {grant.category || grant.identified_sector || 'Other'}
+              </span>
+            </div>
+          </div>
+          <button className="modal-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
 
-      <DialogContent dividers>
-        <Grid container spacing={3}>
-          {/* Basic Information */}
-          <Grid item xs={12} md={8}>
-            <Typography variant="h6" gutterBottom>
-              Description
-            </Typography>
-            <Typography variant="body1" paragraph>
-              {grant.description || 'No description available'}
-            </Typography>
+        <div className="modal-body grant-details-body">
+          <div className="grant-details-layout">
+            {/* Main Content */}
+            <div className="grant-main-content">
+              <section className="grant-section">
+                <h3>Description</h3>
+                <p>{grant.description || 'No description available'}</p>
+              </section>
 
-            {grant.summary_llm && (
-              <>
-                <Typography variant="h6" gutterBottom>
-                  AI-Generated Summary
-                </Typography>
-                <Typography
-                  variant="body1"
-                  paragraph
-                  sx={{
-                    fontStyle: 'italic',
-                    bgcolor: 'grey.50',
-                    p: 2,
-                    borderRadius: 1,
-                  }}
-                >
-                  {grant.summary_llm}
-                </Typography>
-              </>
-            )}
+              {grant.summary_llm && (
+                <section className="grant-section">
+                  <h3>AI-Generated Summary</h3>
+                  <div className="ai-summary">
+                    <p>{grant.summary_llm}</p>
+                  </div>
+                </section>
+              )}
 
-            {grant.eligibility_summary_llm && (
-              <>
-                <Typography variant="h6" gutterBottom>
-                  Eligibility Requirements
-                </Typography>
-                <Typography
-                  variant="body1"
-                  paragraph
-                  sx={{
-                    fontStyle: 'italic',
-                    bgcolor: 'primary.50',
-                    p: 2,
-                    borderRadius: 1,
-                  }}
-                >
-                  {grant.eligibility_summary_llm}
-                </Typography>
-              </>
-            )}
-          </Grid>
+              {grant.eligibility_summary_llm && (
+                <section className="grant-section">
+                  <h3>Eligibility Requirements</h3>
+                  <div className="eligibility-box">
+                    <p>{grant.eligibility_summary_llm}</p>
+                  </div>
+                </section>
+              )}
+            </div>
 
-          {/* Key Details Sidebar */}
-          <Grid item xs={12} md={4}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Key Details
-                </Typography>
+            {/* Sidebar with Key Details */}
+            <aside className="grant-sidebar">
+              <div className="sidebar-card">
+                <h3>Key Details</h3>
 
-                {/* Funder */}
                 {grant.funder_name && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <BusinessIcon sx={{ mr: 1, color: 'primary.main' }} />
-                    <Box>
-                      <Typography variant="caption" color="textSecondary">
-                        Funder
-                      </Typography>
-                      <Typography variant="body2" fontWeight="medium">
-                        {grant.funder_name}
-                      </Typography>
-                    </Box>
-                  </Box>
+                  <div className="detail-item">
+                    <div className="detail-label">Funder</div>
+                    <div className="detail-value">{grant.funder_name}</div>
+                  </div>
                 )}
 
-                {/* Funding Amount */}
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <AttachMoneyIcon sx={{ mr: 1, color: 'success.main' }} />
-                  <Box>
-                    <Typography variant="caption" color="textSecondary">
-                      Funding
-                    </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {grant.funding_amount_display ||
-                        grant.fundingAmount ||
-                        'Not specified'}
-                    </Typography>
-                  </Box>
-                </Box>
+                <div className="detail-item">
+                  <div className="detail-label">Funding</div>
+                  <div className="detail-value">
+                    {grant.funding_amount_display ||
+                      grant.fundingAmount ||
+                      'Not specified'}
+                  </div>
+                </div>
 
-                {/* Deadline */}
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <AccessTimeIcon
-                    sx={{
-                      mr: 1,
-                      color: isExpired
-                        ? 'error.main'
+                <div className="detail-item">
+                  <div className="detail-label">Deadline</div>
+                  <div
+                    className={`detail-value ${
+                      isExpired
+                        ? 'text-error'
                         : isUrgent
-                        ? 'warning.main'
-                        : 'text.secondary',
-                    }}
-                  />
-                  <Box>
-                    <Typography variant="caption" color="textSecondary">
-                      Deadline
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      fontWeight="medium"
-                      color={
-                        isExpired
-                          ? 'error.main'
-                          : isUrgent
-                          ? 'warning.main'
-                          : 'text.primary'
-                      }
-                    >
-                      {grant.deadline || grant.deadline_date
-                        ? format(
-                            parseISO(grant.deadline || grant.deadline_date),
-                            'MMM d, yyyy'
-                          )
-                        : 'Not specified'}
-                    </Typography>
-                    {daysToDeadline !== null && (
-                      <Typography variant="caption" color="textSecondary">
-                        {isExpired
-                          ? 'Expired'
-                          : `${daysToDeadline} days remaining`}
-                      </Typography>
-                    )}
-                  </Box>
-                </Box>
+                        ? 'text-warning'
+                        : ''
+                    }`}
+                  >
+                    {grant.deadline || grant.deadline_date
+                      ? format(
+                          parseISO(grant.deadline || grant.deadline_date),
+                          'MMM d, yyyy'
+                        )
+                      : 'Not specified'}
+                  </div>
+                  {daysToDeadline !== null && (
+                    <div className="detail-subtext">
+                      {isExpired
+                        ? 'Expired'
+                        : `${daysToDeadline} days remaining`}
+                    </div>
+                  )}
+                </div>
 
-                {/* Geographic Scope */}
                 {grant.geographic_scope && (
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <LocationOnIcon sx={{ mr: 1, color: 'info.main' }} />
-                    <Box>
-                      <Typography variant="caption" color="textSecondary">
-                        Geographic Scope
-                      </Typography>
-                      <Typography variant="body2" fontWeight="medium">
-                        {grant.geographic_scope}
-                      </Typography>
-                    </Box>
-                  </Box>
+                  <div className="detail-item">
+                    <div className="detail-label">Geographic Scope</div>
+                    <div className="detail-value">{grant.geographic_scope}</div>
+                  </div>
                 )}
 
-                {/* Source */}
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <CategoryIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                  <Box>
-                    <Typography variant="caption" color="textSecondary">
-                      Source
-                    </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {grant.source_name || grant.source || 'Unknown'}
-                    </Typography>
-                  </Box>
-                </Box>
+                <div className="detail-item">
+                  <div className="detail-label">Source</div>
+                  <div className="detail-value">
+                    {grant.source_name || grant.source || 'Unknown'}
+                  </div>
+                </div>
 
-                {/* Overall Score */}
                 {grant.overall_composite_score !== null &&
                   grant.overall_composite_score !== undefined && (
-                    <Box
-                      sx={{
-                        textAlign: 'center',
-                        mt: 2,
-                        p: 2,
-                        bgcolor: 'primary.50',
-                        borderRadius: 1,
-                      }}
-                    >
-                      <Typography variant="caption" color="textSecondary">
+                    <div className="score-highlight">
+                      <div className="score-highlight-label">
                         Overall Relevance Score
-                      </Typography>
-                      <Typography
-                        variant="h4"
-                        color="primary.main"
-                        fontWeight="bold"
-                      >
-                        {grant.overall_composite_score !== null &&
-                        grant.overall_composite_score !== undefined
-                          ? grant.overall_composite_score.toFixed(1)
-                          : 'N/A'}
-                      </Typography>
-                    </Box>
+                      </div>
+                      <div className="score-highlight-value">
+                        {grant.overall_composite_score.toFixed(1)}
+                      </div>
+                    </div>
                   )}
-              </CardContent>
-            </Card>
-          </Grid>
+              </div>
+            </aside>
+          </div>
 
           {/* Keywords */}
           {grant.keywords && grant.keywords.length > 0 && (
-            <Grid item xs={12}>
-              <Typography variant="h6" gutterBottom>
-                Keywords
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <section className="grant-section">
+              <h3>Keywords</h3>
+              <div className="keywords-list">
                 {grant.keywords.map((keyword, idx) => (
-                  <Chip
-                    key={idx}
-                    label={keyword}
-                    size="small"
-                    variant="outlined"
-                  />
+                  <span key={idx} className="keyword-chip">
+                    {keyword}
+                  </span>
                 ))}
-              </Box>
-            </Grid>
+              </div>
+            </section>
           )}
 
           {/* Detailed Scores */}
-          <Grid item xs={12}>
+          <div className="scores-container">
             {renderScoreSection(grant.research_scores, 'Research Scores')}
             {renderScoreSection(grant.compliance_scores, 'Compliance Scores')}
-          </Grid>
+          </div>
 
           {/* Enrichment Log */}
           {grant.enrichment_log && grant.enrichment_log.length > 0 && (
-            <Grid item xs={12}>
-              <Typography variant="h6" gutterBottom>
-                Processing Log
-              </Typography>
-              <List dense>
+            <section className="grant-section">
+              <h3>Processing Log</h3>
+              <ul className="log-list">
                 {grant.enrichment_log.map((log, idx) => (
-                  <ListItem key={idx}>
-                    <ListItemText
-                      primary={log}
-                      primaryTypographyProps={{ variant: 'body2' }}
-                    />
-                  </ListItem>
+                  <li key={idx}>{log}</li>
                 ))}
-              </List>
-            </Grid>
+              </ul>
+            </section>
           )}
-        </Grid>
-      </DialogContent>
+        </div>
 
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
-        {(grant.source_url || grant.sourceUrl) && (
-          <Button
-            variant="contained"
-            endIcon={<OpenInNewIcon />}
-            href={grant.source_url || grant.sourceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            View Original Grant
-          </Button>
-        )}
-      </DialogActions>
-    </Dialog>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>
+            Close
+          </button>
+          {(grant.source_url || grant.sourceUrl) && (
+            <a
+              className="btn btn-primary"
+              href={grant.source_url || grant.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View Original Grant →
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 

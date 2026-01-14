@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,18 +8,24 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text, select, func
 from sqlalchemy.orm import selectinload
 
+# Import rate limiter from main
+from app.main import limiter
+
 from app.dependencies import (
     get_db_session,
     get_pinecone,
     get_notifier,
     get_research_agent,
     get_analysis_agent,
-    get_perplexity, # Fixed function name
+    get_deepseek,
     get_db_sessionmaker # Added for run_full_search_cycle
 )
 from app import crud
 from app.crud import safe_convert_to_enriched_grant
-from database.models import Grant as DBGrant, SavedGrants
+from app.payments import get_payment_service
+from app.auth import get_current_user
+from database.models import Grant as DBGrant, SavedGrants, User, Subscription
+from database.session import get_db
 from app.schemas import (
     Grant, # This might be deprecated in favor of EnrichedGrant for responses
     EnrichedGrant, # Added
@@ -35,7 +41,15 @@ from app.schemas import (
     ApplicationHistoryResponse # Added
 )
 
+# Import new route modules for multi-user features
+from app.business_profile_routes import router as business_profile_router
+from app.applications_routes import router as applications_router
+
 api_router = APIRouter()
+
+# Include sub-routers for multi-user features
+api_router.include_router(business_profile_router, prefix="/business-profile", tags=["Business Profile"])
+api_router.include_router(applications_router, prefix="/applications", tags=["Applications"])
 
 metrics_logger = logging.getLogger("metrics")
 audit_logger = logging.getLogger("audit")
@@ -289,14 +303,16 @@ async def get_grant_detail(
 
 
 @api_router.post("/grants/search", response_model=PaginatedEnrichedGrantResponse) # Changed to PaginatedEnrichedGrantResponse
+@limiter.limit("30/minute")
 async def search_grants_endpoint(
+    request: Request,
     filters: GrantSearchFilters, # GrantSearchFilters might need update for EnrichedGrant fields
     page: int = 1,
     page_size: int = 20,
     db: AsyncSession = Depends(get_db_session)
     # research_agent=Depends(get_research_agent) # This endpoint should now use crud.get_grants_list
 ):
-    """Advanced grant search using filters, returning EnrichedGrant objects."""
+    """Advanced grant search using filters, returning EnrichedGrant objects. Rate limited to 30 per minute."""
     # This endpoint now mirrors /grants but with a POST body for filters.
     # It will use the same crud.get_grants_list function.
     # The GrantSearchFilters schema might need to be aligned with parameters of get_grants_list.
@@ -349,14 +365,17 @@ async def update_user_settings_route(
     try:
         settings_dict = settings.dict(by_alias=True)
         updated_settings = await crud.save_user_settings(db, settings_dict)
-        if settings.telegram_enabled is not None:
-            await notifier.update_settings({"telegram_enabled": settings.telegram_enabled})
-            
+
+        # Update email notification preferences if changed
+        if settings.email_notifications is not None:
+            # Notifier settings update (for Resend email service)
+            pass  # Email settings are stored in database, no need to update notifier directly
+
         # Log audit
         log_audit_event(
             "settings_update",
             {
-                "telegram_enabled": settings.telegram_enabled,
+                "email_notifications": settings.email_notifications,
                 "settings_changed": list(settings_dict.keys())
             }
         )
@@ -383,20 +402,22 @@ async def update_user_settings_route(
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/system/run-search")
+@limiter.limit("5/hour")
 async def trigger_search(
+    request: Request,
     # db: AsyncSession = Depends(get_db_session), # db_sessionmaker is used by run_full_search_cycle
     db_sessionmaker = Depends(get_db_sessionmaker),
-    perplexity_client = Depends(get_perplexity),
+    deepseek_client = Depends(get_deepseek),
     pinecone_client = Depends(get_pinecone)
     # research_agent = Depends(get_research_agent) # Not needed directly, agents are instantiated in crud
 ):
-    """Manually trigger a full grant search and enrichment cycle."""
+    """Manually trigger a full grant search and enrichment cycle. Rate limited to 5 per hour."""
     start_time = datetime.now()
     try:
-        # crud.run_full_search_cycle now takes db_sessionmaker, perplexity_client, pinecone_client
+        # crud.run_full_search_cycle now takes db_sessionmaker, deepseek_client, pinecone_client
         fully_analyzed_grants = await crud.run_full_search_cycle(
-            db_sessionmaker=db_sessionmaker, 
-            perplexity_client=perplexity_client, 
+            db_sessionmaker=db_sessionmaker,
+            deepseek_client=deepseek_client, 
             pinecone_client=pinecone_client
         )
         
@@ -545,22 +566,22 @@ async def health_check():
             logger.warning("Database sessionmaker not available")
             health_status["services"]["database"] = {"status": "unhealthy", "error": "No database sessionmaker"}
 
-        # Check Perplexity Client
-        if services.perplexity_client:
+        # Check DeepSeek Client
+        if services.deepseek_client:
             try:
-                logger.info("Testing Perplexity client...")
-                rate_limit = services.perplexity_client.get_rate_limit_status()
-                health_status["services"]["perplexity"] = {
-                    "status": "healthy",
-                    "rate_limit_remaining": rate_limit
+                logger.info("Testing DeepSeek client...")
+                has_api_key = bool(services.deepseek_client.api_key)
+                health_status["services"]["deepseek"] = {
+                    "status": "healthy" if has_api_key else "degraded",
+                    "api_key_configured": has_api_key
                 }
-                logger.info("Perplexity health check passed")
+                logger.info("DeepSeek health check passed")
             except Exception as e:
-                logger.error(f"Perplexity client check failed: {str(e)}", exc_info=True)
-                health_status["services"]["perplexity"] = {"status": "unhealthy", "error": str(e)}
+                logger.error(f"DeepSeek client check failed: {str(e)}", exc_info=True)
+                health_status["services"]["deepseek"] = {"status": "unhealthy", "error": str(e)}
         else:
-            logger.warning("Perplexity client not available")
-            health_status["services"]["perplexity"] = {"status": "unhealthy", "error": "No Perplexity client"}
+            logger.warning("DeepSeek client not available")
+            health_status["services"]["deepseek"] = {"status": "unhealthy", "error": "No DeepSeek client"}
         
         # Check Pinecone
         if services.pinecone_client:
@@ -1094,4 +1115,381 @@ async def get_scheduler_status(db: AsyncSession = Depends(get_db_session)):
         raise HTTPException(status_code=500, detail=f"Failed to fetch scheduler status: {str(e)}")
 
 # User saved grants endpoints
+
+
+# ============================================================================
+# STRIPE SUBSCRIPTION ENDPOINTS
+# ============================================================================
+
+@api_router.post("/api/subscriptions/create-checkout")
+@limiter.limit("3/hour")
+async def create_checkout_session(
+    request: Request,
+    success_url: Optional[str] = None,
+    cancel_url: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Create a Stripe checkout session for $35/month subscription with 14-day trial.
+    Rate limited to 3 per hour to prevent abuse.
+
+    Returns checkout session ID and URL for redirecting user to Stripe.
+    """
+    start_time = time.time()
+
+    try:
+        payment_service = get_payment_service()
+
+        session_data = await payment_service.create_checkout_session(
+            db=db,
+            user=current_user,
+            success_url=success_url,
+            cancel_url=cancel_url
+        )
+
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/create-checkout", duration, 200, user_id=current_user.id)
+        log_audit_event(
+            "checkout_session_created",
+            {
+                "user_id": current_user.id,
+                "email": current_user.email,
+                "session_id": session_data["sessionId"]
+            }
+        )
+
+        return {
+            "status": "success",
+            "data": session_data
+        }
+
+    except Exception as e:
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/create-checkout", duration, 500, error=str(e))
+        logger.error(f"Failed to create checkout session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create checkout session: {str(e)}"
+        )
+
+
+@api_router.get("/api/subscriptions/current")
+async def get_current_subscription(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get the current user's subscription details.
+
+    Returns subscription information including status, limits, and usage.
+    """
+    start_time = time.time()
+
+    try:
+        # Get subscription
+        result = await db.execute(
+            select(Subscription).where(Subscription.user_id == current_user.id)
+        )
+        subscription = result.scalar_one_or_none()
+
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/current", duration, 200, user_id=current_user.id)
+
+        if not subscription:
+            return {
+                "status": "success",
+                "data": {
+                    "hasSubscription": False,
+                    "subscriptionStatus": current_user.subscription_status.value if current_user.subscription_status else None,
+                    "subscriptionTier": current_user.subscription_tier,
+                    "searchesUsed": current_user.searches_used,
+                    "searchesLimit": current_user.searches_limit,
+                    "applicationsUsed": current_user.applications_used,
+                    "applicationsLimit": current_user.applications_limit
+                }
+            }
+
+        return {
+            "status": "success",
+            "data": {
+                "hasSubscription": True,
+                **subscription.to_dict(),
+                "searchesUsed": current_user.searches_used,
+                "searchesLimit": current_user.searches_limit,
+                "applicationsUsed": current_user.applications_used,
+                "applicationsLimit": current_user.applications_limit,
+                "subscriptionTier": current_user.subscription_tier
+            }
+        }
+
+    except Exception as e:
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/current", duration, 500, error=str(e))
+        logger.error(f"Failed to get subscription: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get subscription: {str(e)}"
+        )
+
+
+@api_router.post("/api/subscriptions/cancel")
+async def cancel_subscription(
+    cancel_immediately: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Cancel the current user's subscription.
+
+    By default, cancels at period end. Set cancel_immediately=true to cancel now.
+    """
+    start_time = time.time()
+
+    try:
+        payment_service = get_payment_service()
+
+        subscription_data = await payment_service.cancel_subscription(
+            db=db,
+            user=current_user,
+            cancel_immediately=cancel_immediately
+        )
+
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/cancel", duration, 200, user_id=current_user.id)
+        log_audit_event(
+            "subscription_canceled",
+            {
+                "user_id": current_user.id,
+                "email": current_user.email,
+                "cancel_immediately": cancel_immediately
+            }
+        )
+
+        return {
+            "status": "success",
+            "message": "Subscription canceled successfully",
+            "data": subscription_data
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/cancel", duration, 500, error=str(e))
+        logger.error(f"Failed to cancel subscription: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to cancel subscription: {str(e)}"
+        )
+
+
+@api_router.post("/api/subscriptions/reactivate")
+async def reactivate_subscription(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Reactivate a canceled subscription (before period end).
+    """
+    start_time = time.time()
+
+    try:
+        payment_service = get_payment_service()
+
+        subscription_data = await payment_service.reactivate_subscription(
+            db=db,
+            user=current_user
+        )
+
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/reactivate", duration, 200, user_id=current_user.id)
+        log_audit_event(
+            "subscription_reactivated",
+            {
+                "user_id": current_user.id,
+                "email": current_user.email
+            }
+        )
+
+        return {
+            "status": "success",
+            "message": "Subscription reactivated successfully",
+            "data": subscription_data
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/reactivate", duration, 500, error=str(e))
+        logger.error(f"Failed to reactivate subscription: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to reactivate subscription: {str(e)}"
+        )
+
+
+@api_router.post("/api/subscriptions/portal")
+async def create_customer_portal_session(
+    return_url: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Create a Stripe customer portal session for managing subscription.
+
+    Returns URL to redirect user to Stripe customer portal.
+    """
+    start_time = time.time()
+
+    try:
+        payment_service = get_payment_service()
+
+        portal_data = await payment_service.create_customer_portal_session(
+            db=db,
+            user=current_user,
+            return_url=return_url
+        )
+
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/portal", duration, 200, user_id=current_user.id)
+
+        return {
+            "status": "success",
+            "data": portal_data
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/portal", duration, 500, error=str(e))
+        logger.error(f"Failed to create portal session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create portal session: {str(e)}"
+        )
+
+
+@api_router.post("/api/webhooks/stripe")
+async def stripe_webhook(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Handle Stripe webhook events.
+
+    This endpoint receives and processes webhook events from Stripe,
+    including subscription updates, payment events, etc.
+    Signature verification is performed to ensure authenticity.
+    """
+    start_time = time.time()
+
+    try:
+        # Get raw body and signature
+        payload = await request.body()
+        signature = request.headers.get("stripe-signature")
+
+        if not signature:
+            raise HTTPException(status_code=400, detail="Missing stripe-signature header")
+
+        payment_service = get_payment_service()
+
+        # Process webhook
+        result = await payment_service.handle_webhook_event(
+            db=db,
+            payload=payload,
+            signature=signature
+        )
+
+        duration = time.time() - start_time
+        log_api_metrics(
+            "/api/webhooks/stripe",
+            duration,
+            200,
+            event_type=result.get("event_type")
+        )
+        log_audit_event(
+            "stripe_webhook_received",
+            {
+                "event_type": result.get("event_type"),
+                "status": "success"
+            }
+        )
+
+        return {"status": "success"}
+
+    except ValueError as e:
+        # Invalid signature or payload
+        duration = time.time() - start_time
+        log_api_metrics("/api/webhooks/stripe", duration, 400, error=str(e))
+        logger.warning(f"Invalid webhook: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        duration = time.time() - start_time
+        log_api_metrics("/api/webhooks/stripe", duration, 500, error=str(e))
+        logger.error(f"Webhook processing failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Webhook processing failed: {str(e)}"
+        )
+
+
+@api_router.get("/api/subscriptions/usage")
+async def get_subscription_usage(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get current usage statistics for the user.
+
+    Returns searches and applications used/remaining for the current period.
+    """
+    start_time = time.time()
+
+    try:
+        # Get subscription for period information
+        result = await db.execute(
+            select(Subscription).where(Subscription.user_id == current_user.id)
+        )
+        subscription = result.scalar_one_or_none()
+
+        usage_data = {
+            "searches": {
+                "used": current_user.searches_used,
+                "limit": current_user.searches_limit,
+                "remaining": max(0, current_user.searches_limit - current_user.searches_used),
+                "percentage": (current_user.searches_used / current_user.searches_limit * 100)
+                    if current_user.searches_limit > 0 else 0
+            },
+            "applications": {
+                "used": current_user.applications_used,
+                "limit": current_user.applications_limit,
+                "remaining": max(0, current_user.applications_limit - current_user.applications_used),
+                "percentage": (current_user.applications_used / current_user.applications_limit * 100)
+                    if current_user.applications_limit > 0 else 0
+            },
+            "subscriptionTier": current_user.subscription_tier,
+            "subscriptionStatus": current_user.subscription_status.value if current_user.subscription_status else None,
+            "periodStart": subscription.current_period_start.isoformat() if subscription and subscription.current_period_start else None,
+            "periodEnd": subscription.current_period_end.isoformat() if subscription and subscription.current_period_end else None
+        }
+
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/usage", duration, 200, user_id=current_user.id)
+
+        return {
+            "status": "success",
+            "data": usage_data
+        }
+
+    except Exception as e:
+        duration = time.time() - start_time
+        log_api_metrics("/api/subscriptions/usage", duration, 500, error=str(e))
+        logger.error(f"Failed to get usage data: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get usage data: {str(e)}"
+        )
 

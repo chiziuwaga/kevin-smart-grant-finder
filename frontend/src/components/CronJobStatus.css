@@ -1,0 +1,229 @@
+/* CronJobStatus Component - Swiss Design */
+
+.cron-status-card {
+  background: var(--color-white);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cron-status-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.cron-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.cron-status-title-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cron-status-title-section h3 {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-gray-900);
+}
+
+.cron-status-title-section .icon {
+  font-size: 24px;
+}
+
+.cron-status-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.search-progress-section {
+  padding: var(--space-2);
+  background: var(--color-gray-50, #f9f9f9);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--border-radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.search-progress-header {
+  font-size: var(--font-size-base);
+  color: var(--color-accent-blue);
+}
+
+.search-progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-600);
+}
+
+.search-step {
+  flex: 1;
+}
+
+.search-percent {
+  font-weight: 600;
+}
+
+.cron-status-health {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.issues-list {
+  margin: var(--space-2) 0 0 var(--space-3);
+  padding: 0;
+  list-style: disc;
+}
+
+.issues-list li {
+  margin-bottom: 4px;
+}
+
+.cron-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--space-3);
+}
+
+.cron-status-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.section-title {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-gray-900);
+}
+
+.section-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+}
+
+.stat-label {
+  color: var(--color-gray-600);
+}
+
+.stat-value {
+  color: var(--color-gray-900);
+  font-weight: 500;
+}
+
+.text-muted {
+  color: var(--color-gray-600);
+}
+
+.badge-group {
+  display: flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  margin-top: var(--space-1);
+}
+
+.alert-compact {
+  padding: var(--space-1) var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+.cron-divider {
+  height: var(--border-width);
+  background: var(--border-color);
+  margin: var(--space-2) 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+.stat-box {
+  text-align: center;
+  padding: var(--space-2);
+}
+
+.stat-value-large {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-accent-blue);
+  margin-bottom: 4px;
+}
+
+.stat-value-success {
+  color: var(--color-success);
+}
+
+.stat-value-info {
+  color: var(--color-accent-blue);
+}
+
+.stat-label-small {
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-600);
+}
+
+.config-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.config-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.config-item .icon {
+  font-size: 18px;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.config-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.config-label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-gray-900);
+}
+
+.config-value {
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-600);
+}
+
+.badge-warning {
+  background: var(--color-warning);
+  color: var(--color-gray-900);
+  border-color: var(--color-warning);
+}

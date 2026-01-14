@@ -72,7 +72,6 @@ export interface DistributionData {
 
 // User settings types
 export interface UserSettings {
-  telegramEnabled: boolean;
   emailNotifications: boolean;
   deadlineReminders: boolean;
   searchFrequency: 'daily' | 'weekly' | 'monthly';

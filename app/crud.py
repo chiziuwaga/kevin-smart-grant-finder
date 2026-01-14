@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from database.models import Grant as DBGrant, Analysis, SearchRun, UserSettings, ApplicationHistory # Added ApplicationHistory
 from utils.pinecone_client import PineconeClient # Added back PineconeClient import
 from app.schemas import EnrichedGrant, ResearchContextScores, ComplianceScores, GrantSourceDetails, ApplicationHistoryCreate # Added ApplicationHistoryCreate
+from app.duplicate_detection import check_duplicate_grant, update_duplicate_grant # Added duplicate detection
 # It's generally better to import specific classes if you're not using the whole module via alias.
 # However, the generated CRUD functions used models. and schemas. prefixes, so let's add module imports for them.
 from database import models
@@ -17,7 +18,7 @@ from app import schemas
 
 from agents.research_agent import ResearchAgent
 from agents.compliance_agent import ComplianceAnalysisAgent
-from utils.perplexity_client import PerplexityClient 
+from services.deepseek_client import DeepSeekClient
 from config.settings import get_settings # Changed from settings to get_settings()
 
 logger = logging.getLogger(__name__) # Added logger instance
@@ -196,7 +197,7 @@ async def save_user_settings(db: AsyncSession, settings_data: Dict[str, Any]) ->
     user_settings = result.scalar_one_or_none()
     
     field_mapping = {
-        "telegramEnabled": "telegram_enabled",
+        "emailNotifications": "email_notifications",
         "minimumScore": "minimum_score", 
         "searchFrequency": "schedule_frequency",
         "categories": "notify_categories"
@@ -239,7 +240,7 @@ async def load_user_settings(db: AsyncSession) -> Dict[str, Any]:
 
 async def run_full_search_cycle(
     db_sessionmaker: async_sessionmaker, 
-    perplexity_client: PerplexityClient, 
+    deepseek_client: DeepSeekClient, 
     pinecone_client: PineconeClient 
 ) -> List[EnrichedGrant]:
     """Run a complete grant search cycle, including research and compliance analysis."""
@@ -247,7 +248,7 @@ async def run_full_search_cycle(
     start_time_cycle = time.time()
     research_agent_instance = None # Initialize to None
     try:        research_agent_instance = ResearchAgent(
-            perplexity_client=perplexity_client,
+            deepseek_client=deepseek_client,
             db_session_maker=db_sessionmaker,
             config_path=settings.CONFIG_DIR # Corrected from config_dir to config_path
         )
@@ -804,12 +805,17 @@ async def create_or_update_grant(db: AsyncSession, grant_data: dict) -> Optional
         if not source_url or not source_url.startswith(('http://', 'https://')):
             logger.warning(f"Skipping grant '{grant_data.get('title', 'Unknown')}' - no valid URL: {source_url}")
             return None
-        
+
+        # Check for duplicates using multiple strategies
+        existing_grant = await check_duplicate_grant(db, grant_data)
+        if existing_grant:
+            logger.info(f"Duplicate grant detected, updating existing: {existing_grant.id}")
+            return await update_duplicate_grant(db, existing_grant, grant_data)
+
         grant_id = grant_data.get('id')
         external_id = grant_data.get('grant_id_external')
-        
-        # Try to find existing grant by ID or external ID
-        existing_grant = None
+
+        # Try to find existing grant by ID or external ID (fallback)
         if grant_id:
             try:
                 query = select(DBGrant).where(DBGrant.id == grant_id)

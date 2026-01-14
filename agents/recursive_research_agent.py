@@ -11,13 +11,14 @@ from typing import Dict, List, Any, Optional, Set
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 
-from utils import perplexity_client as perplexity
+from services.deepseek_client import DeepSeekClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 from sqlalchemy.sql import select
 
 from app.models import GrantFilter
 from database.models import Grant as DBGrant, Analysis
 from app.schemas import EnrichedGrant, ResearchContextScores, UserProfile
+from config.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +46,12 @@ class RecursiveResearchAgent:
     
     def __init__(self, db_session_maker: async_sessionmaker):
         self.db_session_maker = db_session_maker
-        self.perplexity_client = perplexity.PerplexityClient()
-        
-        # Use sonar-reasoning-pro as primary model for multi-step reasoning
-        self.PRIMARY_MODEL = "sonar-reasoning-pro"  # 50 RPM limit, multi-step reasoning
-        self.FALLBACK_MODEL = "sonar-reasoning"     # 50 RPM limit, quick reasoning
-        self.FAST_MODEL = "sonar-pro"               # 50 RPM limit, basic search
+        self.deepseek_client = DeepSeekClient()
+
+        # Use DeepSeek's chat model for reasoning
+        self.PRIMARY_MODEL = "deepseek-chat"  # Main reasoning model
+        self.FALLBACK_MODEL = "deepseek-chat"  # Same model for consistency
+        self.FAST_MODEL = "deepseek-chat"  # Same model for consistency
         
         # Chunking configuration
         self.MAX_KEYWORDS_PER_CHUNK = 3
@@ -137,10 +138,14 @@ class RecursiveResearchAgent:
         # Remove duplicates and enrich results
         unique_grants = self._deduplicate_grants(all_grants)
         logger.info(f"Found {len(unique_grants)} unique grants after deduplication")
-        
+
+        # Make grant limit configurable
+        settings = Settings()
+        max_grants = getattr(settings, 'MAX_GRANTS_PER_SEARCH', 20)
+
         # Convert to EnrichedGrant objects and perform additional enrichment
         enriched_grants = []
-        for grant_data in unique_grants[:20]:  # Limit to top 20 for processing efficiency
+        for grant_data in unique_grants[:max_grants]:  # Limit based on configuration
             try:
                 enriched = await self._create_enriched_grant(grant_data)
                 if enriched:
@@ -207,11 +212,17 @@ class RecursiveResearchAgent:
         try:
             # Build focused query for this chunk
             query = self._build_chunk_query(chunk)
-            
-            # Use reasoning model for better analysis
-            response = await self.perplexity_client.search(
-                query=query,
-                model=self.PRIMARY_MODEL
+
+            # Use DeepSeek for reasoning
+            messages = [
+                {"role": "system", "content": "You are an expert grant researcher. Provide structured grant information with details."},
+                {"role": "user", "content": query}
+            ]
+            response = await self.deepseek_client.chat_completion(
+                messages=messages,
+                model=self.PRIMARY_MODEL,
+                temperature=0.7,
+                max_tokens=2000
             )
             
             # Extract grants from response
@@ -323,16 +334,16 @@ class RecursiveResearchAgent:
         return base_query
 
     async def _extract_grants_from_response(self, response: Dict[str, Any], chunk: SearchChunk) -> List[Dict[str, Any]]:
-        """Extract grant data from Perplexity response."""
+        """Extract grant data from DeepSeek response."""
         grants = []
-        
+
         if not response or not response.get("choices"):
             return grants
-        
+
         content = response["choices"][0]["message"]["content"]
-        
-        # Use PerplexityClient's extraction method
-        extracted_grants = await self.perplexity_client.extract_grant_data(content)
+
+        # Extract grant data from response (simplified parsing)
+        extracted_grants = await self._parse_grant_data(content)
         
         # Add chunk context to each grant
         for grant in extracted_grants:
@@ -340,7 +351,63 @@ class RecursiveResearchAgent:
             grant["geographic_focus"] = chunk.geographic_focus
             grant["sector_focus"] = chunk.sector_focus
             grants.append(grant)
-        
+
+        return grants
+
+    async def _parse_grant_data(self, content: str) -> List[Dict[str, Any]]:
+        """Parse grant data from AI response content."""
+        grants = []
+
+        # Simple parsing logic - extract structured information from the response
+        # This is a simplified version that looks for common patterns
+        import re
+
+        # Try to find grant entries in the content
+        # Look for patterns like "Title:", "Funding:", "Deadline:", etc.
+        grant_blocks = re.split(r'\n\n+', content)
+
+        for block in grant_blocks:
+            grant_data = {}
+
+            # Extract title
+            title_match = re.search(r'(?:Title|Grant)[:\s]+(.+?)(?:\n|$)', block, re.IGNORECASE)
+            if title_match:
+                grant_data['title'] = title_match.group(1).strip()
+
+            # Extract funding
+            funding_match = re.search(r'(?:Funding|Amount)[:\s]+\$?([\d,]+(?:\.\d{2})?)', block, re.IGNORECASE)
+            if funding_match:
+                try:
+                    funding_str = funding_match.group(1).replace(',', '')
+                    grant_data['funding_amount'] = float(funding_str)
+                    grant_data['funding_amount_display'] = f"${funding_match.group(1)}"
+                except ValueError:
+                    pass
+
+            # Extract deadline
+            deadline_match = re.search(r'(?:Deadline|Due)[:\s]+(.+?)(?:\n|$)', block, re.IGNORECASE)
+            if deadline_match:
+                grant_data['deadline'] = deadline_match.group(1).strip()
+
+            # Extract URL
+            url_match = re.search(r'(?:URL|Link|Website)[:\s]+(https?://[^\s]+)', block, re.IGNORECASE)
+            if url_match:
+                grant_data['source_url'] = url_match.group(1).strip()
+
+            # Extract funder
+            funder_match = re.search(r'(?:Funder|Agency|Organization)[:\s]+(.+?)(?:\n|$)', block, re.IGNORECASE)
+            if funder_match:
+                grant_data['funder_name'] = funder_match.group(1).strip()
+
+            # Extract description/eligibility
+            desc_match = re.search(r'(?:Description|Eligibility)[:\s]+(.+?)(?:\n\n|\n[A-Z]|$)', block, re.IGNORECASE | re.DOTALL)
+            if desc_match:
+                grant_data['description'] = desc_match.group(1).strip()
+
+            # Only add if we found at least a title and URL
+            if grant_data.get('title') and grant_data.get('source_url'):
+                grants.append(grant_data)
+
         return grants
 
     async def _recursive_refine_grants(self, grants: List[Dict[str, Any]], chunk: SearchChunk) -> List[Dict[str, Any]]:
@@ -361,10 +428,16 @@ class RecursiveResearchAgent:
                     f"is suitable for a {chunk.sector_focus} project in {chunk.geographic_focus} area."
                 )
                 
-                # Use faster model for refinement to stay within rate limits
-                refinement_response = await self.perplexity_client.search(
-                    query=refinement_query,
-                    model=self.FALLBACK_MODEL
+                # Use DeepSeek for refinement
+                messages = [
+                    {"role": "system", "content": "You are an expert grant researcher. Provide detailed grant information."},
+                    {"role": "user", "content": refinement_query}
+                ]
+                refinement_response = await self.deepseek_client.chat_completion(
+                    messages=messages,
+                    model=self.FALLBACK_MODEL,
+                    temperature=0.5,
+                    max_tokens=1500
                 )
                 
                 # Extract additional details

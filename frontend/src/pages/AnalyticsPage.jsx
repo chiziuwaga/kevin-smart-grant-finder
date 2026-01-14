@@ -1,69 +1,64 @@
-import { 
-    Assessment as AssessmentIcon,
-    BarChart as BarChartIcon,
-    PieChart as PieChartIcon,
-} from '@mui/icons-material';
-import { 
-    Box, 
-    Card, 
-    CardContent, 
-    Grid, 
-    Typography, 
-    useTheme 
-} from '@mui/material';
 import React, { useEffect, useState } from 'react';
-import { 
-    Bar, 
-    BarChart, 
-    CartesianGrid, 
-    Cell, 
-    Legend,
-    Pie, 
-    PieChart, 
-    ResponsiveContainer, 
-    Tooltip, 
-    XAxis, 
-    YAxis 
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
 } from 'recharts';
 import { getDistribution } from '../api/apiClient';
-import LoaderOverlay from '../components/common/LoaderOverlay';
-import EmptyState from '../components/common/EmptyState';
+import '../styles/swiss-theme.css';
+
+const COLORS = ['#1a1a1a', '#E53935', '#1976D2', '#43A047', '#FDD835', '#9e9e9e'];
 
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <Card elevation={4} sx={{ p: 1, bgcolor: 'background.paper' }}>
-        <Typography variant="subtitle2">{label}</Typography>
-        <Typography variant="body2" color="text.secondary">
+      <div className="card" style={{ padding: 'var(--space-1)' }}>
+        <p style={{ margin: 0, fontWeight: '600' }}>{label}</p>
+        <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--color-gray-600)' }}>
           Count: {payload[0].value}
-        </Typography>
-      </Card>
+        </p>
+      </div>
     );
   }
   return null;
 };
 
 const AnalyticsPage = () => {
-  const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [distribution, setDistribution] = useState(null);
+  const [message, setMessage] = useState({ text: '', type: '' });
+
+  const showMessage = (text, type) => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage({ text: '', type: '' }), 3000);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
         const response = await getDistribution();
-        const data = response.data || response; // Handle both API response formats
-        
+        const data = response.data || response;
+
         // Transform object data to array format for charts
         const transformedData = {
           categories: data.categories ? Object.entries(data.categories).map(([name, value]) => ({ name, value })) : [],
           deadlines: data.deadlines ? Object.entries(data.deadlines).map(([name, count]) => ({ name, count })) : [],
           scores: data.scores ? Object.entries(data.scores).map(([name, count]) => ({ name, count })) : []
         };
-        
+
         setDistribution(transformedData);
       } catch (e) {
         console.error('Error fetching distribution data:', e);
+        showMessage('Failed to load analytics data', 'error');
         setDistribution({ categories: [], deadlines: [], scores: [] });
       } finally {
         setLoading(false);
@@ -72,177 +67,112 @@ const AnalyticsPage = () => {
     fetchData();
   }, []);
 
-  const COLORS = [
-    theme.palette.primary.main,
-    theme.palette.secondary.main,
-    theme.palette.info.main,
-    theme.palette.success.main,
-    theme.palette.warning.main,
-    theme.palette.error.main,
-    theme.palette.grey[500],
-  ];
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p className="mt-2">Loading analytics...</p>
+      </div>
+    );
+  }
+
+  const hasData = distribution && (
+    distribution.categories.length > 0 ||
+    distribution.deadlines.length > 0 ||
+    distribution.scores.length > 0
+  );
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 } }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <AssessmentIcon sx={{ mr: 2, color: 'primary.main' }} />
-        <Typography 
-          variant="h4" 
-          sx={{ 
-            fontWeight: 700,
-            fontSize: { xs: '1.5rem', sm: '2rem' }
-          }}
-        >
-          Analytics Dashboard
-        </Typography>
-      </Box>      <LoaderOverlay loading={loading}>
-        {distribution && (distribution.categories.length > 0 || distribution.deadlines.length > 0 || distribution.scores.length > 0) ? (
-          <Grid container spacing={3}>
-            {/* Categories Chart */}
-            {distribution.categories.length > 0 && (
-              <Grid item xs={12} md={6}>
-                <Card 
-                  elevation={0}
-                  sx={{ 
-                    height: '100%',
-                    border: 1,
-                    borderColor: 'divider',
-                  }}
-                >
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <PieChartIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Typography variant="h6">Grant Categories</Typography>
-                    </Box>
-                    <Box sx={{ height: 300, width: '100%' }}>
-                      <ResponsiveContainer>
-                        <PieChart>
-                          <Pie 
-                            data={distribution.categories} 
-                            dataKey="value" 
-                            nameKey="name" 
-                            outerRadius={100}
-                            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                          >
-                            {distribution.categories.map((entry, index) => (
-                              <Cell 
-                                key={`cell-${index}`} 
-                                fill={COLORS[index % COLORS.length]}
-                                stroke={theme.palette.background.paper}
-                                strokeWidth={2}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip content={<CustomTooltip />} />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            )}
+    <div className="container" style={{ padding: 'var(--space-3)' }}>
+      <div className="flex items-center mb-3">
+        <span style={{ fontSize: '2rem', marginRight: 'var(--space-2)' }}>📊</span>
+        <h1>Analytics Dashboard</h1>
+      </div>
 
-            {/* Deadlines Chart */}
-            {distribution.deadlines.length > 0 && (
-              <Grid item xs={12} md={6}>
-                <Card 
-                  elevation={0}
-                  sx={{ 
-                    height: '100%',
-                    border: 1,
-                    borderColor: 'divider',
-                  }}
-                >
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <BarChartIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Typography variant="h6">Deadlines Distribution</Typography>
-                    </Box>
-                    <Box sx={{ height: 300, width: '100%' }}>
-                      <ResponsiveContainer>
-                        <BarChart 
-                          data={distribution.deadlines} 
-                          margin={{ top: 20, right: 30, left: 0, bottom: 20 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis 
-                            dataKey="name" 
-                            tick={{ fill: theme.palette.text.secondary }}
-                            tickLine={{ stroke: theme.palette.divider }}
-                          />
-                          <YAxis 
-                            tick={{ fill: theme.palette.text.secondary }}
-                            tickLine={{ stroke: theme.palette.divider }}
-                          />
-                          <Tooltip content={<CustomTooltip />} />
-                          <Bar 
-                            dataKey="count" 
-                            fill={theme.palette.primary.main}
-                            radius={[4, 4, 0, 0]}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            )}
+      {message.text && (
+        <div className={`alert alert-${message.type} mb-3`}>
+          {message.text}
+        </div>
+      )}
 
-            {/* Scores Chart */}
-            {distribution.scores.length > 0 && (
-              <Grid item xs={12} md={6}>
-                <Card 
-                  elevation={0}
-                  sx={{ 
-                    height: '100%',
-                    border: 1,
-                    borderColor: 'divider',
-                  }}
-                >
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <BarChartIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Typography variant="h6">Relevance Scores</Typography>
-                    </Box>
-                    <Box sx={{ height: 300, width: '100%' }}>
-                      <ResponsiveContainer>
-                        <BarChart 
-                          data={distribution.scores} 
-                          margin={{ top: 20, right: 30, left: 0, bottom: 20 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis 
-                            dataKey="name" 
-                            tick={{ fill: theme.palette.text.secondary }}
-                            tickLine={{ stroke: theme.palette.divider }}
-                          />
-                          <YAxis 
-                            tick={{ fill: theme.palette.text.secondary }}
-                            tickLine={{ stroke: theme.palette.divider }}
-                          />
-                          <Tooltip content={<CustomTooltip />} />
-                          <Bar 
-                            dataKey="count" 
-                            fill={theme.palette.secondary.main}
-                            radius={[4, 4, 0, 0]}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            )}
-          </Grid>
-        ) : (
-          <EmptyState 
-            message="No analytics data available"
-            icon={AssessmentIcon}
-          />
-        )}
-      </LoaderOverlay>
-    </Box>
+      {hasData ? (
+        <div className="grid grid-cols-1 gap-3">
+          {/* Categories Distribution */}
+          {distribution.categories.length > 0 && (
+            <div className="card">
+              <div className="flex items-center mb-3">
+                <span style={{ fontSize: '1.5rem', marginRight: 'var(--space-1)' }}>🏷️</span>
+                <h2>Grants by Category</h2>
+              </div>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={distribution.categories}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    label={(entry) => `${entry.name}: ${entry.value}`}
+                  >
+                    {distribution.categories.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Deadlines Distribution */}
+          {distribution.deadlines.length > 0 && (
+            <div className="card">
+              <div className="flex items-center mb-3">
+                <span style={{ fontSize: '1.5rem', marginRight: 'var(--space-1)' }}>📅</span>
+                <h2>Grants by Deadline Range</h2>
+              </div>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={distribution.deadlines}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <XAxis dataKey="name" stroke="#1a1a1a" />
+                  <YAxis stroke="#1a1a1a" />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="count" fill="#1a1a1a" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Scores Distribution */}
+          {distribution.scores.length > 0 && (
+            <div className="card">
+              <div className="flex items-center mb-3">
+                <span style={{ fontSize: '1.5rem', marginRight: 'var(--space-1)' }}>⭐</span>
+                <h2>Grants by Relevance Score</h2>
+              </div>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={distribution.scores}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <XAxis dataKey="name" stroke="#1a1a1a" />
+                  <YAxis stroke="#1a1a1a" />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="count" fill="#1976D2" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <div style={{ fontSize: '3rem', marginBottom: 'var(--space-2)' }}>📊</div>
+          <p>No analytics data available</p>
+          <p className="text-secondary text-sm">
+            Start searching for grants to see analytics
+          </p>
+        </div>
+      )}
+    </div>
   );
 };
 

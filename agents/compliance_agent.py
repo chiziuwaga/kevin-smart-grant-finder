@@ -3,16 +3,16 @@ from app.schemas import EnrichedGrant, ComplianceScores, ResearchContextScores #
 import yaml
 import logging
 from typing import Dict, Any, Optional, List
-from utils.perplexity_client import PerplexityClient # For potential LLM use in compliance checks
+from services.deepseek_client import DeepSeekClient # For potential LLM use in compliance checks
 import re # For text processing
 
 logger = logging.getLogger(__name__)
 
 class ComplianceAnalysisAgent:
-    def __init__(self, compliance_config_path: str, profile_config_path: str, perplexity_client: Optional[PerplexityClient]): # Allow Optional PerplexityClient
-        if perplexity_client is None:
-            logger.error("Perplexity client cannot be None for ComplianceAnalysisAgent.")
-            raise ValueError("Perplexity client cannot be None for ComplianceAnalysisAgent.")
+    def __init__(self, compliance_config_path: str, profile_config_path: str, deepseek_client: Optional[DeepSeekClient]): # Allow Optional DeepSeekClient
+        if deepseek_client is None:
+            logger.error("DeepSeek client cannot be None for ComplianceAnalysisAgent.")
+            raise ValueError("DeepSeek client cannot be None for ComplianceAnalysisAgent.")
         
         try:
             with open(compliance_config_path, 'r') as f:
@@ -35,8 +35,8 @@ class ComplianceAnalysisAgent:
         except yaml.YAMLError as e:
             logger.error(f"Error parsing Kevin profile config file {profile_config_path}: {e}")
             raise
-        
-        self.perplexity_client = perplexity_client # Available for future LLM-based checks
+
+        self.deepseek_client = deepseek_client # Available for future LLM-based checks
         
         self.weights = self.compliance_rules.get('scoring_weights', {})
         self.business_logic_weight = self.weights.get('business_logic_alignment', 0.3)
@@ -118,10 +118,10 @@ class ComplianceAnalysisAgent:
                 logger.warning(f"Business Logic: Ethical red flag '{flag}' found for grant {grant.title}")
                 score -= 0.4 # Significant penalty
                 break
-        
+
         # Could add LLM call here for nuanced ethical assessment if rules are not enough
         # e.g., prompt = f"Assess if the following grant text has ethical concerns for a company like Kevin Inc.: {text_to_search}"
-        # ethical_assessment = await self.perplexity_client.ask(prompt, model="sonar-small-online")
+        # ethical_assessment = await self.deepseek_client.chat_completion([{"role": "user", "content": prompt}])
         
         return self._normalize_score(score)
 
@@ -199,7 +199,7 @@ class ComplianceAnalysisAgent:
         #            score -= 0.15        
         # Placeholder for LLM-based feasibility check on complex requirements
         # prompt = f"Assess Kevin Inc.\\'s feasibility for this grant based on their profile and grant requirements: {grant.description}. Kevin\\'s profile: {self.kevin_profile['operational_capacity']}"
-        # feasibility_assessment = await self.perplexity_client.ask(prompt, model="sonar-small-online")
+        # feasibility_assessment = await self.deepseek_client.chat_completion([{"role": "user", "content": prompt}])
         # Parse assessment and adjust score
 
         return self._normalize_score(score)
@@ -239,11 +239,12 @@ class ComplianceAnalysisAgent:
             if area.lower() in text_to_search:
                 score -= 0.3 # Penalty
                 logger.warning(f"Strategic Synergy: Grant aligns with a misaligned focus area '{area}' for {grant.title}")
-        
+
         # LLM for nuanced strategic fit:
         # prompt = f"Does this grant: '{grant.purpose}' strategically align with a company focused on {profile_strat.get('long_term_vision','')} and objectives like {primary_objectives}? Explain."
-        # strategic_fit_assessment = await self.perplexity_client.ask(prompt, model="sonar-small-online")
-        # Parse and adjust score        return self._normalize_score(score)
+        # strategic_fit_assessment = await self.deepseek_client.chat_completion([{"role": "user", "content": prompt}])
+        # Parse and adjust score
+        return self._normalize_score(score)
 
     def _calculate_final_weighted_score(self, grant: EnrichedGrant) -> float:
         # Implementation for Task 3.7

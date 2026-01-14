@@ -1,9 +1,9 @@
-import { CssBaseline, ThemeProvider } from '@mui/material';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
-import theme from './theme';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { LoadingProvider } from './components/common/LoadingProvider';
+import Auth0ProviderWithHistory from './components/Auth/Auth0Provider';
+import ProtectedRoute from './components/Auth/ProtectedRoute';
 
 // Layout
 import AppLayout from './components/Layout/AppLayout';
@@ -16,9 +16,13 @@ import NotFoundPage from './pages/NotFoundPage';
 import SavedGrantsPage from './pages/SavedGrantsPage';
 import SearchPage from './pages/SearchPage';
 import SettingsPage from './pages/SettingsPage';
+import ApplicationsPage from './pages/ApplicationsPage';
+import BusinessProfilePage from './pages/BusinessProfilePage';
+
+// Swiss Design System CSS
+import './styles/swiss-theme.css';
 
 function App() {
-  const [ok, setOk] = useState(() => localStorage.getItem('authOK') === '1');
   const [apiError, setApiError] = useState(false);
 
   // Check API health on startup
@@ -33,67 +37,67 @@ function App() {
         setApiError(true);
       }
     };
-    
+
     checkApiHealth();
     const interval = setInterval(checkApiHealth, 30000); // Check every 30 seconds
     return () => clearInterval(interval);
   }, []);
 
-  if (!ok) {
-    const pwd = prompt('Enter password to access Smart Grant Finder');
-    if (pwd === 'smartgrantfinder') {
-      localStorage.setItem('authOK', '1');
-      setOk(true);
-    } else {
-      window.location.href = 'https://google.com';
-    }
-    return null;
-  }
-
   if (apiError) {
     return (
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          padding: '20px',
-          textAlign: 'center'
-        }}>
-          <h1>API Connection Error</h1>
-          <p>Unable to connect to the backend API. Please try again later or contact support.</p>
-          <button onClick={() => window.location.reload()}>
-            Retry Connection
-          </button>
-        </div>
-      </ThemeProvider>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        padding: '20px',
+        textAlign: 'center',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif'
+      }}>
+        <h1 style={{ marginBottom: '16px' }}>API Connection Error</h1>
+        <p style={{ marginBottom: '24px', color: '#666666' }}>
+          Unable to connect to the backend API. Please try again later or contact support.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="btn btn-primary"
+        >
+          Retry Connection
+        </button>
+      </div>
     );
   }
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ErrorBoundary>
-        <LoadingProvider>
-          <Router>
+    <ErrorBoundary>
+      <LoadingProvider>
+        <Router>
+          <Auth0ProviderWithHistory>
             <Routes>
-              <Route path="/" element={<AppLayout />}>
+              <Route
+                path="/*"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout />
+                  </ProtectedRoute>
+                }
+              >
                 <Route index element={<Dashboard />} />
                 <Route path="grants" element={<GrantsPage />} />
                 <Route path="search" element={<SearchPage />} />
                 <Route path="saved" element={<SavedGrantsPage />} />
+                <Route path="applications" element={<ApplicationsPage />} />
+                <Route path="profile" element={<BusinessProfilePage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="analytics" element={<AnalyticsPage />} />
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>
-          </Router>
-        </LoadingProvider>
-      </ErrorBoundary>
-    </ThemeProvider>
+          </Auth0ProviderWithHistory>
+        </Router>
+      </LoadingProvider>
+    </ErrorBoundary>
   );
 }
 

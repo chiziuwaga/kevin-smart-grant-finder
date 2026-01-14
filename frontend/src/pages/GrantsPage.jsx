@@ -1,56 +1,17 @@
-import {
-    AttachMoney as AttachMoneyIcon,
-    ClearAll as ClearAllIcon,
-    Event as EventIcon,
-    FilterList as FilterListIcon,
-    OpenInNew as OpenInNewIcon,
-    Search as SearchIcon,
-} from '@mui/icons-material';
-import {
-    alpha,
-    Box,
-    Button,
-    Card,
-    CardContent,
-    Checkbox,
-    Chip,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogTitle,
-    FormControlLabel,
-    Grid,
-    IconButton,
-    MenuItem,
-    Paper,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    TextField,
-    Typography,
-    useTheme
-} from '@mui/material';
 import { differenceInDays, format, parseISO } from 'date-fns';
 import { useCallback, useEffect, useState } from 'react';
 import { getGrants } from '../api/apiClient';
-import EmptyState from '../components/common/EmptyState';
-import LoaderOverlay from '../components/common/LoaderOverlay';
-import { useLoading } from '../components/common/LoadingProvider';
-import TableSkeleton from '../components/common/TableSkeleton';
+import '../styles/swiss-theme.css';
 
 const CATEGORIES = ['All', 'Research', 'Education', 'Community', 'Healthcare', 'Environment', 'Arts', 'Business', 'Energy', 'Other'];
 
 const GrantsPage = () => {
-  const theme = useTheme();
-  const { startLoading, stopLoading, showError } = useLoading();
   const [loading, setLoading] = useState(false);
   const [grants, setGrants] = useState([]);
   const [selectedGrant, setSelectedGrant] = useState(null);
   const [fetchError, setFetchError] = useState(null);
-  
+  const [message, setMessage] = useState({ text: '', type: '' });
+
   const [filters, setFilters] = useState({
     min_score: 0,
     days_to_deadline: 90,
@@ -58,32 +19,33 @@ const GrantsPage = () => {
     includeExpired: false
   });
 
+  const showMessage = (text, type) => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage({ text: '', type: '' }), 3000);
+  };
+
   const fetchGrants = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
-    startLoading();    try {
+
+    try {
       const params = { ...filters };
       if (filters.category === 'All') delete params.category;
-      
+
       const response = await getGrants(params);
-      // Handle both paginated response format and direct array format
-      let grants = response.items || response.data || response;
-      
-      // Client-side filtering for expired grants if not including expired
+      let grantsData = response.items || response.data || response;
+
       if (!filters.includeExpired) {
-        grants = grants.filter(grant => {
+        grantsData = grantsData.filter(grant => {
           const deadline = grant.deadline || grant.deadline_date;
-          if (!deadline) return true; // Include grants without deadlines
-          
-          const deadlineDate = new Date(deadline);
-          const today = new Date();
-          return deadlineDate >= today; // Only include non-expired grants
+          if (!deadline) return true;
+          return new Date(deadline) >= new Date();
         });
       }
-      
-      if (Array.isArray(grants)) {
-        setGrants(grants);
-        if (grants.length === 0) {
+
+      if (Array.isArray(grantsData)) {
+        setGrants(grantsData);
+        if (grantsData.length === 0) {
           setFetchError('No grants found matching your criteria');
         }
       } else {
@@ -93,21 +55,23 @@ const GrantsPage = () => {
     } catch (error) {
       console.error('Error fetching grants:', error);
       setFetchError(error.message || 'Failed to fetch grants. Please try again.');
-      showError('An error occurred while fetching grants');
+      showMessage('An error occurred while fetching grants', 'error');
       setGrants([]);
     } finally {
       setLoading(false);
-      stopLoading();
     }
-  }, [filters, showError, startLoading, stopLoading]);
+  }, [filters]);
 
   useEffect(() => {
     fetchGrants();
   }, [fetchGrants]);
 
   const handleChange = useCallback((e) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setFilters(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   }, []);
 
   const handleApply = useCallback(() => {
@@ -118,11 +82,11 @@ const GrantsPage = () => {
     setFilters({
       min_score: 0,
       days_to_deadline: 90,
-      category: 'All'
+      category: 'All',
+      includeExpired: false
     });
     setFetchError(null);
-    fetchGrants();
-  }, [fetchGrants]);
+  }, []);
 
   const handleGrantClick = useCallback((grant) => {
     setSelectedGrant(grant);
@@ -132,309 +96,211 @@ const GrantsPage = () => {
     setSelectedGrant(null);
   }, []);
 
-  const getRelevanceColor = (score) => {
-    if (score >= 90) return theme.palette.success.main;
-    if (score >= 80) return theme.palette.info.main;
-    if (score >= 70) return theme.palette.warning.main;
-    return theme.palette.error.main;
+  const getRelevanceClass = (score) => {
+    if (score >= 90) return 'chip-success';
+    if (score >= 80) return 'chip-info';
+    if (score >= 70) return 'chip-warning';
+    return 'chip-error';
   };
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 } }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ 
-          fontWeight: 700,
-          fontSize: { xs: '1.5rem', sm: '2rem' }
-        }}>
-          All Grants
-        </Typography>
-        <Box>
-          <IconButton 
-            onClick={handleReset}
-            sx={{ mr: 1 }}
-            title="Reset filters"
-          >
-            <ClearAllIcon />
-          </IconButton>
-          <Button 
-            variant="contained" 
-            startIcon={<SearchIcon />}
-            onClick={handleApply}
-          >
-            Search
-          </Button>
-        </Box>
-      </Box>
+    <div className="container" style={{ padding: 'var(--space-3)' }}>
+      <div className="flex justify-between items-center mb-3">
+        <h1>All Grants</h1>
+        <div className="flex gap-2">
+          <button className="btn btn-text" onClick={handleReset} title="Reset filters">
+            ↺ Reset
+          </button>
+          <button className="btn btn-primary" onClick={handleApply}>
+            🔍 Search
+          </button>
+        </div>
+      </div>
 
-      <Card 
-        elevation={0} 
-        sx={{ 
-          mb: 3,
-          border: 1,
-          borderColor: 'divider',
-        }}
-      >
-        <CardContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <FilterListIcon sx={{ mr: 1, color: 'text.secondary' }} />
-            <Typography variant="subtitle1" color="text.secondary">Filters</Typography>
-          </Box>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                label="Minimum Score"
-                name="min_score"
-                type="number"
-                fullWidth
-                value={filters.min_score}
-                onChange={handleChange}
-                InputProps={{
-                  endAdornment: '%',
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                label="Days to Deadline"
-                name="days_to_deadline"
-                type="number"
-                fullWidth
-                value={filters.days_to_deadline}
-                onChange={handleChange}
-                InputProps={{
-                  endAdornment: 'days',
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                select
-                label="Category"
-                name="category"
-                fullWidth
-                value={filters.category}
-                onChange={handleChange}
-              >
-                {CATEGORIES.map(opt =>
-                  <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-                )}
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    name="includeExpired"
-                    checked={filters.includeExpired}
-                    onChange={(e) => setFilters(prev => ({ ...prev, includeExpired: e.target.checked }))}
-                  />
-                }
-                label="Include Expired"
-              />
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
+      {message.text && (
+        <div className={`alert alert-${message.type} mb-3`}>
+          {message.text}
+        </div>
+      )}
 
-      <LoaderOverlay loading={loading}>
-        {grants.length > 0 ? (
-          <>
-            <TableContainer 
-              component={Paper} 
-              elevation={0}
-              sx={{ 
-                border: 1,
-                borderColor: 'divider',
-              }}
+      <div className="card mb-3">
+        <div className="flex items-center mb-2">
+          <span style={{ marginRight: 'var(--space-1)' }}>🔍</span>
+          <h3 className="text-secondary text-sm" style={{ margin: 0 }}>FILTERS</h3>
+        </div>
+        <div className="grid grid-cols-4" style={{ gap: 'var(--space-2)', alignItems: 'end' }}>
+          <div className="form-group">
+            <label className="label">Minimum Score</label>
+            <input
+              type="number"
+              name="min_score"
+              className="input"
+              value={filters.min_score}
+              onChange={handleChange}
+              min="0"
+              max="100"
+            />
+          </div>
+          <div className="form-group">
+            <label className="label">Days to Deadline</label>
+            <input
+              type="number"
+              name="days_to_deadline"
+              className="input"
+              value={filters.days_to_deadline}
+              onChange={handleChange}
+              min="0"
+            />
+          </div>
+          <div className="form-group">
+            <label className="label">Category</label>
+            <select
+              name="category"
+              className="input"
+              value={filters.category}
+              onChange={handleChange}
             >
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Title</TableCell>
-                    <TableCell>Category</TableCell>
-                    <TableCell>Deadline</TableCell>
-                    <TableCell>Relevance</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {loading ? (
-                    <TableSkeleton rows={5} columns={4} />
-                  ) : (
-                    grants.map(grant => {
-                      const daysToDeadline = grant.deadline ? 
-                        differenceInDays(parseISO(grant.deadline), new Date()) : null;
-                      
-                      return (
-                        <TableRow 
-                          key={grant.id} 
-                          hover
-                          onClick={() => handleGrantClick(grant)}
-                          sx={{
-                            '&:hover': {
-                              cursor: 'pointer',
-                              bgcolor: 'action.hover',
-                            }
-                          }}
-                        >
-                          <TableCell>
-                            <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                              {grant.title}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {grant.source}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={grant.category}
-                              size="small"
-                              sx={{
-                                bgcolor: theme => theme.palette.grey[100],
-                                color: theme => theme.palette.grey[800],
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {grant.deadline ? (
-                              <>
-                                <Typography variant="body2">
-                                  {format(parseISO(grant.deadline), 'PP')}
-                                </Typography>
-                                <Typography 
-                                  variant="caption" 
-                                  color={daysToDeadline < 14 ? 'error.main' : 'text.secondary'}
-                                >
-                                  ({daysToDeadline} days left)
-                                </Typography>
-                              </>
-                            ) : (
-                              <Typography variant="body2" color="text.secondary">
-                                N/A
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              label={`${grant.relevanceScore || 0}%`}
-                              size="small"
-                              sx={{
-                                bgcolor: alpha(getRelevanceColor(grant.relevanceScore), 0.1),
-                                color: getRelevanceColor(grant.relevanceScore),
-                                fontWeight: 600,
-                              }}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+              {CATEGORIES.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                name="includeExpired"
+                checked={filters.includeExpired}
+                onChange={handleChange}
+              />
+              <span>Include Expired</span>
+            </label>
+          </div>
+        </div>
+      </div>
 
-            <Dialog 
-              open={Boolean(selectedGrant)} 
-              onClose={handleCloseDetail}
-              maxWidth="sm"
-              fullWidth
-            >
-              {selectedGrant && (
-                <>
-                  <DialogTitle>
-                    <Typography variant="h6" component="div">
-                      {selectedGrant.title}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {selectedGrant.source}
-                    </Typography>
-                  </DialogTitle>
-                  <DialogContent dividers>
-                    <Box sx={{ mb: 2 }}>
-                      <Chip 
-                        label={selectedGrant.category}
-                        size="small"
-                        sx={{
-                          bgcolor: theme.palette.grey[100],
-                          color: theme.palette.grey[800],
-                        }}
-                      />
-                    </Box>
-                    
-                    {selectedGrant.description && (
-                      <Typography variant="body2" paragraph>
-                        {selectedGrant.description}
-                      </Typography>
-                    )}
+      {loading ? (
+        <div className="loading-container">
+          <div className="spinner"></div>
+          <p className="mt-2">Loading grants...</p>
+        </div>
+      ) : grants.length > 0 ? (
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Deadline</th>
+                <th>Relevance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grants.map(grant => {
+                const daysToDeadline = grant.deadline ?
+                  differenceInDays(parseISO(grant.deadline), new Date()) : null;
+                const isUrgent = daysToDeadline !== null && daysToDeadline < 14 && daysToDeadline >= 0;
+                const isExpired = daysToDeadline !== null && daysToDeadline < 0;
 
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                      <EventIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                      <Typography variant="body2">
-                        {selectedGrant.deadline ? (
-                          <>
-                            Deadline: {format(parseISO(selectedGrant.deadline), 'PPP')}
-                            {' '}
-                            <Typography 
-                              component="span" 
-                              variant="caption"
-                              color={differenceInDays(parseISO(selectedGrant.deadline), new Date()) < 14 ? 'error.main' : 'text.secondary'}
-                            >
-                              ({differenceInDays(parseISO(selectedGrant.deadline), new Date())} days left)
-                            </Typography>
-                          </>
-                        ) : 'No deadline specified'}
-                      </Typography>
-                    </Box>
+                return (
+                  <tr
+                    key={grant.id}
+                    onClick={() => handleGrantClick(grant)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td>
+                      <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                        {grant.title}
+                      </div>
+                      <div className="text-xs text-secondary">
+                        {grant.source || grant.funder_name || 'Unknown'}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="chip">
+                        {grant.category || grant.identified_sector || 'Other'}
+                      </span>
+                    </td>
+                    <td>
+                      {grant.deadline ? (
+                        <div>
+                          <div style={{ marginBottom: '4px' }}>
+                            {format(parseISO(grant.deadline), 'PP')}
+                          </div>
+                          <div
+                            className="text-xs"
+                            style={{
+                              color: isExpired ? '#E53935' : isUrgent ? '#E53935' : 'var(--color-gray-600)'
+                            }}
+                          >
+                            {isExpired ? 'Expired' : `${daysToDeadline} days left`}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-secondary">N/A</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`chip ${getRelevanceClass(grant.overall_composite_score || grant.relevanceScore || 0)}`}>
+                        {(grant.overall_composite_score || grant.relevanceScore || 0).toFixed(0)}%
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="empty-state">
+          <p>{fetchError || 'No grants available'}</p>
+          <button className="btn btn-primary mt-3" onClick={handleReset}>
+            Reset Filters
+          </button>
+        </div>
+      )}
 
-                    {selectedGrant.fundingAmount && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <AttachMoneyIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                        <Typography variant="body2">
-                          Funding Amount: {selectedGrant.fundingAmount}
-                        </Typography>
-                      </Box>
-                    )}
-
-                    <Box sx={{ mt: 2 }}>
-                      <Chip
-                        label={`Relevance Score: ${selectedGrant.relevanceScore || 0}%`}
-                        size="small"
-                        sx={{
-                          bgcolor: alpha(getRelevanceColor(selectedGrant.relevanceScore), 0.1),
-                          color: getRelevanceColor(selectedGrant.relevanceScore),
-                          fontWeight: 600,
-                        }}
-                      />
-                    </Box>
-                  </DialogContent>
-                  <DialogActions>
-                    {selectedGrant.sourceUrl && (
-                      <Button
-                        startIcon={<OpenInNewIcon />}
-                        href={selectedGrant.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        View Source
-                      </Button>
-                    )}
-                    <Button onClick={handleCloseDetail}>
-                      Close
-                    </Button>
-                  </DialogActions>
-                </>
+      {/* Grant Detail Modal */}
+      {selectedGrant && (
+        <div className="modal-backdrop" onClick={handleCloseDetail}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '700px' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">{selectedGrant.title}</h3>
+              <button className="modal-close" onClick={handleCloseDetail}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: 'var(--space-2)' }}>
+                <strong>Funder:</strong> {selectedGrant.funder_name || 'Unknown'}
+              </div>
+              <div style={{ marginBottom: 'var(--space-2)' }}>
+                <strong>Category:</strong> <span className="chip">{selectedGrant.category || 'Other'}</span>
+              </div>
+              {selectedGrant.deadline && (
+                <div style={{ marginBottom: 'var(--space-2)' }}>
+                  <strong>Deadline:</strong> {format(parseISO(selectedGrant.deadline), 'PPP')}
+                </div>
               )}
-            </Dialog>
-          </>
-        ) : (          <EmptyState 
-            message={fetchError || "No grants found matching your criteria"}
-            action={true}
-            actionLabel="Reset Filters"
-            onAction={handleReset}
-            error={Boolean(fetchError)}
-          />
-        )}
-      </LoaderOverlay>
-    </Box>
+              <div style={{ marginBottom: 'var(--space-2)' }}>
+                <strong>Description:</strong>
+                <p style={{ marginTop: 'var(--space-1)' }}>{selectedGrant.description || 'No description available'}</p>
+              </div>
+              {selectedGrant.source_url && (
+                <div>
+                  <a href={selectedGrant.source_url} target="_blank" rel="noopener noreferrer" className="btn btn-text">
+                    View Source ↗
+                  </a>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={handleCloseDetail}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

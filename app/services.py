@@ -4,11 +4,10 @@ from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
 from sqlalchemy import text
 from utils.pinecone_client import PineconeClient
-from utils.perplexity_client import PerplexityClient
-from utils.notification_manager import NotificationManager
+from services.deepseek_client import DeepSeekClient
+from services.resend_client import ResendEmailClient
 from fixes.services.fallback_clients import (
-    FallbackPineconeClient, 
-    FallbackPerplexityClient, 
+    FallbackPineconeClient,
     FallbackNotificationManager
 )
 from config.settings import get_settings
@@ -21,8 +20,8 @@ class Services:
     db_engine: Optional[AsyncEngine] = None
     db_sessionmaker: Optional[async_sessionmaker[AsyncSession]] = None
     pinecone_client: Optional[Any] = None  # Can be PineconeClient or FallbackPineconeClient
-    perplexity_client: Optional[Any] = None  # Can be PerplexityClient or FallbackPerplexityClient
-    notifier: Optional[Any] = None  # Can be NotificationManager or FallbackNotificationManager
+    deepseek_client: Optional[DeepSeekClient] = None  # DeepSeek AI client
+    notifier: Optional[Any] = None  # ResendEmailClient or FallbackNotificationManager
     start_time: Optional[float] = None
 
 services = Services()
@@ -78,28 +77,22 @@ async def init_services():
         logger.warning(f"Pinecone initialization failed: {e}. Using fallback client.")
         services.pinecone_client = FallbackPineconeClient()
 
-    # Initialize Perplexity with fallback
+    # Initialize DeepSeek client
     try:
-        logger.info("Initializing Perplexity client...")
-        services.perplexity_client = PerplexityClient()
-        logger.info("Perplexity client initialized successfully")
+        logger.info("Initializing DeepSeek client...")
+        services.deepseek_client = DeepSeekClient()
+        logger.info("DeepSeek client initialized successfully")
     except Exception as e:
-        logger.warning(f"Perplexity initialization failed: {e}. Using fallback client.")
-        services.perplexity_client = FallbackPerplexityClient()
+        logger.warning(f"DeepSeek initialization failed: {e}. AI features will be limited.")
+        services.deepseek_client = None
 
-    # Initialize Notifications with fallback
+    # Initialize Resend email client
     try:
-        if settings.telegram_bot_token and settings.telegram_chat_id:
-            services.notifier = NotificationManager(
-                telegram_token=settings.telegram_bot_token,
-                telegram_chat_id=settings.telegram_chat_id
-            )
-            logger.info("Notification manager initialized successfully")
-        else:
-            logger.warning("Telegram credentials not found. Using fallback notifier.")
-            services.notifier = FallbackNotificationManager()
+        logger.info("Initializing Resend email client...")
+        services.notifier = ResendEmailClient()
+        logger.info("Resend email client initialized successfully")
     except Exception as e:
-        logger.warning(f"Notification manager initialization failed: {e}. Using fallback notifier.")
+        logger.warning(f"Resend initialization failed: {e}. Using fallback notifier.")
         services.notifier = FallbackNotificationManager()
 
     logger.info("Service initialization completed with graceful degradation")

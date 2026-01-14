@@ -1,0 +1,244 @@
+/* Grant Details Modal - Swiss Design */
+
+.modal-content-large {
+  max-width: 900px;
+  max-height: 90vh;
+}
+
+.grant-title-section {
+  flex: 1;
+  padding-right: 24px;
+}
+
+.grant-title-section h2 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #000000;
+  line-height: 1.3;
+}
+
+.grant-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.grant-details-body {
+  padding: 24px;
+}
+
+.grant-details-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.grant-main-content {
+  min-width: 0;
+}
+
+.grant-section {
+  margin-bottom: 24px;
+}
+
+.grant-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #000000;
+  margin: 0 0 12px 0;
+}
+
+.grant-section p {
+  margin: 0;
+  line-height: 1.6;
+  color: #333333;
+}
+
+.ai-summary {
+  background: #FAFAFA;
+  padding: 16px;
+  border-left: 2px solid #1976D2;
+  font-style: italic;
+}
+
+.eligibility-box {
+  background: #E3F2FD;
+  padding: 16px;
+  border-left: 2px solid #1976D2;
+  font-style: italic;
+}
+
+.grant-sidebar {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+}
+
+.sidebar-card {
+  background: #FFFFFF;
+  border: 1px solid #E0E0E0;
+  border-radius: 2px;
+  padding: 16px;
+}
+
+.sidebar-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #000000;
+  margin: 0 0 16px 0;
+}
+
+.detail-item {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #F5F5F5;
+}
+
+.detail-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.detail-label {
+  font-size: 12px;
+  color: #666666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.detail-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #000000;
+}
+
+.detail-subtext {
+  font-size: 12px;
+  color: #666666;
+  margin-top: 4px;
+}
+
+.text-error {
+  color: #E53935;
+}
+
+.text-warning {
+  color: #FFA726;
+}
+
+.score-highlight {
+  background: #E3F2FD;
+  border: 1px solid #1976D2;
+  border-radius: 2px;
+  padding: 16px;
+  text-align: center;
+  margin-top: 16px;
+}
+
+.score-highlight-label {
+  font-size: 12px;
+  color: #666666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.score-highlight-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #1976D2;
+}
+
+.keywords-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.keyword-chip {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #FFFFFF;
+  border: 1px solid #E0E0E0;
+  border-radius: 2px;
+  font-size: 13px;
+  color: #333333;
+}
+
+.scores-container {
+  margin: 24px 0;
+}
+
+.score-section {
+  background: #FAFAFA;
+  border: 1px solid #E0E0E0;
+  border-radius: 2px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.score-section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #000000;
+  margin: 0 0 16px 0;
+}
+
+.score-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+}
+
+.score-item {
+  text-align: center;
+}
+
+.score-label {
+  font-size: 12px;
+  color: #666666;
+  margin-bottom: 4px;
+}
+
+.score-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1976D2;
+}
+
+.log-list {
+  margin: 0;
+  padding-left: 24px;
+  list-style: disc;
+}
+
+.log-list li {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #333333;
+  line-height: 1.5;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .grant-details-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .grant-sidebar {
+    position: static;
+  }
+
+  .modal-content-large {
+    width: 95%;
+    max-height: 95vh;
+  }
+
+  .score-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+}

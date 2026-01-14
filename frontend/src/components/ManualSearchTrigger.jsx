@@ -1,27 +1,6 @@
-import {
-  PlayArrow as PlayIcon,
-  Search as SearchIcon,
-  CheckCircle as SuccessIcon,
-  Info as InfoIcon
-} from '@mui/icons-material';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  LinearProgress,
-  Typography,
-  Collapse,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText
-} from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useState, useCallback } from 'react';
+import './ManualSearchTrigger.css';
 
 /**
  * Enhanced Manual Grant Search Trigger Component
@@ -91,7 +70,7 @@ const ManualSearchTrigger = ({ onSearchComplete, compact = false }) => {
         setSearchProgress(100);
         setCurrentStep('Search completed successfully!');
         setSearchResults(data);
-        
+
         enqueueSnackbar(
           `Search completed! Found ${data.grants_processed || 0} grants.`,
           { variant: 'success' }
@@ -106,10 +85,10 @@ const ManualSearchTrigger = ({ onSearchComplete, compact = false }) => {
       setSearchError(error.message);
       setCurrentStep('Search failed');
       setSearchProgress(0);
-      
+
       enqueueSnackbar(
         `Search failed: ${error.message}`,
-        { 
+        {
           variant: 'error',
           persist: true
         }
@@ -126,165 +105,132 @@ const ManualSearchTrigger = ({ onSearchComplete, compact = false }) => {
 
   if (compact) {
     return (
-      <Box>
-        <Button
-          variant="contained"
-          startIcon={isSearching ? <CircularProgress size={16} /> : <SearchIcon />}
+      <div className="manual-search-compact">
+        <button
+          className="btn btn-primary btn-lg btn-block"
           onClick={triggerManualSearch}
           disabled={isSearching}
-          size="large"
-          fullWidth
-          sx={{ mb: 2 }}
         >
-          {isSearching ? 'Searching for Grants...' : 'Run Grant Search'}
-        </Button>
-        
+          {isSearching ? (
+            <>
+              <span className="spinner spinner-sm"></span> Searching for Grants...
+            </>
+          ) : (
+            <>
+              <span className="icon">🔍</span> Run Grant Search
+            </>
+          )}
+        </button>
+
         {isSearching && (
-          <Box sx={{ mb: 2 }}>
-            <LinearProgress 
-              variant="determinate" 
-              value={searchProgress} 
-              sx={{ mb: 1, height: 6, borderRadius: 3 }}
-            />
-            <Typography variant="body2" color="text.secondary" align="center">
-              {currentStep}
-            </Typography>
-          </Box>
+          <div className="search-progress-compact">
+            <div className="progress-bar">
+              <div
+                className="progress-bar-fill"
+                style={{ width: `${searchProgress}%` }}
+              ></div>
+            </div>
+            <div className="search-step-text">{currentStep}</div>
+          </div>
         )}
 
         {searchResults && (
-          <Alert severity="success" sx={{ mb: 2 }}>
+          <div className="alert alert-success">
             Search completed! Found {searchResults.grants_processed || 0} grants.
-          </Alert>
+          </div>
         )}
 
         {searchError && (
-          <Alert 
-            severity="error" 
-            sx={{ mb: 2 }}
-            action={
-              <Button color="inherit" size="small" onClick={handleRetry}>
-                Retry
-              </Button>
-            }
-          >
-            {searchError}
-          </Alert>
+          <div className="alert alert-error">
+            <div className="alert-content">{searchError}</div>
+            <button className="btn btn-secondary btn-sm" onClick={handleRetry}>
+              Retry
+            </button>
+          </div>
         )}
-      </Box>
+      </div>
     );
   }
 
   return (
-    <Card 
-      elevation={0}
-      sx={{ 
-        border: 1,
-        borderColor: 'divider',
-      }}
-    >
-      <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <SearchIcon sx={{ mr: 1, color: 'primary.main' }} />
-          <Typography variant="h6">
-            Manual Grant Discovery
-          </Typography>
-        </Box>
+    <div className="manual-search-card">
+      <div className="manual-search-header">
+        <span className="icon">🔍</span>
+        <h3>Manual Grant Discovery</h3>
+      </div>
 
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Trigger a comprehensive grant search to discover new funding opportunities 
-          using our AI-powered research agents.
-        </Typography>
+      <p className="manual-search-description">
+        Trigger a comprehensive grant search to discover new funding opportunities
+        using our AI-powered research agents.
+      </p>
 
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={isSearching ? <CircularProgress size={20} color="inherit" /> : <PlayIcon />}
-          onClick={triggerManualSearch}
-          disabled={isSearching}
-          fullWidth
-          sx={{ mb: 2 }}
-        >
-          {isSearching ? 'Discovering Grants...' : 'Start Grant Search'}
-        </Button>
+      <button
+        className="btn btn-primary btn-lg btn-block"
+        onClick={triggerManualSearch}
+        disabled={isSearching}
+      >
+        {isSearching ? (
+          <>
+            <span className="spinner spinner-sm"></span> Discovering Grants...
+          </>
+        ) : (
+          <>
+            <span className="icon">▶</span> Start Grant Search
+          </>
+        )}
+      </button>
 
-        <Collapse in={showDetails}>
+      {showDetails && (
+        <div className="search-details">
           {isSearching && (
-            <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Typography variant="body2" sx={{ flex: 1 }}>
-                  Progress: {Math.round(searchProgress)}%
-                </Typography>
-                <Chip 
-                  label="In Progress" 
-                  color="primary" 
-                  size="small"
-                  icon={<CircularProgress size={16} />}
-                />
-              </Box>
-              <LinearProgress 
-                variant="determinate" 
-                value={searchProgress} 
-                sx={{ mb: 2, height: 8, borderRadius: 4 }}
-              />
-              <Typography variant="body2" color="text.secondary">
-                {currentStep}
-              </Typography>
-            </Box>
+            <div className="search-progress">
+              <div className="search-progress-header">
+                <span>Progress: {Math.round(searchProgress)}%</span>
+                <span className="badge badge-info">
+                  <span className="spinner spinner-xs"></span> In Progress
+                </span>
+              </div>
+              <div className="progress-bar progress-bar-lg">
+                <div
+                  className="progress-bar-fill"
+                  style={{ width: `${searchProgress}%` }}
+                ></div>
+              </div>
+              <div className="search-step-text">{currentStep}</div>
+            </div>
           )}
 
           {searchResults && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Search Completed Successfully!
-              </Typography>
-              <List dense>
-                <ListItem disablePadding>
-                  <ListItemIcon>
-                    <SuccessIcon color="success" fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={`${searchResults.grants_processed || 0} grants processed`}
-                  />
-                </ListItem>
-                <ListItem disablePadding>
-                  <ListItemIcon>
-                    <InfoIcon color="info" fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={`Status: ${searchResults.status || 'completed'}`}
-                  />
-                </ListItem>
-              </List>
-            </Alert>
+            <div className="alert alert-success">
+              <div className="alert-title">Search Completed Successfully!</div>
+              <ul className="search-results-list">
+                <li>
+                  <span className="icon">✓</span> {searchResults.grants_processed || 0} grants processed
+                </li>
+                <li>
+                  <span className="icon">ℹ</span> Status: {searchResults.status || 'completed'}
+                </li>
+              </ul>
+            </div>
           )}
 
           {searchError && (
-            <Alert 
-              severity="error" 
-              sx={{ mb: 2 }}
-              action={
-                <Button color="inherit" size="small" onClick={handleRetry}>
-                  Retry Search
-                </Button>
-              }
-            >
-              <Typography variant="subtitle2" gutterBottom>
-                Search Failed
-              </Typography>
-              <Typography variant="body2">
-                {searchError}
-              </Typography>
-            </Alert>
+            <div className="alert alert-error">
+              <div className="alert-title">Search Failed</div>
+              <div className="alert-content">{searchError}</div>
+              <button className="btn btn-secondary btn-sm" onClick={handleRetry}>
+                Retry Search
+              </button>
+            </div>
           )}
-        </Collapse>
+        </div>
+      )}
 
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-          This will search for new grants across multiple sources and update your grant database.
-          The process typically takes 20-30 seconds to complete.
-        </Typography>
-      </CardContent>
-    </Card>
+      <p className="manual-search-note">
+        This will search for new grants across multiple sources and update your grant database.
+        The process typically takes 20-30 seconds to complete.
+      </p>
+    </div>
   );
 };
 

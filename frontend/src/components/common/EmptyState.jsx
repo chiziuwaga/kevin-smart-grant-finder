@@ -1,48 +1,32 @@
-import React from 'react';
 import PropTypes from 'prop-types';
-import { Box, Typography, Button } from '@mui/material';
-import { SentimentDissatisfied as SentimentDissatisfiedIcon } from '@mui/icons-material';
+import './EmptyState.css';
 
-function EmptyState({ 
-  message, 
-  icon: Icon = SentimentDissatisfiedIcon,
+function EmptyState({
+  message,
+  icon = '😞',
   action,
   actionLabel,
   onAction,
 }) {
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        py: 6,
-        px: 2,
-        textAlign: 'center',
-      }}
-    >
-      {Icon && <Icon sx={{ fontSize: 48, mb: 2, color: 'text.secondary' }} />}
-      <Typography variant="h6" color="text.secondary" gutterBottom>
-        {message}
-      </Typography>
+    <div className="empty-state">
+      {icon && <div className="empty-state-icon">{icon}</div>}
+      <div className="empty-state-message">{message}</div>
       {action && onAction && (
-        <Button 
-          variant="outlined" 
-          color="primary" 
+        <button
+          className="btn btn-secondary"
           onClick={onAction}
-          sx={{ mt: 2 }}
         >
           {actionLabel}
-        </Button>
+        </button>
       )}
-    </Box>
+    </div>
   );
 }
 
 EmptyState.propTypes = {
   message: PropTypes.string.isRequired,
-  icon: PropTypes.elementType,
+  icon: PropTypes.string,
   action: PropTypes.bool,
   actionLabel: PropTypes.string,
   onAction: PropTypes.func,

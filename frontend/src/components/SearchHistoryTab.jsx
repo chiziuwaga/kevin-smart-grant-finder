@@ -1,38 +1,8 @@
-import {
-    CheckCircle as CheckCircleIcon,
-    Computer as ComputerIcon,
-    Error as ErrorIcon,
-    History as HistoryIcon,
-    Info as InfoIcon,
-    Person as PersonIcon,
-    PlayArrow as PlayArrowIcon,
-    Refresh as RefreshIcon,
-    Schedule as ScheduleIcon,
-    Warning as WarningIcon
-} from '@mui/icons-material';
-import {
-    Alert,
-    Box,
-    Card,
-    CardContent,
-    Chip,
-    Grid,
-    IconButton,
-    Paper,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TablePagination,
-    TableRow,
-    Tooltip,
-    Typography
-} from '@mui/material';
 import { useSnackbar } from 'notistack';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import apiClient from 'api/apiClient';
 import LoaderOverlay from 'components/common/LoaderOverlay';
+import './SearchHistoryTab.css';
 
 const SearchHistoryTab = () => {
   const { enqueueSnackbar } = useSnackbar();
@@ -53,7 +23,7 @@ const SearchHistoryTab = () => {
         page_size: rowsPerPage,
         ...filter
       });
-      
+
       setSearchRuns(response.items);
       setTotal(response.total);
     } catch (error) {
@@ -88,31 +58,31 @@ const SearchHistoryTab = () => {
     fetchLatestAutomated();
   }, [fetchSearchRuns, fetchStatistics, fetchLatestAutomated]);
 
-  const handleChangePage = (_: unknown, newPage: number) => {
+  const handleChangePage = (newPage) => {
     setPage(newPage);
   };
 
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status) => {
     switch (status) {
       case 'success':
-        return <CheckCircleIcon color="success" />;
+        return '✓';
       case 'failed':
-        return <ErrorIcon color="error" />;
+        return '✗';
       case 'partial':
-        return <WarningIcon color="warning" />;
+        return '⚠';
       case 'in_progress':
-        return <ScheduleIcon color="info" />;
+        return '⏳';
       default:
-        return <InfoIcon />;
+        return 'ℹ';
     }
   };
 
-  const getStatusColor = (status: string): 'success' | 'error' | 'warning' | 'info' | 'default' => {
+  const getStatusColor = (status) => {
     switch (status) {
       case 'success':
         return 'success';
@@ -127,19 +97,19 @@ const SearchHistoryTab = () => {
     }
   };
 
-  const getRunTypeIcon = (runType: string) => {
+  const getRunTypeIcon = (runType) => {
     switch (runType) {
       case 'automated':
       case 'scheduled':
-        return <ComputerIcon />;
+        return '🤖';
       case 'manual':
-        return <PersonIcon />;
+        return '👤';
       default:
-        return <PlayArrowIcon />;
+        return '▶';
     }
   };
 
-  const formatDuration = (seconds?: number) => {
+  const formatDuration = (seconds) => {
     if (!seconds) return 'N/A';
     if (seconds < 60) return `${seconds.toFixed(1)}s`;
     const minutes = Math.floor(seconds / 60);
@@ -147,11 +117,11 @@ const SearchHistoryTab = () => {
     return `${minutes}m ${remainingSeconds.toFixed(0)}s`;
   };
 
-  const formatDateTime = (dateString: string) => {
+  const formatDateTime = (dateString) => {
     return new Date(dateString).toLocaleString();
   };
 
-  const getHealthColor = (health?: string) => {
+  const getHealthColor = (health) => {
     switch (health) {
       case 'healthy':
         return 'success';
@@ -164,198 +134,183 @@ const SearchHistoryTab = () => {
     }
   };
 
+  const totalPages = Math.ceil(total / rowsPerPage);
+
   return (
-    <Box>
+    <div className="search-history-container">
       {/* Statistics Cards */}
       {statistics && (
-        <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 2, textAlign: 'center' }}>
-              <Typography variant="h4" color="primary">
-                {statistics.total_runs}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Runs (7 days)
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 2, textAlign: 'center' }}>
-              <Typography variant="h4" color="success.main">
-                {statistics.success_rate.toFixed(1)}%
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Success Rate
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 2, textAlign: 'center' }}>
-              <Typography variant="h4" color="info.main">
-                {statistics.average_grants_found.toFixed(1)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Avg Grants Found
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper sx={{ p: 2, textAlign: 'center' }}>
-              <Typography variant="h4" color="text.primary">
-                {formatDuration(statistics.average_duration_seconds)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Avg Duration
-              </Typography>
-            </Paper>
-          </Grid>
-        </Grid>
+        <div className="stats-cards">
+          <div className="stat-card">
+            <div className="stat-value stat-value-primary">
+              {statistics.total_runs}
+            </div>
+            <div className="stat-label">Total Runs (7 days)</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value stat-value-success">
+              {statistics.success_rate.toFixed(1)}%
+            </div>
+            <div className="stat-label">Success Rate</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value stat-value-info">
+              {statistics.average_grants_found.toFixed(1)}
+            </div>
+            <div className="stat-label">Avg Grants Found</div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-value">
+              {formatDuration(statistics.average_duration_seconds)}
+            </div>
+            <div className="stat-label">Avg Duration</div>
+          </div>
+        </div>
       )}
 
       {/* Latest Automated Run Status */}
       {latestAutomated && (
-        <Alert 
-          severity={getHealthColor(latestAutomated.health)} 
-          sx={{ mb: 3 }}
-          action={
-            <Tooltip title="Refresh Status">
-              <IconButton onClick={fetchLatestAutomated} size="small">
-                <RefreshIcon />
-              </IconButton>
-            </Tooltip>
-          }
-        >
-          <Typography variant="subtitle2">
-            Latest Automated Run: {latestAutomated.message}
-          </Typography>
-          {latestAutomated.data && (
-            <Typography variant="body2">
-              {formatDateTime(latestAutomated.data.timestamp)} - 
-              Found {latestAutomated.data.grants_found} grants 
-              ({latestAutomated.data.high_priority} high priority)
-            </Typography>
-          )}
-        </Alert>
+        <div className={`alert alert-${getHealthColor(latestAutomated.health)}`}>
+          <div className="alert-content">
+            <strong>Latest Automated Run:</strong> {latestAutomated.message}
+            {latestAutomated.data && (
+              <div className="alert-details">
+                {formatDateTime(latestAutomated.data.timestamp)} -
+                Found {latestAutomated.data.grants_found} grants
+                ({latestAutomated.data.high_priority} high priority)
+              </div>
+            )}
+          </div>
+          <button className="btn btn-icon btn-sm" onClick={fetchLatestAutomated}>
+            <span className="icon">↻</span>
+          </button>
+        </div>
       )}
 
       {/* Search Runs Table */}
-      <Card>
-        <CardContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <HistoryIcon sx={{ mr: 1 }} />
-            <Typography variant="h6">Search Run History</Typography>
-            <Box sx={{ flexGrow: 1 }} />
-            <Tooltip title="Refresh">
-              <IconButton onClick={fetchSearchRuns}>
-                <RefreshIcon />
-              </IconButton>
-            </Tooltip>
-          </Box>
+      <div className="search-history-card">
+        <div className="search-history-header">
+          <div className="search-history-title">
+            <span className="icon">📜</span>
+            <h3>Search Run History</h3>
+          </div>
+          <button className="btn btn-icon" onClick={fetchSearchRuns}>
+            <span className="icon">↻</span>
+          </button>
+        </div>
 
-          <LoaderOverlay loading={loading}>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Timestamp</TableCell>
-                    <TableCell>Query/Filter</TableCell>
-                    <TableCell align="center">Grants Found</TableCell>
-                    <TableCell align="center">High Priority</TableCell>
-                    <TableCell align="center">Duration</TableCell>
-                    <TableCell>Error</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {searchRuns.map((run) => (
-                    <TableRow key={run.id} hover>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {getStatusIcon(run.status)}
-                          <Chip 
-                            label={run.status} 
-                            size="small" 
-                            color={getStatusColor(run.status)}
-                            variant="outlined"
-                          />
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {getRunTypeIcon(run.run_type)}
-                          <Chip 
-                            label={run.run_type} 
-                            size="small" 
-                            variant="outlined"
-                          />
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {formatDateTime(run.timestamp)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ maxWidth: 200 }}>
-                          {run.search_query || JSON.stringify(run.search_filters || {})}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Typography variant="body2" fontWeight="medium">
-                          {run.grants_found}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Typography variant="body2" fontWeight="medium" color="primary">
-                          {run.high_priority}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Typography variant="body2">
-                          {formatDuration(run.duration_seconds)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        {run.error_message && (
-                          <Tooltip title={run.error_message}>
-                            <Chip 
-                              label="Error" 
-                              size="small" 
-                              color="error" 
-                              variant="outlined"
-                            />
-                          </Tooltip>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {searchRuns.length === 0 && !loading && (
-                    <TableRow>
-                      <TableCell colSpan={8} align="center">
-                        <Typography variant="body2" color="text.secondary">
-                          No search runs found
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
+        <LoaderOverlay loading={loading} height="400px">
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>Type</th>
+                  <th>Timestamp</th>
+                  <th>Query/Filter</th>
+                  <th className="text-center">Grants Found</th>
+                  <th className="text-center">High Priority</th>
+                  <th className="text-center">Duration</th>
+                  <th>Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {searchRuns.map((run) => (
+                  <tr key={run.id}>
+                    <td>
+                      <div className="status-cell">
+                        <span className={`badge badge-${getStatusColor(run.status)}`}>
+                          {getStatusIcon(run.status)} {run.status}
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="type-cell">
+                        <span className="type-icon">{getRunTypeIcon(run.run_type)}</span>
+                        <span className="badge badge-outlined">{run.run_type}</span>
+                      </div>
+                    </td>
+                    <td className="timestamp-cell">
+                      {formatDateTime(run.timestamp)}
+                    </td>
+                    <td className="query-cell">
+                      {run.search_query || JSON.stringify(run.search_filters || {})}
+                    </td>
+                    <td className="text-center font-weight-medium">
+                      {run.grants_found}
+                    </td>
+                    <td className="text-center font-weight-medium text-primary">
+                      {run.high_priority}
+                    </td>
+                    <td className="text-center">
+                      {formatDuration(run.duration_seconds)}
+                    </td>
+                    <td>
+                      {run.error_message && (
+                        <span
+                          className="badge badge-error badge-tooltip"
+                          title={run.error_message}
+                        >
+                          Error
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {searchRuns.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan="8" className="text-center text-muted">
+                      No search runs found
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
-            <TablePagination
-              rowsPerPageOptions={[5, 10, 25, 50]}
-              component="div"
-              count={total}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-            />
-          </LoaderOverlay>
-        </CardContent>
-      </Card>
-    </Box>
+          {/* Pagination */}
+          <div className="table-pagination">
+            <div className="pagination-info">
+              Showing {page * rowsPerPage + 1}-{Math.min((page + 1) * rowsPerPage, total)} of {total}
+            </div>
+            <div className="pagination-controls">
+              <label className="pagination-label">
+                Rows per page:
+                <select
+                  className="pagination-select"
+                  value={rowsPerPage}
+                  onChange={handleChangeRowsPerPage}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </label>
+              <div className="pagination-buttons">
+                <button
+                  className="btn btn-icon btn-sm"
+                  onClick={() => handleChangePage(page - 1)}
+                  disabled={page === 0}
+                >
+                  ‹
+                </button>
+                <span className="pagination-page">
+                  Page {page + 1} of {totalPages || 1}
+                </span>
+                <button
+                  className="btn btn-icon btn-sm"
+                  onClick={() => handleChangePage(page + 1)}
+                  disabled={page >= totalPages - 1}
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          </div>
+        </LoaderOverlay>
+      </div>
+    </div>
   );
 };
 

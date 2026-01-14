@@ -9,7 +9,7 @@ import yaml
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.models import GrantFilter
 from app.schemas import EnrichedGrant
-from utils.perplexity_client import PerplexityClient
+from services.deepseek_client import DeepSeekClient
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +24,20 @@ class ResearchAgent:
     def __init__(
         self,
         db_session_maker: async_sessionmaker,
-        perplexity_client: Optional[PerplexityClient] = None,
+        deepseek_client: Optional[DeepSeekClient] = None,
         config_path: str = "config"
     ):
         """Initialize Research Agent with configuration loading."""
         logger.warning("The `ResearchAgent` is deprecated and will be removed in a future version. "
                        "Please use `IntegratedResearchAgent` instead.")
-        
-        if not perplexity_client:
-            raise ValueError("Perplexity client cannot be None.")
+
+        if not deepseek_client:
+            raise ValueError("DeepSeek client cannot be None.")
         if not db_session_maker:
             raise ValueError("Database session maker cannot be None.")
 
         self.db_session_maker = db_session_maker
-        self.perplexity_client = perplexity_client
+        self.deepseek_client = deepseek_client
         self.config_path = Path(config_path)
         self.logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class ResearchAgent:
         self.geographic_config: Dict[str, Any] = {}
         self.kevin_profile_config: Dict[str, Any] = {}
         self.grant_sources_config: Dict[str, Any] = {}
-        
+
         self.load_all_configs()
 
     def load_all_configs(self):

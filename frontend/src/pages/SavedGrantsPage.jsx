@@ -1,35 +1,17 @@
-import {
-    Bookmark as BookmarkIcon,
-    Delete as DeleteIcon
-} from '@mui/icons-material';
-import {
-    Box,
-    Chip,
-    IconButton,
-    Paper,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    Typography,
-    useTheme,
-    alpha,
-} from '@mui/material';
 import { format, parseISO, differenceInDays } from 'date-fns';
-import { useSnackbar } from 'notistack';
 import React, { useEffect, useState, useCallback } from 'react';
 import { getSavedGrants, unsaveGrant } from '../api/apiClient';
-import LoaderOverlay from '../components/common/LoaderOverlay';
-import EmptyState from '../components/common/EmptyState';
-import TableSkeleton from '../components/common/TableSkeleton';
+import '../styles/swiss-theme.css';
 
 const SavedGrantsPage = () => {
-  const theme = useTheme();
-  const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const [grants, setGrants] = useState([]);
+  const [message, setMessage] = useState({ text: '', type: '' });
+
+  const showMessage = (text, type) => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage({ text: '', type: '' }), 3000);
+  };
 
   const fetchSaved = useCallback(async () => {
     setLoading(true);
@@ -38,160 +20,149 @@ const SavedGrantsPage = () => {
       setGrants(data);
     } catch(e) {
       console.error(e);
-      enqueueSnackbar('Failed to fetch saved grants', { variant: 'error' });
+      showMessage('Failed to fetch saved grants', 'error');
     } finally {
       setLoading(false);
     }
-  }, [enqueueSnackbar]);
+  }, []);
 
-  useEffect(() => { 
-    fetchSaved(); 
+  useEffect(() => {
+    fetchSaved();
   }, [fetchSaved]);
 
   const handleUnsave = async (id) => {
     try {
       await unsaveGrant(id);
       setGrants(prev => prev.filter(g => g.id !== id));
-      enqueueSnackbar('Grant removed from saved items', { variant: 'success' });
+      showMessage('Grant removed from saved items', 'success');
     } catch(e) {
       console.error(e);
-      enqueueSnackbar('Failed to remove grant', { variant: 'error' });
+      showMessage('Failed to remove grant', 'error');
     }
   };
 
   const getRelevanceColor = (score) => {
-    if (score >= 90) return theme.palette.success.main;
-    if (score >= 80) return theme.palette.info.main;
-    if (score >= 70) return theme.palette.warning.main;
-    return theme.palette.error.main;
+    if (score >= 90) return '#43A047';
+    if (score >= 80) return '#1976D2';
+    if (score >= 70) return '#FDD835';
+    return '#E53935';
   };
 
-  return (
-    <Box sx={{ p: { xs: 2, sm: 3 } }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <BookmarkIcon sx={{ mr: 2, color: 'primary.main' }} />
-        <Typography 
-          variant="h4" 
-          sx={{ 
-            fontWeight: 700,
-            fontSize: { xs: '1.5rem', sm: '2rem' }
-          }}
-        >
-          Saved Grants
-        </Typography>
-      </Box>
+  const getRelevanceClass = (score) => {
+    if (score >= 90) return 'chip-success';
+    if (score >= 80) return 'chip-info';
+    if (score >= 70) return 'chip-warning';
+    return 'chip-error';
+  };
 
-      <LoaderOverlay loading={loading}>
-        {grants.length > 0 ? (
-          <TableContainer 
-            component={Paper}
-            elevation={0}
-            sx={{ 
-              border: 1,
-              borderColor: 'divider',
-            }}
-          >
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Title</TableCell>
-                  <TableCell>Category</TableCell>
-                  <TableCell>Deadline</TableCell>
-                  <TableCell>Relevance</TableCell>
-                  <TableCell align="center">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {loading ? (
-                  <TableSkeleton rows={5} columns={5} />
-                ) : (
-                  grants.map(grant => {
-                    const daysToDeadline = grant.deadline ? 
-                      differenceInDays(parseISO(grant.deadline), new Date()) : null;
-                    
-                    return (
-                      <TableRow 
-                        key={grant.id} 
-                        hover
-                        sx={{
-                          '&:hover': {
-                            bgcolor: 'action.hover',
-                          }
-                        }}
-                      >
-                        <TableCell>
-                          <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-                            {grant.title}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {grant.source}
-                          </Typography>
-                        </TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={grant.category}
-                            size="small"
-                            sx={{
-                              bgcolor: theme => theme.palette.grey[100],
-                              color: theme => theme.palette.grey[800],
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p className="mt-2">Loading saved grants...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="container" style={{ padding: 'var(--space-3)' }}>
+      <div className="flex items-center mb-3">
+        <span style={{ fontSize: '2rem', marginRight: 'var(--space-2)' }}>🔖</span>
+        <h1>Saved Grants</h1>
+      </div>
+
+      {message.text && (
+        <div className={`alert alert-${message.type} mb-3`}>
+          {message.text}
+        </div>
+      )}
+
+      {grants.length > 0 ? (
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Deadline</th>
+                <th>Relevance</th>
+                <th style={{ textAlign: 'center' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {grants.map(grant => {
+                const daysToDeadline = grant.deadline ?
+                  differenceInDays(parseISO(grant.deadline), new Date()) : null;
+                const isUrgent = daysToDeadline !== null && daysToDeadline < 14 && daysToDeadline >= 0;
+                const isExpired = daysToDeadline !== null && daysToDeadline < 0;
+
+                return (
+                  <tr key={grant.id}>
+                    <td>
+                      <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                        {grant.title}
+                      </div>
+                      <div className="text-xs text-secondary">
+                        {grant.source || grant.funder_name || 'Unknown source'}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="chip">
+                        {grant.category || grant.identified_sector || 'Other'}
+                      </span>
+                    </td>
+                    <td>
+                      {grant.deadline ? (
+                        <div>
+                          <div style={{ marginBottom: '4px' }}>
+                            {format(parseISO(grant.deadline), 'PP')}
+                          </div>
+                          <div
+                            className="text-xs"
+                            style={{
+                              color: isExpired ? '#E53935' : isUrgent ? '#E53935' : 'var(--color-gray-600)'
                             }}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          {grant.deadline ? (
-                            <>
-                              <Typography variant="body2">
-                                {format(parseISO(grant.deadline), 'PP')}
-                              </Typography>
-                              <Typography 
-                                variant="caption" 
-                                color={daysToDeadline < 14 ? 'error.main' : 'text.secondary'}
-                              >
-                                ({daysToDeadline} days left)
-                              </Typography>
-                            </>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              N/A
-                            </Typography>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={`${grant.relevanceScore || 0}%`}
-                            size="small"
-                            sx={{
-                              bgcolor: alpha(getRelevanceColor(grant.relevanceScore), 0.1),
-                              color: getRelevanceColor(grant.relevanceScore),
-                              fontWeight: 600,
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell align="center">
-                          <IconButton 
-                            onClick={() => handleUnsave(grant.id)}
-                            color="error"
-                            size="small"
-                            title="Remove from saved"
                           >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        ) : (
-          <EmptyState 
-            message="No saved grants yet"
-            icon={BookmarkIcon}
-          />
-        )}
-      </LoaderOverlay>
-    </Box>
+                            {isExpired ? 'Expired' : `${daysToDeadline} days left`}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-secondary">N/A</span>
+                      )}
+                    </td>
+                    <td>
+                      <span
+                        className={`chip ${getRelevanceClass(grant.relevanceScore || grant.overall_composite_score || 0)}`}
+                      >
+                        {grant.relevanceScore || grant.overall_composite_score || 0}%
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button
+                        className="btn btn-sm btn-text"
+                        onClick={() => handleUnsave(grant.id)}
+                        title="Remove from saved"
+                        style={{ color: '#E53935' }}
+                      >
+                        🗑️ Remove
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="empty-state">
+          <div style={{ fontSize: '3rem', marginBottom: 'var(--space-2)' }}>🔖</div>
+          <p>No saved grants yet</p>
+          <p className="text-secondary text-sm">
+            Save grants from the dashboard to see them here
+          </p>
+        </div>
+      )}
+    </div>
   );
 };
 

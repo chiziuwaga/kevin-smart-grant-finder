@@ -37,7 +37,7 @@ class SearchRun(BaseModel):
 
 class UserSettings(BaseModel):
     """Model for user notification and search settings"""
-    telegram_enabled: bool = Field(True, description="Whether Telegram notifications are enabled")
+    email_notifications: bool = Field(True, description="Whether email notifications are enabled")
     minimum_score: float = Field(0.7, description="Minimum score for notifications")
     notify_categories: List[str] = Field(default_factory=list, description="Categories to notify about")
     schedule_cron: str = Field("0 10 * * 1,4", description="Cron schedule for searches")

@@ -1,51 +1,24 @@
-import {
-  History as HistoryIcon,
-  Notifications as NotificationsIcon,
-  Save as SaveIcon,
-  Schedule as ScheduleIcon,
-  Settings as SettingsIcon,
-  Computer as SystemIcon,
-} from '@mui/icons-material';
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  FormControl,
-  FormControlLabel,
-  Grid,
-  InputLabel,
-  MenuItem,
-  Select,
-  Switch,
-  Tab,
-  Tabs,
-  TextField,
-  Typography,
-} from '@mui/material';
-import { useSnackbar } from 'notistack';
 import { useEffect, useState } from 'react';
 import API from '../api/apiClient';
-import LoaderOverlay from '../components/common/LoaderOverlay';
 import CronJobStatus from '../components/CronJobStatus';
 import SearchHistoryTab from '../components/SearchHistoryTab';
 import ManualSearchTrigger from '../components/ManualSearchTrigger';
+import '../styles/swiss-theme.css';
 
 const SCHEDULE_OPTIONS = [
-    { value: 'Mon/Thu', label: 'Twice a week (Monday & Thursday)' },
-    { value: 'daily', label: 'Daily' },
-    { value: 'weekly', label: 'Weekly (Monday)' },
+  { value: 'Mon/Thu', label: 'Twice a week (Monday & Thursday)' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly (Monday)' },
 ];
 
 const SettingsPage = () => {
-  const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [currentTab, setCurrentTab] = useState(0);
+  const [message, setMessage] = useState({ text: '', type: '' });
   const [settings, setSettings] = useState({
     alerts: {
       sms: false,
-      telegram: false,
       email: false,
       phone: '',
       emailAddress: '',
@@ -54,24 +27,36 @@ const SettingsPage = () => {
     minRelevanceScore: 70,
   });
   const [hasChanges, setHasChanges] = useState(false);
+  const [subscription, setSubscription] = useState({
+    plan: 'free',
+    status: 'active',
+    usage: {
+      searches: 5,
+      maxSearches: 10,
+      applications: 2,
+      maxApplications: 5,
+    },
+  });
+
+  const showMessage = (text, type) => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage({ text: '', type: '' }), 3000);
+  };
 
   useEffect(() => {
     const fetchSettings = async () => {
       try {
         const data = await API.getUserSettings();
-        setSettings(prev => ({
-          ...prev,
-          ...data,
-        }));
+        setSettings(prev => ({ ...prev, ...data }));
       } catch (e) {
         console.error(e);
-        enqueueSnackbar('Failed to load settings', { variant: 'error' });
+        showMessage('Failed to load settings', 'error');
       } finally {
         setLoading(false);
       }
     };
     fetchSettings();
-  }, [enqueueSnackbar]);
+  }, []);
 
   const handleChange = (section, key) => (event) => {
     const value = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
@@ -89,293 +74,230 @@ const SettingsPage = () => {
     setSaving(true);
     try {
       await API.updateUserSettings(settings);
-      enqueueSnackbar('Settings saved successfully', { variant: 'success' });
+      showMessage('Settings saved successfully', 'success');
       setHasChanges(false);
     } catch (e) {
       console.error(e);
-      enqueueSnackbar('Failed to save settings', { variant: 'error' });
+      showMessage('Failed to save settings', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  // Tab panel component
-  const TabPanel = ({ children, value, index, ...other }) => {
+  if (loading) {
     return (
-      <div
-        role="tabpanel"
-        hidden={value !== index}
-        id={`settings-tabpanel-${index}`}
-        aria-labelledby={`settings-tab-${index}`}
-        {...other}
-      >
-        {value === index && (
-          <Box sx={{ py: 3 }}>
-            {children}
-          </Box>
-        )}
+      <div className="loading-container">
+        <div className="spinner"></div>
+        <p className="mt-2">Loading settings...</p>
       </div>
     );
-  };
+  }
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 } }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <SettingsIcon sx={{ mr: 2, color: 'primary.main' }} />
-        <Typography 
-          variant="h4" 
-          sx={{ 
-            fontWeight: 700,
-            fontSize: { xs: '1.5rem', sm: '2rem' }
-          }}
+    <div className="container" style={{ padding: 'var(--space-3)' }}>
+      <h1 className="mb-3">Settings</h1>
+
+      {message.text && (
+        <div className={`alert alert-${message.type} mb-3`}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="tabs">
+        <button
+          className={`tab ${currentTab === 0 ? 'active' : ''}`}
+          onClick={() => setCurrentTab(0)}
         >
-          Settings
-        </Typography>
-      </Box>
-
-      {/* Tabs Navigation */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-        <Tabs 
-          value={currentTab} 
-          onChange={(event, newValue) => setCurrentTab(newValue)}
-          aria-label="settings tabs"
+          💳 Subscription
+        </button>
+        <button
+          className={`tab ${currentTab === 1 ? 'active' : ''}`}
+          onClick={() => setCurrentTab(1)}
         >
-          <Tab 
-            icon={<NotificationsIcon />} 
-            label="Notifications" 
-            id="settings-tab-0"
-            aria-controls="settings-tabpanel-0"
-          />
-          <Tab 
-            icon={<ScheduleIcon />} 
-            label="Schedule" 
-            id="settings-tab-1"
-            aria-controls="settings-tabpanel-1"
-          />
-          <Tab 
-            icon={<HistoryIcon />} 
-            label="Search History" 
-            id="settings-tab-2"
-            aria-controls="settings-tabpanel-2"
-          />
-          <Tab 
-            icon={<SystemIcon />} 
-            label="System Status" 
-            id="settings-tab-3"
-            aria-controls="settings-tabpanel-3"
-          />
-        </Tabs>
-      </Box>
+          🔔 Alerts
+        </button>
+        <button
+          className={`tab ${currentTab === 2 ? 'active' : ''}`}
+          onClick={() => setCurrentTab(2)}
+        >
+          ⚙️ System
+        </button>
+        <button
+          className={`tab ${currentTab === 3 ? 'active' : ''}`}
+          onClick={() => setCurrentTab(3)}
+        >
+          📜 History
+        </button>
+      </div>
 
-      <LoaderOverlay loading={loading}>
-        {/* Notifications Tab */}
-        <TabPanel value={currentTab} index={0}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Card 
-                elevation={0}
-                sx={{ 
-                  height: '100%',
-                  border: 1,
-                  borderColor: 'divider',
-                }}
-              >
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                    <NotificationsIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                    <Typography variant="h6">Email Notifications</Typography>
-                  </Box>
+      {/* Tab 0: Subscription */}
+      {currentTab === 0 && (
+        <div className="card">
+          <h2>Subscription & Usage</h2>
+          <div style={{ marginBottom: 'var(--space-3)' }}>
+            <div className="flex justify-between items-center mb-2">
+              <span>Plan: <strong className="text-uppercase">{subscription.plan}</strong></span>
+              <span className={`chip chip-${subscription.status === 'active' ? 'success' : 'error'}`}>
+                {subscription.status}
+              </span>
+            </div>
+          </div>
 
-                  <Box sx={{ mb: 3 }}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={settings.alerts.email}
-                          onChange={handleChange('alerts', 'email')}
-                          color="primary"
-                        />
-                      }
-                      label="Email Notifications"
-                    />
-                    {settings.alerts.email && (
-                      <TextField
-                        fullWidth
-                        label="Email Address"
-                        value={settings.alerts.emailAddress || ''}
-                        onChange={handleChange('alerts', 'emailAddress')}
-                        sx={{ mt: 1 }}
-                        size="small"
-                      />
-                    )}
-                  </Box>
+          <div style={{ marginBottom: 'var(--space-3)' }}>
+            <h3>Usage Limits</h3>
+            <div style={{ marginBottom: 'var(--space-2)' }}>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm">Searches</span>
+                <span className="text-sm">
+                  {subscription.usage.searches} / {subscription.usage.maxSearches}
+                </span>
+              </div>
+              <div className="progress">
+                <div
+                  className="progress-bar"
+                  style={{ width: `${(subscription.usage.searches / subscription.usage.maxSearches) * 100}%` }}
+                ></div>
+              </div>
+            </div>
 
-                  <Box sx={{ mb: 3 }}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={settings.alerts.telegram}
-                          onChange={handleChange('alerts', 'telegram')}
-                          color="primary"
-                        />
-                      }
-                      label="Telegram Notifications"
-                    />
-                  </Box>
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-sm">Applications Generated</span>
+                <span className="text-sm">
+                  {subscription.usage.applications} / {subscription.usage.maxApplications}
+                </span>
+              </div>
+              <div className="progress">
+                <div
+                  className="progress-bar"
+                  style={{ width: `${(subscription.usage.applications / subscription.usage.maxApplications) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+          </div>
 
-                  <Box sx={{ mb: 3 }}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={settings.alerts.sms}
-                          onChange={handleChange('alerts', 'sms')}
-                          color="primary"
-                        />
-                      }
-                      label="SMS Notifications"
-                    />
-                    {settings.alerts.sms && (
-                      <TextField
-                        fullWidth
-                        label="Phone Number"
-                        value={settings.alerts.phone || ''}
-                        onChange={handleChange('alerts', 'phone')}
-                        placeholder="+1 (555) 123-4567"
-                        sx={{ mt: 1 }}
-                        size="small"
-                      />
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
+          <button className="btn btn-primary">
+            💳 Upgrade Plan
+          </button>
+        </div>
+      )}
 
-            <Grid item xs={12} md={6}>
-              <Card 
-                elevation={0}
-                sx={{ 
-                  height: '100%',
-                  border: 1,
-                  borderColor: 'divider',
-                }}
-              >
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                    <SettingsIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                    <Typography variant="h6">Relevance Threshold</Typography>
-                  </Box>
+      {/* Tab 1: Alerts */}
+      {currentTab === 1 && (
+        <div className="card">
+          <h2>Alert Preferences</h2>
 
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Only grants with a relevance score above this threshold will trigger notifications.
-                  </Typography>
-
-                  <TextField
-                    fullWidth
-                    type="number"
-                    label="Minimum Relevance Score"
-                    value={settings.minRelevanceScore}
-                    onChange={handleChange('minRelevanceScore')}
-                    inputProps={{ min: 0, max: 100 }}
-                    helperText="Score between 0-100"
-                  />
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-          {/* Save Button for Notifications Tab */}
-          {hasChanges && (
-            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-              <Button
-                variant="contained"
-                onClick={handleSave}
-                disabled={saving}
-                startIcon={<SaveIcon />}
-              >
-                {saving ? 'Saving...' : 'Save Settings'}
-              </Button>
-            </Box>
-          )}
-        </TabPanel>
-
-        {/* Schedule Tab */}
-        <TabPanel value={currentTab} index={1}>
-          <Card 
-            elevation={0}
-            sx={{ 
-              border: 1,
-              borderColor: 'divider',
-            }}
-          >
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                <ScheduleIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                <Typography variant="h6">Search Schedule</Typography>
-              </Box>
-
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Configure when automated grant searches should run.
-              </Typography>
-
-              <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel>Schedule Frequency</InputLabel>
-                <Select
-                  value={settings.schedule}
-                  onChange={handleChange('schedule')}
-                  label="Schedule Frequency"
-                >
-                  {SCHEDULE_OPTIONS.map(option => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              {/* Save Button for Schedule Tab */}
-              {hasChanges && (
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button
-                    variant="contained"
-                    onClick={handleSave}
-                    disabled={saving}
-                    startIcon={<SaveIcon />}
-                  >
-                    {saving ? 'Saving...' : 'Save Settings'}
-                  </Button>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </TabPanel>
-
-        {/* Search History Tab */}
-        <TabPanel value={currentTab} index={2}>
-          <SearchHistoryTab />
-        </TabPanel>
-
-        {/* System Status Tab */}
-        <TabPanel value={currentTab} index={3}>
-          <Grid container spacing={3}>
-            {/* Manual Search Trigger */}
-            <Grid item xs={12} lg={6}>
-              <ManualSearchTrigger 
-                onSearchComplete={(results) => {
-                  enqueueSnackbar(
-                    `Search completed! Found ${results.grants_processed || 0} grants.`,
-                    { variant: 'success' }
-                  );
-                }}
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={settings.alerts.email}
+                onChange={handleChange('alerts', 'email')}
               />
-            </Grid>
-            
-            {/* System Status Monitor */}
-            <Grid item xs={12} lg={6}>
-              <CronJobStatus />
-            </Grid>
-          </Grid>
-        </TabPanel>
-      </LoaderOverlay>
-    </Box>
+              <span>Email Notifications</span>
+            </label>
+          </div>
+
+          {settings.alerts.email && (
+            <div className="form-group">
+              <label className="label">Email Address</label>
+              <input
+                type="email"
+                className="input"
+                value={settings.alerts.emailAddress}
+                onChange={handleChange('alerts', 'emailAddress')}
+                placeholder="your.email@example.com"
+              />
+            </div>
+          )}
+
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={settings.alerts.sms}
+                onChange={handleChange('alerts', 'sms')}
+              />
+              <span>SMS Notifications</span>
+            </label>
+          </div>
+
+          {settings.alerts.sms && (
+            <div className="form-group">
+              <label className="label">Phone Number</label>
+              <input
+                type="tel"
+                className="input"
+                value={settings.alerts.phone}
+                onChange={handleChange('alerts', 'phone')}
+                placeholder="+1 (555) 123-4567"
+              />
+            </div>
+          )}
+
+          <div className="form-group">
+            <label className="label">Search Schedule</label>
+            <select
+              className="input"
+              value={settings.schedule}
+              onChange={handleChange('schedule')}
+            >
+              {SCHEDULE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="label">Minimum Relevance Score: {settings.minRelevanceScore}%</label>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={settings.minRelevanceScore}
+              onChange={handleChange('minRelevanceScore')}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          {hasChanges && (
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving...' : '💾 Save Changes'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Tab 2: System */}
+      {currentTab === 2 && (
+        <div className="card">
+          <h2>System Settings</h2>
+
+          <div className="mb-4">
+            <h3>Cron Job Status</h3>
+            <CronJobStatus />
+          </div>
+
+          <div className="divider"></div>
+
+          <div className="mb-4">
+            <h3>Manual Search Trigger</h3>
+            <ManualSearchTrigger />
+          </div>
+        </div>
+      )}
+
+      {/* Tab 3: History */}
+      {currentTab === 3 && (
+        <div className="card">
+          <h2>Search History</h2>
+          <SearchHistoryTab />
+        </div>
+      )}
+    </div>
   );
 };
 

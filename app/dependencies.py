@@ -4,8 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from utils.pinecone_client import PineconeClient
-from utils.perplexity_client import PerplexityClient
-from utils.notification_manager import NotificationManager
+from services.deepseek_client import DeepSeekClient
+from services.resend_client import ResendEmailClient
 from agents.integrated_research_agent import IntegratedResearchAgent
 from agents.analysis_agent import AnalysisAgent
 from app.services import services
@@ -54,20 +54,18 @@ def get_pinecone():
         return MockPineconeClient()
     return services.pinecone_client
 
-def get_perplexity():
-    """Get Perplexity client with fallback handling"""
-    if not services.perplexity_client:
-        logger.warning("Perplexity client not available, using mock")
-        from app.services import MockPerplexityClient
-        return MockPerplexityClient()
-    return services.perplexity_client
+def get_deepseek():
+    """Get DeepSeek client with fallback handling"""
+    if not services.deepseek_client:
+        logger.warning("DeepSeek client not available, creating new instance")
+        return DeepSeekClient()
+    return services.deepseek_client
 
 def get_notifier():
-    """Get notification manager with fallback handling"""
+    """Get email notification client with fallback handling"""
     if not services.notifier:
-        logger.warning("Notification manager not available, using mock")
-        from app.services import MockNotificationManager
-        return MockNotificationManager()
+        logger.warning("Notifier not available, creating new Resend client")
+        return ResendEmailClient()
     return services.notifier
 
 def get_db_sessionmaker():
@@ -85,7 +83,7 @@ def get_db_sessionmaker():
     return services.db_sessionmaker
 
 def get_research_agent(
-    perplexity = Depends(get_perplexity),
+    deepseek = Depends(get_deepseek),
     pinecone = Depends(get_pinecone)
 ) -> IntegratedResearchAgent:
     """Get research agent with fallback handling"""

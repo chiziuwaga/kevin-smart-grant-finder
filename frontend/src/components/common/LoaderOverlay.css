@@ -1,0 +1,34 @@
+/* LoaderOverlay Component - Swiss Design */
+
+.loader-overlay-container {
+  position: relative;
+}
+
+.loader-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.loader-overlay-visible {
+  opacity: 1;
+}
+
+.loader-overlay-blur {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+}
+
+.loader-message {
+  font-size: var(--font-size-base);
+  color: var(--color-gray-600);
+  margin-top: var(--space-1);
+}

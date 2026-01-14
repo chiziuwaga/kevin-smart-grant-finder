@@ -52,12 +52,33 @@ class Settings(BaseSettings):
     db_name: str = Field(default="grantfinder", env="DB_NAME")
     database_url: Optional[str] = Field(default=None, env="DATABASE_URL")
 
-    # API Keys
+    # Authentication (Auth0)
+    AUTH0_DOMAIN: str = Field(default="", env="AUTH0_DOMAIN")
+    AUTH0_API_AUDIENCE: str = Field(default="", env="AUTH0_API_AUDIENCE")
+    AUTH0_ALGORITHMS: Optional[str] = Field(default="RS256", env="AUTH0_ALGORITHMS")
+
+    # Payments (Stripe)
+    STRIPE_SECRET_KEY: str = Field(default="", env="STRIPE_SECRET_KEY")
+    STRIPE_PUBLISHABLE_KEY: str = Field(default="", env="STRIPE_PUBLISHABLE_KEY")
+    STRIPE_WEBHOOK_SECRET: str = Field(default="", env="STRIPE_WEBHOOK_SECRET")
+    STRIPE_PRICE_ID: str = Field(default="", env="STRIPE_PRICE_ID")  # Price ID for $35/month plan
+
+    # Email (Resend)
+    RESEND_API_KEY: str = Field(default="", env="RESEND_API_KEY")
+    FROM_EMAIL: str = Field(default="noreply@grantfinder.com", env="FROM_EMAIL")
+
+    # Background Tasks (Celery/Redis)
+    REDIS_URL: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
+    CELERY_BROKER_URL: Optional[str] = Field(default=None, env="CELERY_BROKER_URL")
+    CELERY_RESULT_BACKEND: Optional[str] = Field(default=None, env="CELERY_RESULT_BACKEND")
+
+    # AI API Keys
+    DEEPSEEK_API_KEY: str = Field(default="", env="DEEPSEEK_API_KEY")
+    DEEPSEEK_API_BASE: str = Field(default="https://api.deepseek.com", env="DEEPSEEK_API_BASE")
+    AGENTQL_API_KEY: str = Field(default="", env="AGENTQL_API_KEY")
     pinecone_api_key: str = Field(default="", env="PINECONE_API_KEY")
-    pinecone_index_name: str = Field(default="grantcluster", env="PINECONE_INDEX_NAME") # Corrected
-    perplexity_api_key: str = Field(default="", env="PERPLEXITY_API_KEY")
-    perplexity_rate_limit: int = Field(default=30, env="PERPLEXITY_RATE_LIMIT")
-    openai_api_key: str = Field(default="", env="OPENAI_API_KEY")  # Added OpenAI API Key
+    pinecone_index_name: str = Field(default="grantcluster", env="PINECONE_INDEX_NAME")
+    openai_api_key: str = Field(default="", env="OPENAI_API_KEY")  # For embeddings fallback
     
     # Configuration File Paths
     PROJECT_ROOT: str = PROJECT_ROOT_PATH
@@ -67,10 +88,22 @@ class Settings(BaseSettings):
     SECTOR_CONFIG_PATH: str = os.path.join(CONFIG_DIR_PATH, "sector_config.yaml")
     GEOGRAPHIC_CONFIG_PATH: str = os.path.join(CONFIG_DIR_PATH, "geographic_config.yaml")
 
-    # Notifications
-    telegram_bot_token: str = Field(default="", env="TELEGRAM_BOT_TOKEN") # Changed from telegram_token
-    telegram_chat_id: str = Field(default="", env="TELEGRAM_CHAT_ID")
-    
+    # Frontend URL (for CORS)
+    FRONTEND_URL: str = Field(default="http://localhost:3000", env="FRONTEND_URL")
+
+    # Grant search configuration
+    MAX_GRANTS_PER_SEARCH: int = Field(default=20, env="MAX_GRANTS_PER_SEARCH")
+
+    @property
+    def celery_broker(self) -> str:
+        """Get Celery broker URL, defaults to REDIS_URL."""
+        return self.CELERY_BROKER_URL or self.REDIS_URL
+
+    @property
+    def celery_backend(self) -> str:
+        """Get Celery result backend URL, defaults to REDIS_URL."""
+        return self.CELERY_RESULT_BACKEND or self.REDIS_URL
+
     @property
     def db_url(self) -> str:
         """Get the database URL, preferring DATABASE_URL if set, ensuring asyncpg format."""

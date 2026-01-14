@@ -238,12 +238,53 @@ These grants support innovative technology development with strong commercial po
         
         return response
 
+class FallbackDeepSeekClient(FallbackService):
+    """Fallback implementation for DeepSeek AI client"""
+
+    def __init__(self, config: Optional[FallbackConfig] = None):
+        super().__init__("DeepSeekClient", config)
+        self.api_key = None
+        self.is_mock = True
+
+    async def chat_completion(self, messages: List[Dict[str, str]],
+                             model: str = "deepseek-chat",
+                             temperature: float = 0.7,
+                             max_tokens: int = 2000) -> Dict[str, Any]:
+        """Mock chat completion response"""
+        self._log_fallback_usage("chat_completion")
+        await self._simulate_delay()
+
+        # Generate a mock response
+        user_message = next((m["content"] for m in messages if m["role"] == "user"), "")
+
+        mock_response = {
+            "id": f"mock_deepseek_{int(time.time())}",
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": f"Mock AI response to: {user_message[:100]}... (DeepSeek service unavailable, using fallback)"
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": len(str(messages).split()),
+                "completion_tokens": 50,
+                "total_tokens": len(str(messages).split()) + 50
+            },
+            "fallback": True
+        }
+
+        return mock_response
+
 class FallbackNotificationManager(FallbackService):
-    """Fallback implementation for notification manager"""
-    
+    """Fallback implementation for email notification manager"""
+
     def __init__(self, config: Optional[FallbackConfig] = None):
         super().__init__("NotificationManager", config)
         self.mock_notifications = []
+        self.is_mock = True
         
     async def send_notification(self, message: str, priority: str = "normal", 
                               notification_type: str = "info") -> Dict[str, Any]:
