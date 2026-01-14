@@ -14,7 +14,7 @@ services:
     envVars:
       # Python
       - key: PYTHON_VERSION
-        value: 3.11
+        value: 3.12
 
       # Application
       - key: ENVIRONMENT
@@ -122,7 +122,7 @@ services:
     envVars:
       # Python
       - key: PYTHON_VERSION
-        value: 3.11
+        value: 3.12
 
       # Application
       - key: ENVIRONMENT
@@ -229,7 +229,7 @@ services:
     envVars:
       # Same env vars as worker (copy from above)
       - key: PYTHON_VERSION
-        value: 3.11
+        value: 3.12
 
       - key: DATABASE_URL
         fromDatabase:
