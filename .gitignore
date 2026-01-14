@@ -57,3 +57,8 @@ htmlcov/
 dist/
 build/
 .vercel
+
+# Claude Code temp files
+tmpclaude-*
+.claude/
+nul
