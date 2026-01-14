@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 import uuid
 import traceback
 import json
@@ -30,20 +32,14 @@ def get_allowed_origins() -> List[str]:
     env_origins = os.getenv('ALLOWED_ORIGINS')
     if env_origins:
         return env_origins.split(',')
-    
+
     # Default origins for different environments
+    # In production, frontend is served from same origin, so CORS is minimal
     if os.getenv('ENVIRONMENT') == 'production':
-        return [
-            'https://smartgrantfinder.vercel.app',
-            'https://www.smartgrantfinder.vercel.app'
-        ]
-    elif os.getenv('ENVIRONMENT') == 'staging':
-        return [
-            'https://staging.smartgrantfinder.vercel.app',
-            'http://localhost:3000'
-        ]
+        # Allow same-origin and localhost for testing
+        return ['http://localhost:3000', 'http://127.0.0.1:3000']
     else:
-        # Development - localhost only (remove production URL for security)
+        # Development - localhost only
         return [
             'http://localhost:3000',
             'http://127.0.0.1:3000',
@@ -446,11 +442,38 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# Add routes
+# Add API routes
 app.include_router(api_router, prefix="/api")
 
-# Add root route
-@app.get("/")
-async def read_root():
-    """Root endpoint - welcome message"""
-    return {"message": "Welcome to Kevin's Smart Grant Finder API"}
+# Mount static files for React frontend
+frontend_build_path = Path(__file__).parent.parent / "frontend" / "build"
+
+if frontend_build_path.exists():
+    # Serve static assets (JS, CSS, images)
+    app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
+
+    # Serve index.html for all non-API routes (SPA routing)
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        """Serve React frontend for all routes except /api"""
+        # Don't intercept API routes
+        if full_path.startswith("api/") or full_path == "health" or full_path == "docs":
+            return {"error": "Not found"}
+
+        # Serve index.html for all other routes (React Router handles routing)
+        index_file = frontend_build_path / "index.html"
+        if index_file.exists():
+            return FileResponse(str(index_file))
+        else:
+            return {"error": "Frontend not built. Run: cd frontend && npm run build"}
+else:
+    # Fallback if frontend not built
+    @app.get("/")
+    async def read_root():
+        """Root endpoint - welcome message"""
+        return {
+            "message": "Kevin's Smart Grant Finder API",
+            "api_docs": "/api/docs",
+            "health": "/health",
+            "note": "Frontend not built. To build: cd frontend && npm run build"
+        }

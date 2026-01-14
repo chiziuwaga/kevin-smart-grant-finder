@@ -7,7 +7,7 @@ services:
     runtime: python
     plan: starter  # Can upgrade to standard/pro as needed
     region: oregon  # Choose your preferred region
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && cd frontend && npm install && npm run build && cd ..
     startCommand: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
     healthCheckPath: /health
 
@@ -100,13 +100,8 @@ services:
       - key: OPENAI_API_KEY
         sync: false  # Optional fallback
 
-      # Frontend URL (update with your actual frontend URL)
-      - key: FRONTEND_URL
-        value: https://app.grantfinder.com  # Update this!
-
-      # CORS Origins
-      - key: ALLOWED_ORIGINS
-        value: https://app.grantfinder.com,http://localhost:3000
+      # Note: Frontend is served from same origin - no separate FRONTEND_URL needed
+      # CORS is minimal since frontend and backend are on same domain
 
   # ==============================================================================
   # CELERY WORKER - Background Task Processing
