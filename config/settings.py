@@ -65,7 +65,7 @@ class Settings(BaseSettings):
 
     # Email (Resend)
     RESEND_API_KEY: str = Field(default="", env="RESEND_API_KEY")
-    FROM_EMAIL: str = Field(default="noreply@grantfinder.com", env="FROM_EMAIL")
+    FROM_EMAIL: str = Field(default="onboarding@resend.dev", env="FROM_EMAIL")
 
     # Background Tasks (Celery/Redis)
     REDIS_URL: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")

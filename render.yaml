@@ -77,7 +77,7 @@ services:
         sync: false
 
       - key: FROM_EMAIL
-        value: noreply@grantfinder.com
+        value: onboarding@resend.dev  # Use Resend dev sender until custom domain is verified
 
       # AI Services (add in Render dashboard)
       - key: DEEPSEEK_API_KEY
