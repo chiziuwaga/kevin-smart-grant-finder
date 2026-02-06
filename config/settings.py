@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     db_name: str = Field(default="grantfinder", env="DB_NAME")
     database_url: Optional[str] = Field(default=None, env="DATABASE_URL")
 
-    # Authentication (Auth0)
+    # Legacy Auth0 (kept for migration compatibility, no longer used)
     AUTH0_DOMAIN: str = Field(default="", env="AUTH0_DOMAIN")
     AUTH0_API_AUDIENCE: str = Field(default="", env="AUTH0_API_AUDIENCE")
     AUTH0_ALGORITHMS: Optional[str] = Field(default="RS256", env="AUTH0_ALGORITHMS")
@@ -75,9 +75,11 @@ class Settings(BaseSettings):
     # AI API Keys
     DEEPSEEK_API_KEY: str = Field(default="", env="DEEPSEEK_API_KEY")
     DEEPSEEK_API_BASE: str = Field(default="https://api.deepseek.com", env="DEEPSEEK_API_BASE")
-    pinecone_api_key: str = Field(default="", env="PINECONE_API_KEY")
-    pinecone_index_name: str = Field(default="grantcluster", env="PINECONE_INDEX_NAME")
-    openai_api_key: str = Field(default="", env="OPENAI_API_KEY")  # For embeddings fallback
+    AGENTQL_API_KEY: str = Field(default="", env="AGENTQL_API_KEY")  # Web scraping for grant discovery
+
+    # Authentication (simple JWT)
+    SECRET_KEY: str = Field(default="change-me-in-production", env="SECRET_KEY")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=60, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     
     # Configuration File Paths
     PROJECT_ROOT: str = PROJECT_ROOT_PATH

@@ -587,6 +587,106 @@ class ResendEmailClient:
             text=plain
         )
 
+    async def send_search_complete_email(
+        self,
+        user_email: str,
+        user_name: str,
+        grants_found: int,
+        high_priority: int,
+        duration_seconds: float,
+        searches_remaining: int,
+    ) -> Dict[str, Any]:
+        """
+        Send summary email after a grant search run completes.
+
+        Args:
+            user_email: User's email address
+            user_name: User's name
+            grants_found: Total grants discovered
+            high_priority: Number of high-priority grants
+            duration_seconds: How long the search took
+            searches_remaining: Searches left this month
+
+        Returns:
+            Email send response
+        """
+        subject = f"Search Complete: {grants_found} Grant{'s' if grants_found != 1 else ''} Found"
+
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{ font-family: Inter, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1a1a1a; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                h1 {{ font-size: 24px; font-weight: 700; margin-bottom: 16px; color: #1e293b; }}
+                .stats {{ display: flex; gap: 16px; margin: 24px 0; }}
+                .stat-box {{ flex: 1; background: #FAFAFA; border: 1px solid #E0E0E0; padding: 16px; text-align: center; }}
+                .stat-value {{ font-size: 28px; font-weight: 700; color: #1A1A1A; }}
+                .stat-label {{ font-size: 13px; color: #666; margin-top: 4px; }}
+                .button {{ display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; text-decoration: none; font-weight: 600; }}
+                .footer {{ color: #666; font-size: 14px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Grant Search Complete</h1>
+                <p>Hi {user_name}, your latest grant search has finished.</p>
+
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0;">
+                    <tr>
+                        <td style="background: #FAFAFA; border: 1px solid #E0E0E0; padding: 16px; text-align: center; width: 33%;">
+                            <div style="font-size: 28px; font-weight: 700; color: #1A1A1A;">{grants_found}</div>
+                            <div style="font-size: 13px; color: #666; margin-top: 4px;">Grants Found</div>
+                        </td>
+                        <td style="background: #FAFAFA; border: 1px solid #E0E0E0; padding: 16px; text-align: center; width: 33%;">
+                            <div style="font-size: 28px; font-weight: 700; color: {'#10b981' if high_priority > 0 else '#1A1A1A'};">{high_priority}</div>
+                            <div style="font-size: 13px; color: #666; margin-top: 4px;">High Priority</div>
+                        </td>
+                        <td style="background: #FAFAFA; border: 1px solid #E0E0E0; padding: 16px; text-align: center; width: 33%;">
+                            <div style="font-size: 28px; font-weight: 700; color: #1A1A1A;">{searches_remaining}</div>
+                            <div style="font-size: 13px; color: #666; margin-top: 4px;">Searches Left</div>
+                        </td>
+                    </tr>
+                </table>
+
+                <p style="color: #666; font-size: 14px;">Search completed in {duration_seconds:.1f} seconds.</p>
+
+                <div style="text-align: center; margin: 24px 0;">
+                    <a href="{self.frontend_url}/grants" class="button">View Results in Dashboard</a>
+                </div>
+
+                <div class="footer">
+                    <p>
+                        You're receiving this because you have search notifications enabled.<br>
+                        <a href="{self.frontend_url}/settings" style="color: #2563eb;">Manage preferences</a>
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        plain = f"""
+        Grant Search Complete
+
+        Hi {user_name},
+
+        Your search found {grants_found} grants ({high_priority} high-priority).
+        Completed in {duration_seconds:.1f}s. You have {searches_remaining} searches remaining.
+
+        View results: {self.frontend_url}/grants
+        """
+
+        return await self.send_email(
+            to=user_email,
+            subject=subject,
+            html=html,
+            text=plain
+        )
+
     async def send_subscription_confirmation_email(
         self,
         user_email: str,

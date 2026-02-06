@@ -57,43 +57,63 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     task_acks_late=True,
 
-    # Beat schedule (for periodic tasks)
+    # =========================================================================
+    # Beat schedule (periodic tasks)
+    #
+    # RATIONALE: These tasks run automatically to keep the platform fresh,
+    # users informed, and data clean. Each is timed to avoid peak hours
+    # and minimize overlap.
+    # =========================================================================
     beat_schedule={
-        # Run scheduled grant searches every 6 hours
+        # GRANT DISCOVERY - Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+        # Rationale: Grant databases update throughout the day. Running 4x daily
+        # ensures we catch new opportunities within hours of posting while
+        # keeping API costs manageable (~4 DeepSeek calls/user/day).
         "scheduled-grant-searches": {
             "task": "tasks.grant_search.run_scheduled_searches",
-            "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
+            "schedule": crontab(minute=0, hour="*/6"),
         },
 
-        # Reset monthly usage counters on the 1st of each month at midnight
-        "reset-monthly-usage": {
-            "task": "tasks.maintenance.reset_monthly_usage_counters",
-            "schedule": crontab(minute=0, hour=0, day_of_month=1),  # 1st of month
-        },
-
-        # Send usage warnings daily at 9 AM
+        # USAGE LIMIT WARNINGS - Daily at 9 AM UTC
+        # Rationale: Warn users approaching their monthly limit early in the
+        # business day so they can plan their remaining searches/applications.
         "check-usage-limits": {
             "task": "tasks.maintenance.check_and_warn_usage_limits",
-            "schedule": crontab(minute=0, hour=9),  # Daily at 9 AM
+            "schedule": crontab(minute=0, hour=9),
         },
 
-        # Clean up expired embeddings weekly
-        "cleanup-expired-embeddings": {
-            "task": "tasks.maintenance.cleanup_expired_embeddings",
-            "schedule": crontab(minute=0, hour=2, day_of_week=0),  # Sunday 2 AM
-        },
-
-        # Generate weekly reports for active users
+        # WEEKLY REPORTS - Monday 10 AM UTC
+        # Rationale: Start the week with a summary of last week's grant
+        # activity, new matches, and upcoming deadlines. Monday morning
+        # gives users actionable data for the week ahead.
         "weekly-user-reports": {
             "task": "tasks.maintenance.send_weekly_reports",
-            "schedule": crontab(minute=0, hour=10, day_of_week=1),  # Monday 10 AM
+            "schedule": crontab(minute=0, hour=10, day_of_week=1),
         },
 
-        # Clean up expired grants weekly
+        # MONTHLY USAGE RESET - 1st of each month at midnight UTC
+        # Rationale: Reset search/application counters on billing cycle.
+        # Midnight ensures clean slate at the start of the new period.
+        "reset-monthly-usage": {
+            "task": "tasks.maintenance.reset_monthly_usage_counters",
+            "schedule": crontab(minute=0, hour=0, day_of_month=1),
+        },
+
+        # CLEANUP: Expired embeddings - Sunday 2 AM UTC
+        # Rationale: Remove stale vector embeddings for grants that have
+        # expired. Sunday early morning = lowest traffic window.
+        "cleanup-expired-embeddings": {
+            "task": "tasks.maintenance.cleanup_expired_embeddings",
+            "schedule": crontab(minute=0, hour=2, day_of_week=0),
+        },
+
+        # CLEANUP: Archive expired grants - Sunday 3 AM UTC
+        # Rationale: Mark past-deadline grants as archived so dashboards
+        # stay relevant. Runs 1 hour after embedding cleanup.
         "cleanup-expired-grants": {
             "task": "tasks.cleanup_expired_grants.cleanup_expired_grants",
-            "schedule": crontab(day_of_week='sunday', hour=3, minute=0),  # Sunday 3 AM
-        }
+            "schedule": crontab(minute=0, hour=3, day_of_week=0),
+        },
     },
 )
 

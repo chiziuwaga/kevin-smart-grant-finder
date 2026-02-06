@@ -2,13 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { LoadingProvider } from './components/common/LoadingProvider';
-import Auth0ProviderWithHistory from './components/Auth/Auth0Provider';
+import { AuthProvider } from './components/Auth/AuthContext';
 import ProtectedRoute from './components/Auth/ProtectedRoute';
 
 // Layout
 import AppLayout from './components/Layout/AppLayout';
 
-// Pages
+// Public pages
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import LandingPage from './pages/LandingPage';
+
+// Protected pages
 import Dashboard from './components/Dashboard';
 import AnalyticsPage from './pages/AnalyticsPage';
 import GrantsPage from './pages/GrantsPage';
@@ -29,7 +34,7 @@ function App() {
   useEffect(() => {
     const checkApiHealth = async () => {
       try {
-        const response = await fetch(process.env.REACT_APP_API_URL + '/health');
+        const response = await fetch((process.env.REACT_APP_API_URL || '/api') + '/health');
         if (!response.ok) throw new Error('API health check failed');
         setApiError(false);
       } catch (error) {
@@ -39,7 +44,7 @@ function App() {
     };
 
     checkApiHealth();
-    const interval = setInterval(checkApiHealth, 30000); // Check every 30 seconds
+    const interval = setInterval(checkApiHealth, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -73,8 +78,14 @@ function App() {
     <ErrorBoundary>
       <LoadingProvider>
         <Router>
-          <Auth0ProviderWithHistory>
+          <AuthProvider>
             <Routes>
+              {/* Public routes */}
+              <Route path="/welcome" element={<LandingPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+
+              {/* Protected routes */}
               <Route
                 path="/*"
                 element={
@@ -94,7 +105,7 @@ function App() {
                 <Route path="*" element={<NotFoundPage />} />
               </Route>
             </Routes>
-          </Auth0ProviderWithHistory>
+          </AuthProvider>
         </Router>
       </LoadingProvider>
     </ErrorBoundary>

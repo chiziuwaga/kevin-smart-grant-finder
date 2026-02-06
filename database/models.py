@@ -49,13 +49,14 @@ class ApplicationGenerationStatus(str, PyEnum):
 # ============================================================================
 
 class User(Base):
-    """User account with Auth0 authentication and subscription management."""
+    """User account with email/password JWT authentication and subscription management."""
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True)
-    auth0_id = Column(String, unique=True, nullable=False, index=True)  # Auth0 user ID
+    auth0_id = Column(String, unique=True, nullable=True, index=True)  # Legacy compat
     email = Column(String, unique=True, nullable=False, index=True)
     full_name = Column(String, nullable=True)
+    password_hash = Column(String, nullable=True)
     company_name = Column(String, nullable=True)
 
     # Subscription tier and status

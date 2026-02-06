@@ -29,6 +29,9 @@ COPY requirements.txt .
 # Install Python dependencies with version pinning and no cache
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install Playwright browsers for AgentQL web scraping
+RUN pip install playwright && playwright install chromium --with-deps
+
 # Copy application code
 COPY . .
 

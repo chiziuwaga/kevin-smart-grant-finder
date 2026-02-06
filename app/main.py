@@ -53,12 +53,11 @@ app = FastAPI(
     openapi_url="/api/openapi.json"
 )
 
-# Rate limiting setup
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+# Rate limiting setup (imported from separate module to avoid circular imports)
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from app.rate_limit import limiter
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

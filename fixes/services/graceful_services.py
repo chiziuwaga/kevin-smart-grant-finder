@@ -22,7 +22,7 @@ from fixes.services.fallback_clients import (
 
 # Import actual service classes
 try:
-    from utils.pinecone_client import PineconeClient
+    from utils.pgvector_client import PgVectorClient as PineconeClient  # Compat alias
     from services.deepseek_client import DeepSeekClient
     from services.resend_client import ResendEmailClient
     from agents.integrated_research_agent import IntegratedResearchAgent

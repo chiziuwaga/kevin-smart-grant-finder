@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Set, Optional # Added Optional
 from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker # Added async_sessionmaker
-from utils.pinecone_client import PineconeClient
+from utils.pgvector_client import PgVectorClient as PineconeClient  # Compat alias
 from database.models import Grant, Analysis, GrantStatus # Corrected import for GrantStatus
 # from app.models import GrantStatus # Incorrect import
 

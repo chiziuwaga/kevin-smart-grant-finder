@@ -10,10 +10,12 @@ from datetime import datetime
 from celery import Task
 
 from celery_app import celery_app
-from database.session import get_db
+from database.session import get_db, AsyncSessionLocal
 from database.models import User, Grant, SearchRun, SearchRunType, SearchRunStatus
 from services.deepseek_client import get_deepseek_client
 from services.resend_client import get_resend_client
+from agents.integrated_research_agent import IntegratedResearchAgent
+from app.models import GrantFilter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -213,10 +215,25 @@ async def _scheduled_search_async(user_id: int, search_params: Dict[str, Any] = 
 
             await db.commit()
 
-            # Send email notification if high-priority grants found
+            # Send post-run summary email (always)
             high_priority_grants = [g for g in grants_found if g.get("priority") == "high"]
+            searches_remaining = user.searches_limit - user.searches_used
+            resend = get_resend_client()
+
+            try:
+                await resend.send_search_complete_email(
+                    user_email=user.email,
+                    user_name=user.full_name or user.email,
+                    grants_found=len(grants_found),
+                    high_priority=len(high_priority_grants),
+                    duration_seconds=duration,
+                    searches_remaining=searches_remaining,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send search complete email: {e}")
+
+            # Also send detailed grant alert if high-priority grants found
             if high_priority_grants:
-                resend = get_resend_client()
                 try:
                     await resend.send_grant_alert(
                         user_email=user.email,
@@ -276,10 +293,13 @@ async def _discover_grants_with_reasoning(
     search_params: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     """
-    Discover grants using DeepSeek reasoning and AgentQL scraping.
+    Discover grants using DeepSeek via the IntegratedResearchAgent pipeline.
 
-    This is a placeholder that will be integrated with AgentQL.
-    For now, it returns sample data structure.
+    Pipeline:
+    1. Build GrantFilter from user profile + search params
+    2. IntegratedResearchAgent uses RecursiveResearchAgent internally
+    3. RecursiveResearchAgent calls DeepSeek with chunked queries
+    4. Grants are scored, deduplicated, and stored in Postgres
 
     Args:
         db: Database session
@@ -290,36 +310,98 @@ async def _discover_grants_with_reasoning(
     Returns:
         List of grant dictionaries
     """
-    # TODO: Integrate with AgentQL for actual web scraping
-    # This is a placeholder showing the expected data structure
-
-    logger.info("Discovering grants with DeepSeek reasoning")
+    logger.info("Discovering grants with DeepSeek reasoning pipeline")
     logger.info(f"Reasoning strategy: {reasoning[:200]}...")
 
-    # For now, return empty list
-    # In production, this would:
-    # 1. Parse reasoning to identify grant sources
-    # 2. Use AgentQL to scrape identified sources
-    # 3. Use DeepSeek to analyze and score grants
-    # 4. Store high-relevance grants in database
-    # 5. Return grant list
+    # Build GrantFilter from user profile and search params
+    keywords = search_params.get("query", "")
+    geographic_focus = None
+    target_sectors = []
 
+    if user.business_profile:
+        geographic_focus = user.business_profile.geographic_focus
+        target_sectors = user.business_profile.target_sectors or []
+        if not keywords:
+            keywords = ", ".join(target_sectors[:3]) if target_sectors else "grants"
+
+    grant_filter = GrantFilter(
+        keywords=keywords,
+        min_score=0.0,
+        min_funding=search_params.get("min_funding", 5000),
+        max_funding=search_params.get("max_funding", 1000000),
+        geographic_focus=geographic_focus,
+    )
+
+    # Use the IntegratedResearchAgent (wraps RecursiveResearchAgent + DeepSeek)
+    try:
+        research_agent = IntegratedResearchAgent(AsyncSessionLocal)
+        enriched_grants = await research_agent.search_grants(grant_filter)
+        logger.info(f"Research agent returned {len(enriched_grants)} grants")
+    except Exception as e:
+        logger.error(f"Research agent search failed: {e}", exc_info=True)
+        enriched_grants = []
+
+    # Convert EnrichedGrant objects → dicts and store in database
     grants_discovered = []
+    for eg in enriched_grants:
+        try:
+            # Check for existing grant by title
+            existing = await db.execute(
+                select(Grant).where(Grant.title == eg.title, Grant.user_id == user.id)
+            )
+            if existing.scalar_one_or_none():
+                logger.info(f"Skipping duplicate grant: {eg.title}")
+                continue
 
-    # Sample structure (to be replaced with actual implementation):
-    # grants_discovered = [
-    #     {
-    #         "title": "Sample Grant",
-    #         "description": "Grant description",
-    #         "funding_amount_display": "$100,000",
-    #         "deadline": "2026-03-15",
-    #         "source_url": "https://example.com/grant",
-    #         "priority": "high",
-    #         "overall_composite_score": 0.85,
-    #         "summary_llm": "AI-generated summary"
-    #     }
-    # ]
+            # Store in database
+            db_grant = Grant(
+                user_id=user.id,
+                title=eg.title,
+                description=eg.description or "",
+                summary_llm=eg.summary_llm,
+                eligibility_summary_llm=eg.eligibility_summary_llm,
+                funder_name=eg.funder_name,
+                funding_amount=eg.funding_amount_min or 0,
+                funding_amount_min=eg.funding_amount_min,
+                funding_amount_max=eg.funding_amount_max,
+                funding_amount_display=eg.funding_amount_display,
+                deadline=eg.deadline_date,
+                deadline_date=eg.deadline_date,
+                source_url=eg.source_url,
+                source_name=eg.source_name,
+                identified_sector=eg.identified_sector,
+                geographic_scope=eg.geographic_scope,
+                overall_composite_score=eg.overall_composite_score,
+                keywords_json=eg.keywords,
+                categories_project_json=eg.categories_project,
+                record_status="ACTIVE",
+            )
+            db.add(db_grant)
+            await db.flush()
 
+            # Determine priority
+            score = eg.overall_composite_score or 0
+            priority = "high" if score >= 0.7 else ("medium" if score >= 0.4 else "low")
+
+            grants_discovered.append({
+                "id": db_grant.id,
+                "title": eg.title,
+                "description": eg.description,
+                "funding_amount_display": eg.funding_amount_display,
+                "deadline": eg.deadline_date.isoformat() if eg.deadline_date else None,
+                "source_url": eg.source_url,
+                "priority": priority,
+                "overall_composite_score": score,
+                "summary_llm": eg.summary_llm,
+                "funder_name": eg.funder_name,
+            })
+
+        except Exception as e:
+            logger.error(f"Failed to process grant '{getattr(eg, 'title', '?')}': {e}")
+            continue
+
+    await db.commit()
+    logger.info(f"Stored {len(grants_discovered)} new grants for user {user.id}")
     return grants_discovered
 
 

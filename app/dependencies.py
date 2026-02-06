@@ -3,7 +3,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
-from utils.pinecone_client import PineconeClient
+from utils.pgvector_client import PgVectorClient
 from services.deepseek_client import DeepSeekClient
 from services.resend_client import ResendEmailClient
 from agents.integrated_research_agent import IntegratedResearchAgent
@@ -13,7 +13,7 @@ from app.services import services
 logger = logging.getLogger(__name__)
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Enhanced database session dependency with graceful error handling"""
+    """Database session dependency with graceful error handling."""
     if not services.db_sessionmaker:
         logger.error("Database sessionmaker not initialized")
         raise HTTPException(
@@ -24,7 +24,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
                 "service": "database"
             }
         )
-    
+
     session = None
     try:
         session = services.db_sessionmaker()
@@ -46,30 +46,32 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         if session:
             await session.close()
 
-def get_pinecone():
-    """Get Pinecone client with fallback handling"""
-    if not services.pinecone_client:
-        logger.warning("Pinecone client not available, using mock")
-        from app.services import MockPineconeClient
-        return MockPineconeClient()
-    return services.pinecone_client
+def get_vector_store():
+    """Get vector store client (Postgres-backed, replaces Pinecone)."""
+    if not services.vector_client:
+        logger.warning("Vector client not available, using mock")
+        return PgVectorClient()
+    return services.vector_client
+
+# Backward-compat alias
+get_pinecone = get_vector_store
 
 def get_deepseek():
-    """Get DeepSeek client with fallback handling"""
+    """Get DeepSeek client with fallback handling."""
     if not services.deepseek_client:
         logger.warning("DeepSeek client not available, creating new instance")
         return DeepSeekClient()
     return services.deepseek_client
 
 def get_notifier():
-    """Get email notification client with fallback handling"""
+    """Get email notification client with fallback handling."""
     if not services.notifier:
         logger.warning("Notifier not available, creating new Resend client")
         return ResendEmailClient()
     return services.notifier
 
 def get_db_sessionmaker():
-    """Get the database sessionmaker from services with error handling"""
+    """Get the database sessionmaker from services with error handling."""
     if not services.db_sessionmaker:
         logger.error("Database sessionmaker not initialized")
         raise HTTPException(
@@ -83,10 +85,10 @@ def get_db_sessionmaker():
     return services.db_sessionmaker
 
 def get_research_agent(
-    deepseek = Depends(get_deepseek),
-    pinecone = Depends(get_pinecone)
+    deepseek=Depends(get_deepseek),
+    vector_store=Depends(get_vector_store)
 ) -> IntegratedResearchAgent:
-    """Get research agent with fallback handling"""
+    """Get research agent with fallback handling."""
     if not services.db_sessionmaker:
         logger.error("Cannot create research agent: Database not available")
         raise HTTPException(
@@ -97,7 +99,7 @@ def get_research_agent(
                 "service": "research_agent"
             }
         )
-    
+
     try:
         return IntegratedResearchAgent(
             db_session_maker=services.db_sessionmaker
@@ -114,9 +116,9 @@ def get_research_agent(
         )
 
 def get_analysis_agent(
-    pinecone = Depends(get_pinecone)
+    vector_store=Depends(get_vector_store)
 ) -> AnalysisAgent:
-    """Get analysis agent with fallback handling"""
+    """Get analysis agent with fallback handling."""
     if not services.db_sessionmaker:
         logger.error("Cannot create analysis agent: Database not available")
         raise HTTPException(
@@ -127,11 +129,11 @@ def get_analysis_agent(
                 "service": "analysis_agent"
             }
         )
-    
+
     try:
         return AnalysisAgent(
             db_sessionmaker=services.db_sessionmaker,
-            pinecone_client=pinecone
+            pinecone_client=vector_store
         )
     except Exception as e:
         logger.error(f"Failed to create analysis agent: {e}")

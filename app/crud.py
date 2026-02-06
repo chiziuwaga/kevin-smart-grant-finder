@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from database.models import Grant as DBGrant, Analysis, SearchRun, UserSettings, ApplicationHistory # Added ApplicationHistory
-from utils.pinecone_client import PineconeClient # Added back PineconeClient import
+from utils.pgvector_client import PgVectorClient as PineconeClient  # Compat alias
 from app.schemas import EnrichedGrant, ResearchContextScores, ComplianceScores, GrantSourceDetails, ApplicationHistoryCreate # Added ApplicationHistoryCreate
 from app.duplicate_detection import check_duplicate_grant, update_duplicate_grant # Added duplicate detection
 # It's generally better to import specific classes if you're not using the whole module via alias.

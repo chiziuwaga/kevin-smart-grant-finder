@@ -79,6 +79,45 @@ const API: AxiosInstance = axios.create({
   timeout: 15000, // Increased to 15 seconds for slower connections
 });
 
+// Attach Bearer token from localStorage on every request
+API.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Auto-refresh on 401 responses
+API.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      localStorage.getItem('refresh_token')
+    ) {
+      originalRequest._retry = true;
+      try {
+        const refreshRes = await axios.post(
+          `${API.defaults.baseURL}/auth/refresh`,
+          { refresh_token: localStorage.getItem('refresh_token') }
+        );
+        const newToken = refreshRes.data.access_token;
+        localStorage.setItem('access_token', newToken);
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        return API(originalRequest);
+      } catch {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Error categorization helper
 function categorizeError(error: AxiosError | Error): EnhancedError {
   const axiosError = error as AxiosError<ErrorResponseData>;

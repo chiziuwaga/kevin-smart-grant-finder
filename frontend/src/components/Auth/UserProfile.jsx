@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
 import { useNavigate } from 'react-router-dom';
-import LogoutButton from './LogoutButton';
+import { useAuth } from './AuthContext';
 
 const UserProfile = () => {
-  const { user, isAuthenticated, isLoading } = useAuth0();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -39,11 +37,16 @@ const UserProfile = () => {
     handleClose();
   };
 
-  if (isLoading || !isAuthenticated) {
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  if (isLoading || !isAuthenticated || !user) {
     return null;
   }
 
-  const userInitial = user?.name?.charAt(0).toUpperCase() || 'U';
+  const userInitial = (user.fullName || user.email || 'U').charAt(0).toUpperCase();
 
   return (
     <div className="user-profile" ref={dropdownRef}>
@@ -52,21 +55,7 @@ const UserProfile = () => {
         onClick={handleToggle}
         aria-label="User menu"
       >
-        {user?.picture ? (
-          <img
-            src={user.picture}
-            alt={user.name}
-            className="user-avatar"
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '2px',
-              objectFit: 'cover'
-            }}
-          />
-        ) : (
-          <div className="user-avatar">{userInitial}</div>
-        )}
+        <div className="user-avatar">{userInitial}</div>
         <svg
           width="16"
           height="16"
@@ -90,14 +79,14 @@ const UserProfile = () => {
             marginBottom: '4px',
             color: '#1A1A1A'
           }}>
-            {user?.name}
+            {user.fullName || 'User'}
           </p>
           <p style={{
             fontSize: '12px',
             margin: 0,
             color: '#666666'
           }}>
-            {user?.email}
+            {user.email}
           </p>
         </div>
 
@@ -110,7 +99,9 @@ const UserProfile = () => {
         </button>
 
         <div style={{ borderTop: '1px solid #E0E0E0' }}>
-          <LogoutButton />
+          <button className="user-dropdown-item" onClick={handleLogout}>
+            Log Out
+          </button>
         </div>
       </div>
     </div>

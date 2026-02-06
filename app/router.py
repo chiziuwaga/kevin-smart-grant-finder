@@ -8,8 +8,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text, select, func
 from sqlalchemy.orm import selectinload
 
-# Import rate limiter from main
-from app.main import limiter
+# Import rate limiter (separate module avoids circular import with main.py)
+from app.rate_limit import limiter
 
 from app.dependencies import (
     get_db_session,
@@ -23,7 +23,11 @@ from app.dependencies import (
 from app import crud
 from app.crud import safe_convert_to_enriched_grant
 from app.payments import get_payment_service
-from app.auth import get_current_user
+from app.auth import (
+    get_current_user, hash_password, verify_password,
+    create_access_token, create_refresh_token, decode_token,
+    get_or_create_user,
+)
 from database.models import Grant as DBGrant, SavedGrants, User, Subscription
 from database.session import get_db
 from app.schemas import (
@@ -54,6 +58,109 @@ api_router.include_router(applications_router, prefix="/applications", tags=["Ap
 metrics_logger = logging.getLogger("metrics")
 audit_logger = logging.getLogger("audit")
 logger = logging.getLogger(__name__)
+
+
+# ==========================================================================
+# AUTH ENDPOINTS (email/password)
+# ==========================================================================
+
+from pydantic import BaseModel
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: Dict[str, Any]
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+@api_router.post("/auth/register", response_model=TokenResponse, tags=["Auth"])
+async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    """Register a new user with email and password."""
+    # Check if user already exists
+    result = await db.execute(select(User).where(User.email == body.email))
+    existing = result.scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    pw_hash = hash_password(body.password)
+    user = await get_or_create_user(db, email=body.email, full_name=body.full_name, password_hash=pw_hash)
+
+    access = create_access_token(user.id, user.email)
+    refresh = create_refresh_token(user.id)
+
+    return TokenResponse(
+        access_token=access,
+        refresh_token=refresh,
+        user=user.to_dict(),
+    )
+
+
+@api_router.post("/auth/login", response_model=TokenResponse, tags=["Auth"])
+async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    """Log in with email and password."""
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    if not user or not getattr(user, "password_hash", None):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account deactivated")
+
+    user.last_login = datetime.utcnow()
+    await db.commit()
+
+    access = create_access_token(user.id, user.email)
+    refresh = create_refresh_token(user.id)
+
+    return TokenResponse(
+        access_token=access,
+        refresh_token=refresh,
+        user=user.to_dict(),
+    )
+
+
+@api_router.post("/auth/refresh", tags=["Auth"])
+async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    """Get a new access token using a refresh token."""
+    payload = decode_token(body.refresh_token)
+
+    if payload.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    user_id = payload.get("sub")
+    result = await db.execute(select(User).where(User.id == int(user_id)))
+    user = result.scalar_one_or_none()
+
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or inactive")
+
+    access = create_access_token(user.id, user.email)
+    return {"access_token": access, "token_type": "bearer"}
+
+
+@api_router.get("/auth/me", tags=["Auth"])
+async def get_me(current_user: User = Depends(get_current_user)):
+    """Return current authenticated user profile."""
+    return current_user.to_dict()
 
 def log_api_metrics(endpoint: str, duration: float, status: int, **extra: Any):
     """Log API metrics in structured format"""

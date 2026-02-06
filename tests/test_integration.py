@@ -20,8 +20,8 @@ from app.models import GrantFilter
 from app import crud
 from agents.research_agent import ResearchAgent
 from agents.compliance_agent import ComplianceAnalysisAgent
-from utils.perplexity_client import PerplexityClient
-from utils.pinecone_client import PineconeClient
+from services.deepseek_client import DeepSeekClient  # Replaced Perplexity
+from utils.pgvector_client import PgVectorClient as PineconeClient  # Compat alias
 
 
 class MockSessionMaker:
@@ -54,7 +54,7 @@ def mock_db_sessionmaker():
 @pytest.fixture  
 def mock_perplexity_client():
     """Mock Perplexity client with realistic responses."""
-    client = AsyncMock(spec=PerplexityClient)
+    client = AsyncMock(spec=DeepSeekClient)
     
     # Mock search response for tiered search
     client.search.return_value = {

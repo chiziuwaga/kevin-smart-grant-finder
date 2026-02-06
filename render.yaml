@@ -55,15 +55,9 @@ services:
           name: grant-finder-redis
           property: connectionString
 
-      # Auth0 (add in Render dashboard)
-      - key: AUTH0_DOMAIN
-        sync: false  # Set manually in dashboard
-
-      - key: AUTH0_API_AUDIENCE
-        sync: false
-
-      - key: AUTH0_ALGORITHMS
-        value: RS256
+      # JWT Auth
+      - key: JWT_SECRET_KEY
+        generateValue: true
 
       # Stripe (add in Render dashboard)
       - key: STRIPE_SECRET_KEY
@@ -91,15 +85,6 @@ services:
 
       - key: DEEPSEEK_API_BASE
         value: https://api.deepseek.com
-
-      - key: PINECONE_API_KEY
-        sync: false
-
-      - key: PINECONE_INDEX_NAME
-        value: grantcluster
-
-      - key: OPENAI_API_KEY
-        sync: false  # Optional fallback
 
       # Note: Frontend is served from same origin - no separate FRONTEND_URL needed
       # CORS is minimal since frontend and backend are on same domain
@@ -155,18 +140,12 @@ services:
           name: grant-finder-redis
           property: connectionString
 
-      # Copy all other env vars from web service
-      - key: AUTH0_DOMAIN
+      # Copy key env vars from web service
+      - key: JWT_SECRET_KEY
         fromService:
           type: web
           name: grant-finder-api
-          envVarKey: AUTH0_DOMAIN
-
-      - key: AUTH0_API_AUDIENCE
-        fromService:
-          type: web
-          name: grant-finder-api
-          envVarKey: AUTH0_API_AUDIENCE
+          envVarKey: JWT_SECRET_KEY
 
       - key: STRIPE_SECRET_KEY
         fromService:
@@ -191,18 +170,6 @@ services:
           type: web
           name: grant-finder-api
           envVarKey: DEEPSEEK_API_KEY
-
-      - key: PINECONE_API_KEY
-        fromService:
-          type: web
-          name: grant-finder-api
-          envVarKey: PINECONE_API_KEY
-
-      - key: PINECONE_INDEX_NAME
-        fromService:
-          type: web
-          name: grant-finder-api
-          envVarKey: PINECONE_INDEX_NAME
 
   # ==============================================================================
   # CELERY BEAT - Scheduled Tasks (Cron Jobs)

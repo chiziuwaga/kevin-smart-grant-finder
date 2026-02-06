@@ -1,4 +1,6 @@
 import { differenceInDays, format, parseISO } from 'date-fns';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './styles/GrantDetailsModal.css';
 
 const GrantDetailsModal = ({ grant, open, onClose }) => {
@@ -84,8 +86,10 @@ const GrantDetailsModal = ({ grant, open, onClose }) => {
               {grant.summary_llm && (
                 <section className="grant-section">
                   <h3>AI-Generated Summary</h3>
-                  <div className="ai-summary">
-                    <p>{grant.summary_llm}</p>
+                  <div className="ai-summary markdown-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {grant.summary_llm}
+                    </ReactMarkdown>
                   </div>
                 </section>
               )}
@@ -93,8 +97,10 @@ const GrantDetailsModal = ({ grant, open, onClose }) => {
               {grant.eligibility_summary_llm && (
                 <section className="grant-section">
                   <h3>Eligibility Requirements</h3>
-                  <div className="eligibility-box">
-                    <p>{grant.eligibility_summary_llm}</p>
+                  <div className="eligibility-box markdown-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {grant.eligibility_summary_llm}
+                    </ReactMarkdown>
                   </div>
                 </section>
               )}
