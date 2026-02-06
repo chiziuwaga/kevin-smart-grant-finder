@@ -8,7 +8,7 @@ services:
     plan: starter  # Can upgrade to standard/pro as needed
     region: oregon  # Choose your preferred region
     buildCommand: pip install -r requirements.txt && cd frontend && npm install && npm run build && cd ..
-    preDeployCommand: alembic upgrade head
+    preDeployCommand: python scripts/pre_deploy.py && alembic upgrade head
     startCommand: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
     healthCheckPath: /health
 
@@ -70,7 +70,7 @@ services:
         sync: false
 
       - key: STRIPE_PRICE_ID
-        sync: false  # Your $35/month price ID
+        sync: false  # Your $15/month price ID
 
       # Email - Resend (add in Render dashboard)
       - key: RESEND_API_KEY
@@ -86,8 +86,9 @@ services:
       - key: DEEPSEEK_API_BASE
         value: https://api.deepseek.com
 
-      # Note: Frontend is served from same origin - no separate FRONTEND_URL needed
-      # CORS is minimal since frontend and backend are on same domain
+      # Frontend URL (used in email templates for links)
+      - key: FRONTEND_URL
+        value: https://kevin-smart-grant-finder.onrender.com
 
   # ==============================================================================
   # CELERY WORKER - Background Task Processing

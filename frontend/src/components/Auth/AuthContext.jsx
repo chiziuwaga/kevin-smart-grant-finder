@@ -17,9 +17,13 @@ export const AuthProvider = ({ children }) => {
       });
       setUser(response.data);
       setIsAuthenticated(true);
+      if (response.data?.email) {
+        localStorage.setItem('user_email', response.data.email);
+      }
     } catch {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user_email');
       setUser(null);
       setIsAuthenticated(false);
     }
@@ -40,6 +44,9 @@ export const AuthProvider = ({ children }) => {
     const { access_token, refresh_token, user: userData } = response.data;
     localStorage.setItem('access_token', access_token);
     localStorage.setItem('refresh_token', refresh_token);
+    if (userData?.email || email) {
+      localStorage.setItem('user_email', userData?.email || email);
+    }
     setUser(userData);
     setIsAuthenticated(true);
     return userData;
@@ -54,6 +61,9 @@ export const AuthProvider = ({ children }) => {
     const { access_token, refresh_token, user: userData } = response.data;
     localStorage.setItem('access_token', access_token);
     localStorage.setItem('refresh_token', refresh_token);
+    if (userData?.email || email) {
+      localStorage.setItem('user_email', userData?.email || email);
+    }
     setUser(userData);
     setIsAuthenticated(true);
     return userData;
@@ -62,6 +72,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_email');
     setUser(null);
     setIsAuthenticated(false);
   };

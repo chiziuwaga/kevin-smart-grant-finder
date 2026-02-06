@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import UserProfile from '../Auth/UserProfile';
+import { OnboardingTips, ReplayTipsButton } from '../Onboarding/OnboardingTips';
 
 const AppLayout = () => {
   const [open, setOpen] = useState(true);
@@ -8,6 +9,10 @@ const AppLayout = () => {
   const location = useLocation();
   const [lastRunTime, setLastRunTime] = useState('—');
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [tipsKey, setTipsKey] = useState(0);
+
+  // Get user email from localStorage (set by Auth0 on login)
+  const userEmail = localStorage.getItem('user_email') || 'default';
 
   // Handle responsive behavior
   useEffect(() => {
@@ -104,6 +109,10 @@ const AppLayout = () => {
           <p className="text-xs text-secondary" style={{ margin: 0 }}>
             Version 1.0.0
           </p>
+          <ReplayTipsButton
+            userEmail={userEmail}
+            onReplay={() => setTipsKey((k) => k + 1)}
+          />
         </div>
       </aside>
 
@@ -157,6 +166,9 @@ const AppLayout = () => {
       <main className={`app-main ${!open ? 'sidebar-closed' : ''}`}>
         <Outlet />
       </main>
+
+      {/* Onboarding Tips */}
+      <OnboardingTips key={tipsKey} userEmail={userEmail} />
 
       {/* Run History Modal - placeholder for now */}
       {historyOpen && (

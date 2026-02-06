@@ -61,7 +61,7 @@ from app.rate_limit import limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-@app.get("/health", tags=["Health Check"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["Health Check"])
 async def health_check():
     """
     Simple health check endpoint for load balancers
@@ -243,14 +243,14 @@ async def startup_event():
         else:
             logger.warning("⚠️  Database: Not available")
             
-        if services.pinecone_client:
-            is_mock = getattr(services.pinecone_client, 'is_mock', False)
+        if services.vector_client:
+            is_mock = getattr(services.vector_client, 'is_mock', False)
             if is_mock:
-                logger.warning("⚠️  Pinecone: Using mock client")
+                logger.warning("⚠️  PgVector: Running in mock mode (no DB session)")
             else:
-                logger.info("✅ Pinecone: Connected")
+                logger.info("✅ PgVector: Connected with real embeddings")
         else:
-            logger.warning("⚠️  Pinecone: Not available")
+            logger.warning("⚠️  PgVector: Not available")
 
         # Check DeepSeek AI (replaces Perplexity)
         try:
@@ -448,20 +448,38 @@ if frontend_build_path.exists():
     # Serve static assets (JS, CSS, images)
     app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
 
+    # Serve manifest.json and other root-level static files
+    @app.get("/manifest.json")
+    @app.head("/manifest.json")
+    async def serve_manifest():
+        manifest_file = frontend_build_path / "manifest.json"
+        if manifest_file.exists():
+            return FileResponse(str(manifest_file), media_type="application/json")
+        return JSONResponse(content={"name": "Grant Finder", "short_name": "GrantFinder"})
+
+    @app.get("/favicon.ico")
+    @app.head("/favicon.ico")
+    async def serve_favicon():
+        favicon_file = frontend_build_path / "favicon.ico"
+        if favicon_file.exists():
+            return FileResponse(str(favicon_file))
+        return JSONResponse(status_code=204, content=None)
+
     # Serve index.html for all non-API routes (SPA routing)
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
+    # Support both GET and HEAD (Render health probes use HEAD)
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
+    async def serve_frontend(request: Request, full_path: str):
         """Serve React frontend for all routes except /api"""
         # Don't intercept API routes
-        if full_path.startswith("api/") or full_path == "health" or full_path == "docs":
-            return {"error": "Not found"}
+        if full_path.startswith("api/") or full_path == "health" or full_path.startswith("health/") or full_path == "docs":
+            return JSONResponse(status_code=404, content={"error": "Not found"})
 
         # Serve index.html for all other routes (React Router handles routing)
         index_file = frontend_build_path / "index.html"
         if index_file.exists():
             return FileResponse(str(index_file))
         else:
-            return {"error": "Frontend not built. Run: cd frontend && npm run build"}
+            return JSONResponse(status_code=404, content={"error": "Frontend not built. Run: cd frontend && npm run build"})
 else:
     # Fallback if frontend not built
     @app.get("/")

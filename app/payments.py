@@ -73,7 +73,7 @@ class StripePaymentService:
         cancel_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Create a Stripe checkout session for $35/month subscription with 14-day trial.
+        Create a Stripe checkout session for $15/month subscription with 14-day trial.
 
         Args:
             db: Database session
@@ -453,7 +453,7 @@ class StripePaymentService:
                     user_email=user.email,
                     user_name=user.full_name or user.email.split('@')[0],
                     plan_name="Basic",
-                    amount=3500  # $35.00 in cents
+                    amount=1500  # $15.00 in cents
                 )
                 logger.info(f"Subscription confirmation email sent to {user.email}")
             except Exception as e:
@@ -524,7 +524,7 @@ class StripePaymentService:
                     user_email=user.email,
                     user_name=user.full_name or user.email.split('@')[0],
                     plan_name="Basic",
-                    amount=3500  # $35.00 in cents
+                    amount=1500  # $15.00 in cents
                 )
                 logger.info(f"Subscription confirmation email sent to {user.email}")
             except Exception as e:
@@ -602,7 +602,15 @@ class StripePaymentService:
 
         if user:
             logger.info(f"Trial will end soon for user {user.email}")
-            # TODO: Send email notification about trial ending
+            try:
+                resend = get_resend_client()
+                await resend.send_trial_ending_email(
+                    user_email=user.email,
+                    user_name=user.full_name or user.email.split('@')[0],
+                    days_remaining=3,
+                )
+            except Exception as e:
+                logger.error(f"Failed to send trial ending email to {user.email}: {e}")
 
         await db.commit()
 
@@ -692,7 +700,15 @@ class StripePaymentService:
 
         await db.commit()
         logger.warning(f"Payment failed for user {user.email}, status: past_due")
-        # TODO: Send email notification about payment failure
+
+        try:
+            resend = get_resend_client()
+            await resend.send_payment_failed_email(
+                user_email=user.email,
+                user_name=user.full_name or user.email.split('@')[0],
+            )
+        except Exception as e:
+            logger.error(f"Failed to send payment failure email to {user.email}: {e}")
 
     async def _get_user_from_customer(
         self,

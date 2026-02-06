@@ -14,6 +14,7 @@ from database.session import get_db, AsyncSessionLocal
 from database.models import User, Grant, SearchRun, SearchRunType, SearchRunStatus
 from services.deepseek_client import get_deepseek_client
 from services.resend_client import get_resend_client
+from services.embedding_service import get_embedding_service
 from agents.integrated_research_agent import IntegratedResearchAgent
 from app.models import GrantFilter
 from sqlalchemy import select
@@ -378,6 +379,13 @@ async def _discover_grants_with_reasoning(
             )
             db.add(db_grant)
             await db.flush()
+
+            # Generate and store grant embedding for semantic search
+            try:
+                embed_svc = get_embedding_service()
+                await embed_svc.embed_grant(db, db_grant.id, eg.title, eg.description or "")
+            except Exception as embed_err:
+                logger.warning(f"Failed to embed grant '{eg.title}': {embed_err}")
 
             # Determine priority
             score = eg.overall_composite_score or 0

@@ -91,49 +91,74 @@ class RecursiveResearchAgent:
             "federal": ["federal grants", "nationwide opportunities"]
         }
 
+    # Minimum grants before we stop widening geographic scope
+    MIN_RESULTS_BEFORE_WIDENING_STOPS = 5
+
     async def search_grants_recursive(self, grant_filter: GrantFilter) -> List[EnrichedGrant]:
         """
         Main entry point for recursive grant searching.
-        Breaks down the search into manageable chunks and processes them recursively.
+        Uses progressive geographic widening: searches local first, then widens
+        to state/regional/federal only if fewer than MIN_RESULTS grants found.
         """
-        logger.info("Starting recursive grant search with chunked reasoning approach")
+        logger.info("Starting recursive grant search with progressive geographic widening")
         start_time = time.time()
-        
-        # Create search chunks based on Kevin's focus areas
+
+        # Create search chunks sorted by geographic priority (local first)
         search_chunks = self._create_search_chunks(grant_filter)
         logger.info(f"Created {len(search_chunks)} search chunks for processing")
-        
+
         all_grants = []
         processed_urls = set()
-        
-        # Process chunks in batches to respect rate limits
-        chunk_batches = [search_chunks[i:i + self.MAX_CONCURRENT_CHUNKS] 
-                        for i in range(0, len(search_chunks), self.MAX_CONCURRENT_CHUNKS)]
-        
-        for batch_idx, chunk_batch in enumerate(chunk_batches):
-            logger.info(f"Processing chunk batch {batch_idx + 1}/{len(chunk_batches)} ({len(chunk_batch)} chunks)")
-            
-            # Process batch concurrently but with rate limiting
-            batch_tasks = []
-            for chunk in chunk_batch:
-                task = self._process_search_chunk_with_delay(chunk, processed_urls)
-                batch_tasks.append(task)
-            
-            batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
-            
-            # Collect results and handle exceptions
-            for i, result in enumerate(batch_results):
-                if isinstance(result, Exception):
-                    logger.error(f"Error processing chunk {chunk_batch[i].chunk_id}: {result}")
-                    continue
-                
-                if result and isinstance(result, ChunkedSearchResult) and result.grants:
-                    all_grants.extend(result.grants)
-                    logger.info(f"Chunk {chunk_batch[i].chunk_id} found {len(result.grants)} grants")
-            
-            # Delay between batches to respect rate limits
-            if batch_idx < len(chunk_batches) - 1:
-                await asyncio.sleep(self.CHUNK_DELAY_SECONDS * 2)
+        current_tier = None
+
+        # Group chunks by geographic tier for progressive widening
+        tier_order = ["local", "state", "regional", "federal"]
+        tier_chunks = {t: [] for t in tier_order}
+        for chunk in search_chunks:
+            tier_chunks.get(chunk.geographic_focus, tier_chunks["federal"]).append(chunk)
+
+        for tier in tier_order:
+            chunks_for_tier = tier_chunks[tier]
+            if not chunks_for_tier:
+                continue
+
+            # Check if we already have enough grants
+            if len(all_grants) >= self.MIN_RESULTS_BEFORE_WIDENING_STOPS and tier != "local":
+                logger.info(
+                    f"Skipping '{tier}' tier - already found {len(all_grants)} grants "
+                    f"(>= {self.MIN_RESULTS_BEFORE_WIDENING_STOPS} minimum)"
+                )
+                continue
+
+            current_tier = tier
+            logger.info(f"Searching '{tier}' tier ({len(chunks_for_tier)} chunks, {len(all_grants)} grants so far)")
+
+            # Process tier chunks in batches
+            chunk_batches = [
+                chunks_for_tier[i:i + self.MAX_CONCURRENT_CHUNKS]
+                for i in range(0, len(chunks_for_tier), self.MAX_CONCURRENT_CHUNKS)
+            ]
+
+            for batch_idx, chunk_batch in enumerate(chunk_batches):
+                batch_tasks = [
+                    self._process_search_chunk_with_delay(chunk, processed_urls)
+                    for chunk in chunk_batch
+                ]
+
+                batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+
+                for i, result in enumerate(batch_results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Error processing chunk {chunk_batch[i].chunk_id}: {result}")
+                        continue
+                    if result and isinstance(result, ChunkedSearchResult) and result.grants:
+                        all_grants.extend(result.grants)
+                        logger.info(f"Chunk {chunk_batch[i].chunk_id} found {len(result.grants)} grants")
+
+                if batch_idx < len(chunk_batches) - 1:
+                    await asyncio.sleep(self.CHUNK_DELAY_SECONDS * 2)
+
+        logger.info(f"Progressive search completed through '{current_tier}' tier with {len(all_grants)} raw grants")
         
         # Remove duplicates and enrich results
         unique_grants = self._deduplicate_grants(all_grants)

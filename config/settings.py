@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = Field(default="", env="STRIPE_SECRET_KEY")
     STRIPE_PUBLISHABLE_KEY: str = Field(default="", env="STRIPE_PUBLISHABLE_KEY")
     STRIPE_WEBHOOK_SECRET: str = Field(default="", env="STRIPE_WEBHOOK_SECRET")
-    STRIPE_PRICE_ID: str = Field(default="", env="STRIPE_PRICE_ID")  # Price ID for $35/month plan
+    STRIPE_PRICE_ID: str = Field(default="", env="STRIPE_PRICE_ID")  # Price ID for $15/month plan
 
     # Email (Resend)
     RESEND_API_KEY: str = Field(default="", env="RESEND_API_KEY")

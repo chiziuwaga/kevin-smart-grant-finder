@@ -8,20 +8,21 @@ from typing import List, Dict, Any, Set, Optional # Added Optional
 from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker # Added async_sessionmaker
-from utils.pgvector_client import PgVectorClient as PineconeClient  # Compat alias
-from database.models import Grant, Analysis, GrantStatus # Corrected import for GrantStatus
-# from app.models import GrantStatus # Incorrect import
+from utils.pgvector_client import PgVectorClient, FUNDING_MIN
+from database.models import Grant, Analysis, GrantStatus
 
 logger = logging.getLogger(__name__)
+
 
 class AnalysisAgent:
     def __init__(
         self,
-        db_sessionmaker: async_sessionmaker, # Changed from db_session: AsyncSession
-        pinecone_client: PineconeClient
+        db_sessionmaker: async_sessionmaker,
+        pinecone_client: PgVectorClient = None
     ):
-        self.db_sessionmaker = db_sessionmaker # Store the sessionmaker
-        self.pinecone = pinecone_client
+        self.db_sessionmaker = db_sessionmaker
+        self.pgvector = pinecone_client
+        self.FUNDING_MIN = FUNDING_MIN
         logger.info("Analysis Agent initialized")
     
     async def analyze_grants(self, grants: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -89,17 +90,17 @@ class AnalysisAgent:
             eligibility_json = {"details": "Not specified or invalid format"}
 
         # Scores
-        # The 'score' from ResearchAgent is Pinecone's relevance. We'll call it pinecone_score here.
-        pinecone_relevance_score = grant_data.get("score", 0.0) 
+        semantic_relevance_score = grant_data.get("score", 0.5)
         deadline_score = self._calculate_deadline_score(raw_deadline)
         funding_score = self._calculate_funding_score(raw_funding_amount)
-        
-        # Combine scores (weighted average)
-        # Weights can be tuned
+        freshness_score = self._calculate_freshness_score(grant_data.get("discovered_at"))
+
+        # Combine scores (weighted average with freshness)
         final_score = (
-            (deadline_score * 0.3) +
-            (funding_score * 0.3) +
-            (pinecone_relevance_score * 0.4) 
+            (deadline_score * 0.25) +
+            (funding_score * 0.25) +
+            (semantic_relevance_score * 0.35) +
+            (freshness_score * 0.15)
         )
         
         parsed_deadline_dt = self._parse_deadline_to_datetime(raw_deadline)
@@ -123,9 +124,10 @@ class AnalysisAgent:
                 await session.flush() # To get db_grant.id for the Analysis record
                 
                 db_analysis = Analysis(
-                    grant_id=db_grant.id, # Link to the grant
-                    score=final_score,
-                    notes=f"Deadline Score: {deadline_score:.2f}, Funding Score: {funding_score:.2f}, Pinecone Relevance: {pinecone_relevance_score:.2f}"
+                    grant_id=db_grant.id,
+                    final_score=final_score,
+                    relevance_score=semantic_relevance_score,
+                    overall_summary=f"Deadline: {deadline_score:.2f}, Funding: {funding_score:.2f}, Semantic: {semantic_relevance_score:.2f}"
                 )
                 session.add(db_analysis)
                 await session.commit()
@@ -142,7 +144,7 @@ class AnalysisAgent:
                     "source_url": source_url,
                     "category": category,
                     "final_score": final_score,
-                    "pinecone_relevance_score": pinecone_relevance_score,
+                    "semantic_relevance_score": semantic_relevance_score,
                     "deadline_score": deadline_score,
                     "funding_score": funding_score,
                     "analyzed_at": datetime.now().isoformat()
@@ -225,16 +227,30 @@ class AnalysisAgent:
             return 0.5  # Middle score for unknown/unparsable amounts
             
         try:
-            if numeric_funding >= 100000: return 0.9 # Adjusted threshold based on persona max $100k
-            if numeric_funding >= 50000: return 0.7  
-            if numeric_funding >= self.pinecone.FUNDING_MIN: return 0.5 # Assuming FUNDING_MIN is defined in pinecone_client or agent
-            # Let's use the FUNDING_MIN from ResearchAgent persona if available, or a default
-            # This requires AnalysisAgent to know about ResearchAgent.FUNDING_MIN or have its own.
-            # For now, using a hardcoded value or assuming it's available via self.pinecone (which is not ideal)
-            # A better way would be to pass config/persona to AnalysisAgent or use a shared config.
-            # Let's assume a general small grant threshold for now.
-            if numeric_funding >= 5000: return 0.5 # Small grants (using ResearchAgent.FUNDING_MIN)
-            return 0.3  # Micro grants
+            if numeric_funding >= 100000: return 0.9
+            if numeric_funding >= 50000: return 0.7
+            if numeric_funding >= self.FUNDING_MIN: return 0.5
+            return 0.3  # Below minimum threshold
         except Exception as e:
             logger.warning(f"Error calculating funding score for '{funding_input}' (parsed as {numeric_funding}): {e}")
             return 0.5
+
+    def _calculate_freshness_score(self, discovered_at: Any = None) -> float:
+        """Score based on grant freshness (how recently discovered).
+        <30 days = 1.0, 30-60 = 0.9, 60-90 = 0.7, >90 = 0.5
+        """
+        if not discovered_at:
+            return 1.0  # New grants get full freshness score
+        try:
+            if isinstance(discovered_at, str):
+                discovered_at = datetime.fromisoformat(discovered_at.replace("Z", "+00:00"))
+            days_old = (datetime.now() - discovered_at).days
+            if days_old < 30:
+                return 1.0
+            if days_old < 60:
+                return 0.9
+            if days_old < 90:
+                return 0.7
+            return 0.5
+        except Exception:
+            return 1.0  # Default to fresh if we can't parse

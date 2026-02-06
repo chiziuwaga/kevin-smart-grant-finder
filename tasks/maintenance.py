@@ -11,7 +11,7 @@ from sqlalchemy import select, and_
 
 from celery_app import celery_app
 from database.session import get_db
-from database.models import User, SubscriptionStatus, GeneratedApplication
+from database.models import User, Grant, SubscriptionStatus, GeneratedApplication
 from services.resend_client import get_resend_client
 from services.application_rag import get_rag_service
 
@@ -272,10 +272,14 @@ async def _send_reports_async() -> Dict[str, Any]:
                         "applications_remaining": user.applications_limit - user.applications_used
                     }
 
-                    # Send weekly report email
-                    # TODO: Create dedicated weekly report email template
-                    # For now, skip sending until template is ready
-
+                    await resend.send_weekly_report_email(
+                        user_email=user.email,
+                        user_name=user.full_name or user.email.split('@')[0],
+                        searches_this_week=report_data["searches_this_week"],
+                        applications_generated=report_data["applications_generated"],
+                        searches_remaining=report_data["searches_remaining"],
+                        applications_remaining=report_data["applications_remaining"],
+                    )
                     reports_sent += 1
 
                 except Exception as e:
@@ -395,8 +399,11 @@ async def _check_trials_async() -> Dict[str, Any]:
 
                     if days_remaining <= 3 and days_remaining > 0:
                         try:
-                            # TODO: Send trial expiration reminder email
-                            # await resend.send_trial_reminder(...)
+                            await resend.send_trial_expiration_reminder_email(
+                                user_email=user.email,
+                                user_name=user.full_name or user.email.split('@')[0],
+                                days_remaining=days_remaining,
+                            )
                             reminders_sent += 1
                         except Exception as e:
                             logger.error(f"Failed to send trial reminder to user {user.id}: {e}")
@@ -411,6 +418,55 @@ async def _check_trials_async() -> Dict[str, Any]:
 
         except Exception as e:
             logger.error(f"Error checking trial expirations: {str(e)}")
+            raise
+        finally:
+            await db.close()
+
+
+@celery_app.task
+def mark_stale_grants():
+    """
+    Mark grants not updated in 60+ days as STALE.
+    Called daily to keep grant freshness accurate.
+    """
+    try:
+        result = asyncio.run(_mark_stale_grants_async())
+        return result
+    except Exception as e:
+        logger.error(f"Failed to mark stale grants: {str(e)}")
+        raise
+
+
+async def _mark_stale_grants_async() -> Dict[str, Any]:
+    """Mark old grants as stale."""
+    async for db in get_db():
+        try:
+            sixty_days_ago = datetime.utcnow() - timedelta(days=60)
+
+            result = await db.execute(
+                select(Grant).where(
+                    and_(
+                        Grant.record_status == "ACTIVE",
+                        Grant.updated_at < sixty_days_ago,
+                    )
+                )
+            )
+            stale_grants = result.scalars().all()
+
+            for grant in stale_grants:
+                grant.record_status = "STALE"
+
+            await db.commit()
+            logger.info(f"Marked {len(stale_grants)} grants as STALE (>60 days old)")
+
+            return {
+                "grants_marked_stale": len(stale_grants),
+                "cutoff_date": sixty_days_ago.isoformat(),
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+        except Exception as e:
+            logger.error(f"Error marking stale grants: {str(e)}")
             raise
         finally:
             await db.close()

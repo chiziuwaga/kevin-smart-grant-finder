@@ -315,8 +315,23 @@ class FallbackNotificationManager(FallbackService):
     async def send_application_complete_email(self, user_email: str, user_name: str, grant_title: str, application_id: int) -> Dict[str, Any]:
         return await self._mock_send("send_application_complete_email", user_email=user_email)
 
-    async def send_subscription_confirmation_email(self, user_email: str, user_name: str, plan_name: str) -> Dict[str, Any]:
+    async def send_subscription_confirmation_email(self, user_email: str, user_name: str, plan_name: str, amount: float = 1500) -> Dict[str, Any]:
         return await self._mock_send("send_subscription_confirmation_email", user_email=user_email)
+
+    async def send_search_complete_email(self, user_email: str, user_name: str, grants_found: int = 0, high_priority: int = 0, duration_seconds: float = 0, searches_remaining: int = 0) -> Dict[str, Any]:
+        return await self._mock_send("send_search_complete_email", user_email=user_email)
+
+    async def send_weekly_report_email(self, user_email: str, user_name: str, searches_this_week: int = 0, applications_generated: int = 0, searches_remaining: int = 0, applications_remaining: int = 0) -> Dict[str, Any]:
+        return await self._mock_send("send_weekly_report_email", user_email=user_email)
+
+    async def send_trial_ending_email(self, user_email: str, user_name: str, days_remaining: int = 3) -> Dict[str, Any]:
+        return await self._mock_send("send_trial_ending_email", user_email=user_email)
+
+    async def send_payment_failed_email(self, user_email: str, user_name: str) -> Dict[str, Any]:
+        return await self._mock_send("send_payment_failed_email", user_email=user_email)
+
+    async def send_trial_expiration_reminder_email(self, user_email: str, user_name: str, days_remaining: int = 1) -> Dict[str, Any]:
+        return await self._mock_send("send_trial_expiration_reminder_email", user_email=user_email)
 
 class FallbackResearchAgent(FallbackService):
     """Fallback implementation for research agent"""

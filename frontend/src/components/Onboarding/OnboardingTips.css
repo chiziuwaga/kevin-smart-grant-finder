@@ -1,0 +1,159 @@
+/* Onboarding Tips System - Swiss Design */
+
+.onboarding-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 9998;
+  animation: fadeIn 0.2s ease both;
+}
+
+.onboarding-tip {
+  position: fixed;
+  z-index: 9999;
+  background: var(--color-white);
+  border: 2px solid var(--color-gray-900);
+  border-radius: var(--border-radius);
+  padding: var(--space-3);
+  max-width: 360px;
+  width: calc(100vw - 32px);
+  animation: fadeInUp 0.3s ease both;
+}
+
+.onboarding-tip-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--color-white);
+  border-left: 2px solid var(--color-gray-900);
+  border-top: 2px solid var(--color-gray-900);
+  z-index: 1;
+}
+
+.onboarding-tip-arrow.top {
+  top: -7px;
+  left: 24px;
+  transform: rotate(45deg);
+}
+
+.onboarding-tip-arrow.bottom {
+  bottom: -7px;
+  left: 24px;
+  transform: rotate(225deg);
+}
+
+.onboarding-tip-arrow.left {
+  left: -7px;
+  top: 24px;
+  transform: rotate(-45deg);
+}
+
+.onboarding-tip-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.onboarding-tip-step-badge {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--color-white);
+  background: var(--color-gray-900);
+  padding: 2px 8px;
+  border-radius: var(--border-radius);
+  letter-spacing: 0.5px;
+}
+
+.onboarding-tip-title {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--color-gray-900);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.onboarding-tip-body {
+  font-size: var(--font-size-sm);
+  color: var(--color-gray-600);
+  line-height: var(--line-height-relaxed);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.onboarding-tip-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.onboarding-tip-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.onboarding-tip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-gray-200);
+}
+
+.onboarding-tip-dot.active {
+  background: var(--color-gray-900);
+}
+
+.onboarding-tip-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+/* Replay trigger in sidebar */
+.onboarding-replay-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  font-family: var(--font-family);
+  font-size: var(--font-size-xs);
+  color: var(--color-gray-600);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.onboarding-replay-btn:hover {
+  color: var(--color-gray-900);
+}
+
+/* Welcome modal */
+.onboarding-welcome {
+  position: fixed;
+  z-index: 9999;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--color-white);
+  border: 2px solid var(--color-gray-900);
+  border-radius: var(--border-radius);
+  padding: var(--space-4);
+  max-width: 440px;
+  width: calc(100vw - 32px);
+  text-align: center;
+  animation: fadeInUp 0.3s ease both;
+}
+
+.onboarding-welcome-icon {
+  margin-bottom: var(--space-2);
+  opacity: 0.7;
+}
+
+@media (max-width: 768px) {
+  .onboarding-tip {
+    max-width: calc(100vw - 32px);
+    left: 16px !important;
+    right: 16px;
+  }
+}

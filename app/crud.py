@@ -595,9 +595,9 @@ async def get_search_run_statistics(db: AsyncSession, days_back: int = 7) -> Dic
 # --- ApplicationHistory CRUD Functions ---
 
 async def create_application_history_entry(
-    db: AsyncSession, 
-    history_entry_data: schemas.ApplicationHistoryCreate, 
-    user_id: str
+    db: AsyncSession,
+    history_entry_data: schemas.ApplicationHistoryCreate,
+    user_id: int
 ) -> models.ApplicationHistory:
     """
     Create a new application history entry.

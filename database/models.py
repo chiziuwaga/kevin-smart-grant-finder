@@ -11,6 +11,7 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Enu
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
+from pgvector.sqlalchemy import Vector
 
 Base = declarative_base()
 
@@ -185,7 +186,7 @@ class Subscription(Base):
 
     # Plan details
     plan_name = Column(String, default="basic")  # basic, pro
-    amount = Column(Integer, default=3500)  # Amount in cents ($35.00)
+    amount = Column(Integer, default=1500)  # Amount in cents ($15.00)
     currency = Column(String, default="usd")
 
     # Subscription status
@@ -501,3 +502,37 @@ class SearchRun(Base):
 
     # Relationships
     user = relationship("User", back_populates="search_runs")
+
+
+# ============================================================================
+# VECTOR EMBEDDING MODELS (pgvector)
+# ============================================================================
+
+class GrantEmbedding(Base):
+    """Vector embeddings for grants - enables semantic similarity search."""
+    __tablename__ = 'grant_embeddings'
+
+    id = Column(Integer, primary_key=True)
+    grant_id = Column(Integer, ForeignKey('grants.id', ondelete='CASCADE'), nullable=False, index=True)
+    embedding = Column(Vector(384), nullable=False)  # 384-dim for BAAI/bge-small-en-v1.5
+    text_content = Column(Text, nullable=True)
+    chunk_index = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+    grant = relationship("Grant")
+
+
+class ProfileEmbedding(Base):
+    """Vector embeddings for business profiles - enables semantic RAG retrieval."""
+    __tablename__ = 'profile_embeddings'
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    business_profile_id = Column(Integer, ForeignKey('business_profiles.id', ondelete='CASCADE'), nullable=False, index=True)
+    embedding = Column(Vector(384), nullable=False)
+    text_content = Column(Text, nullable=True)
+    chunk_index = Column(Integer, default=0)
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User")
+    business_profile = relationship("BusinessProfile")

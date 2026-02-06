@@ -69,7 +69,8 @@ React SPA (Swiss UI)  -->  FastAPI Backend  -->  PostgreSQL + pgvector
 - **Single deployment** on Render (API + frontend in one service)
 - **PostgreSQL** for all data storage including vector embeddings (pgvector)
 - **Redis** for Celery task queue and result backend
-- **DeepSeek** for AI reasoning, grant analysis, and embeddings
+- **DeepSeek** for AI reasoning and grant analysis
+- **fastembed** (BAAI/bge-small-en-v1.5) for real 384-dim vector embeddings via pgvector
 - **Resend** for transactional email (welcome, alerts, reports)
 
 ---
@@ -112,18 +113,18 @@ DeepSeek pricing: $0.14/M input tokens, $0.28/M output tokens
 
 ### Revenue Potential
 
-At $35/mo per user (Basic plan):
+At $15/mo per user (Basic plan):
 
 | Scale | Monthly Revenue | Monthly Cost | Margin |
 | --- | --- | --- | --- |
-| 100 users | $3,500 | $39 | **$3,461 (99%)** |
-| 500 users | $17,500 | $155 | **$17,345 (99%)** |
+| 100 users | $1,500 | $39 | **$1,461 (97%)** |
+| 500 users | $7,500 | $155 | **$7,345 (98%)** |
 
 ---
 
 ## Subscription Tiers (Proposed)
 
-| Feature | Trial (Free) | Basic ($35/mo) | Pro ($75/mo) |
+| Feature | Trial (Free) | Basic ($15/mo) | Pro ($75/mo) |
 | --- | --- | --- | --- |
 | Grant Searches | 5 total | 50/month | Unlimited |
 | AI Applications | 0 | 20/month | Unlimited |
@@ -139,7 +140,7 @@ At $35/mo per user (Basic plan):
 Stripe integration is scaffolded but not yet configured. To activate:
 
 1. **Create Stripe account** at stripe.com
-2. **Create Products & Prices** for Basic ($35/mo) and Pro ($75/mo)
+2. **Create Products & Prices** for Basic ($15/mo) and Pro ($75/mo)
 3. **Set environment variables:**
    - `STRIPE_SECRET_KEY` - from Stripe dashboard
    - `STRIPE_PUBLISHABLE_KEY` - for frontend
@@ -154,15 +155,19 @@ The platform is designed so that once Stripe keys are added, billing activates w
 
 ## What's Included in This Build
 
-- Full-stack deployed application (Render-ready)
-- Email/password authentication with JWT tokens
-- Complete grant search pipeline (DeepSeek + recursive agents)
-- Email notification system (Resend: welcome, alerts, reports, warnings)
-- React frontend with Swiss design, responsive layout
-- Landing page, login/register, protected dashboard
-- Business profile management
-- AI application generation scaffolding
-- Automated background tasks (Celery Beat)
+- Full-stack deployed application (Render-ready, unified service)
+- Auth0 RS256 JWT authentication
+- Complete grant search pipeline (DeepSeek + recursive agents + progressive geographic widening)
+- Real semantic matching via pgvector + fastembed (384-dim embeddings, HNSW indexes)
+- 60-day grant freshness scoring (stale grants auto-marked)
+- Email notification system (Resend: welcome, search complete, grant alerts, weekly reports, trial warnings, payment failure)
+- React frontend with Swiss design, responsive layout (1024px tablet + 768px mobile breakpoints)
+- "Money finder" branded landing page with SVG icons, micro-interactions, and subtle dot-grid background
+- Onboarding tooltip system (per-user, replayable, contextual per page)
+- Business profile management with vector embeddings for semantic retrieval
+- AI application generation (RAG-powered)
+- Automated background tasks (Celery Beat: 6-hour search, daily warnings, weekly reports)
+- Pre-deploy validation script (checks DB, pgvector, Redis, env vars)
 - Database migrations (Alembic)
 - Comprehensive README with setup instructions
 
@@ -182,4 +187,4 @@ This platform was architected and built by **Chizi U** with a focus on productio
 
 ---
 
-*Smart Grant Finder - Built to find grants that fit.*
+*Smart Grant Finder - Money finder for your business while you sleep.*

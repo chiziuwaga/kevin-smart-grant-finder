@@ -754,20 +754,16 @@ async def health_check():
 @api_router.post("/applications/feedback", response_model=APIResponse[ApplicationHistoryResponse], status_code=201)
 async def create_application_feedback(
     application_data: ApplicationHistoryCreate,
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
 ):
     """Submit feedback for a grant application."""
     start_time_req = time.time()
     try:
-        # TODO: Add user_id to application_data if implementing multi-user support
-        # For now, assuming a single-user context or user_id is handled in crud or default.
-        # Example: application_data_dict = application_data.dict()
-        # application_data_dict["user_id"] = "default_user" # Or from auth
-        
         created_feedback = await crud.create_application_history_entry(
-            db=db, 
+            db=db,
             history_entry_data=application_data,
-            user_id="default_user"  # TODO: Get from authentication
+            user_id=current_user.id
         )
         duration_req = time.time() - start_time_req
         log_api_metrics("/applications/feedback", duration_req, 201, grant_id=created_feedback.grant_id)

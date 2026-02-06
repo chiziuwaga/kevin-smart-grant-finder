@@ -459,7 +459,7 @@ class ResendEmailClient:
                 <div style="text-align: center; margin: 24px 0;">
                     <a href="{settings.FRONTEND_URL}/settings" class="button">Upgrade Now</a>
                 </div>
-                <p><strong>Our Basic plan ($35/month) includes:</strong></p>
+                <p><strong>Our Basic plan ($15/month) includes:</strong></p>
                 <ul>
                     <li>50 Grant Searches per month</li>
                     <li>20 AI-Generated Applications per month</li>
@@ -481,7 +481,7 @@ class ResendEmailClient:
 
         You've used all {limit_value} of your monthly {limit_type}.
 
-        To continue using Grant Finder, upgrade to our Basic plan ($35/month):
+        To continue using Grant Finder, upgrade to our Basic plan ($15/month):
         - 50 Grant Searches/month
         - 20 AI-Generated Applications/month
         - Automated grant discovery
@@ -778,6 +778,259 @@ class ResendEmailClient:
             html=html,
             text=plain
         )
+
+
+    async def send_weekly_report_email(
+        self,
+        user_email: str,
+        user_name: str,
+        searches_this_week: int,
+        applications_generated: int,
+        searches_remaining: int,
+        applications_remaining: int,
+    ) -> Dict[str, Any]:
+        """Send weekly activity report - money finder while you sleep."""
+        subject = f"Your Weekly Grant Report - {searches_this_week} searches, {applications_generated} applications"
+
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{ font-family: Inter, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1a1a1a; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                h1 {{ font-size: 24px; font-weight: 700; margin-bottom: 16px; color: #1e293b; }}
+                .button {{ display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; text-decoration: none; font-weight: 600; }}
+                .footer {{ color: #666; font-size: 14px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Your Weekly Grant Report</h1>
+                <p>Hi {user_name}, here's what your money finder did this week:</p>
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin: 24px 0;">
+                    <tr>
+                        <td style="background: #FAFAFA; border: 1px solid #E0E0E0; padding: 16px; text-align: center; width: 50%;">
+                            <div style="font-size: 28px; font-weight: 700;">{searches_this_week}</div>
+                            <div style="font-size: 13px; color: #666;">Searches Run</div>
+                        </td>
+                        <td style="background: #FAFAFA; border: 1px solid #E0E0E0; padding: 16px; text-align: center; width: 50%;">
+                            <div style="font-size: 28px; font-weight: 700;">{applications_generated}</div>
+                            <div style="font-size: 13px; color: #666;">Applications Generated</div>
+                        </td>
+                    </tr>
+                </table>
+                <p style="color: #666; font-size: 14px;">
+                    Remaining this month: {searches_remaining} searches, {applications_remaining} applications
+                </p>
+                <div style="text-align: center; margin: 24px 0;">
+                    <a href="{self.frontend_url}/grants" class="button">View Your Grants</a>
+                </div>
+                <div class="footer">
+                    <p>Money finder for your business, while you sleep.</p>
+                    <p><a href="{self.frontend_url}/settings" style="color: #2563eb;">Manage preferences</a></p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        plain = f"""
+        Weekly Grant Report
+
+        Hi {user_name}, here's what your money finder did this week:
+
+        Searches Run: {searches_this_week}
+        Applications Generated: {applications_generated}
+        Remaining: {searches_remaining} searches, {applications_remaining} applications
+
+        View grants: {self.frontend_url}/grants
+        """
+
+        return await self.send_email(to=user_email, subject=subject, html=html, text=plain)
+
+    async def send_trial_ending_email(
+        self,
+        user_email: str,
+        user_name: str,
+        days_remaining: int,
+    ) -> Dict[str, Any]:
+        """Send trial expiration warning."""
+        subject = f"Your trial ends in {days_remaining} day{'s' if days_remaining != 1 else ''}"
+
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{ font-family: Inter, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1a1a1a; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                h1 {{ font-size: 24px; font-weight: 700; color: #1e293b; }}
+                .warning {{ background: #FFF3CD; border: 1px solid #FFECB5; padding: 16px; margin: 24px 0; border-radius: 8px; border-left: 4px solid #fbbf24; }}
+                .button {{ display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; text-decoration: none; font-weight: 600; }}
+                .footer {{ color: #666; font-size: 14px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Your Trial is Ending Soon</h1>
+                <div class="warning">
+                    <strong>Hi {user_name},</strong><br>
+                    Your free trial ends in <strong>{days_remaining} day{'s' if days_remaining != 1 else ''}</strong>.
+                </div>
+                <p>Don't lose access to your money finder! Upgrade to keep:</p>
+                <ul>
+                    <li>50 grant searches per month</li>
+                    <li>20 AI-generated applications</li>
+                    <li>Automated grant discovery</li>
+                    <li>Semantic matching to your business profile</li>
+                </ul>
+                <p><strong>Just $15/month</strong> - less than a single grant application fee.</p>
+                <div style="text-align: center; margin: 24px 0;">
+                    <a href="{self.frontend_url}/settings" class="button">Upgrade Now</a>
+                </div>
+                <div class="footer">
+                    <p>Questions? Reply to this email or contact {self.from_email}</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        plain = f"""
+        Your Trial is Ending Soon
+
+        Hi {user_name},
+
+        Your free trial ends in {days_remaining} day{'s' if days_remaining != 1 else ''}.
+
+        Upgrade to keep access to 50 searches/month, 20 AI applications, and automated discovery.
+        Just $15/month.
+
+        Upgrade: {self.frontend_url}/settings
+        """
+
+        return await self.send_email(to=user_email, subject=subject, html=html, text=plain)
+
+    async def send_payment_failed_email(
+        self,
+        user_email: str,
+        user_name: str,
+    ) -> Dict[str, Any]:
+        """Send payment failure notification."""
+        subject = "Action Required: Payment Failed"
+
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{ font-family: Inter, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1a1a1a; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                h1 {{ font-size: 24px; font-weight: 700; color: #1e293b; }}
+                .alert {{ background: #F8D7DA; border: 1px solid #F5C2C7; padding: 16px; margin: 24px 0; border-radius: 8px; border-left: 4px solid #ef4444; }}
+                .button {{ display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; text-decoration: none; font-weight: 600; }}
+                .footer {{ color: #666; font-size: 14px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Payment Failed</h1>
+                <div class="alert">
+                    <strong>Hi {user_name},</strong><br>
+                    We were unable to process your latest payment. Your account may be limited until this is resolved.
+                </div>
+                <p>Please update your payment method to continue using Grant Finder:</p>
+                <div style="text-align: center; margin: 24px 0;">
+                    <a href="{self.frontend_url}/settings" class="button">Update Payment Method</a>
+                </div>
+                <p style="color: #666; font-size: 14px;">
+                    If you believe this is an error, please contact us at {self.from_email}.
+                </p>
+                <div class="footer">
+                    <p>We'll retry the payment automatically in a few days.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        plain = f"""
+        Payment Failed
+
+        Hi {user_name},
+
+        We were unable to process your latest payment.
+        Please update your payment method: {self.frontend_url}/settings
+
+        If this is an error, contact us at {self.from_email}.
+        """
+
+        return await self.send_email(to=user_email, subject=subject, html=html, text=plain)
+
+    async def send_trial_expiration_reminder_email(
+        self,
+        user_email: str,
+        user_name: str,
+        days_remaining: int,
+    ) -> Dict[str, Any]:
+        """Send countdown reminder as trial approaches expiration."""
+        subject = f"Reminder: {days_remaining} day{'s' if days_remaining != 1 else ''} left in your trial"
+
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <style>
+                body {{ font-family: Inter, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1a1a1a; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                h1 {{ font-size: 24px; font-weight: 700; color: #1e293b; }}
+                .countdown {{ text-align: center; margin: 24px 0; padding: 24px; background: #f8f9fa; border-radius: 8px; }}
+                .countdown-number {{ font-size: 48px; font-weight: 700; color: #1a1a1a; }}
+                .button {{ display: inline-block; background: #1a1a1a; color: white; padding: 12px 24px; text-decoration: none; font-weight: 600; }}
+                .footer {{ color: #666; font-size: 14px; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e2e8f0; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Your Trial is Almost Over</h1>
+                <p>Hi {user_name},</p>
+                <div class="countdown">
+                    <div class="countdown-number">{days_remaining}</div>
+                    <div style="font-size: 14px; color: #666;">day{'s' if days_remaining != 1 else ''} remaining</div>
+                </div>
+                <p>Your money finder has been working while you sleep. Keep it going for just <strong>$15/month</strong>.</p>
+                <div style="text-align: center; margin: 24px 0;">
+                    <a href="{self.frontend_url}/settings" class="button">Subscribe Now</a>
+                </div>
+                <div class="footer">
+                    <p>Money finder for your business, while you sleep.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        plain = f"""
+        Your Trial is Almost Over
+
+        Hi {user_name},
+
+        You have {days_remaining} day{'s' if days_remaining != 1 else ''} left in your trial.
+        Keep your money finder running for just $15/month.
+
+        Subscribe: {self.frontend_url}/settings
+        """
+
+        return await self.send_email(to=user_email, subject=subject, html=html, text=plain)
 
 
 # Singleton instance

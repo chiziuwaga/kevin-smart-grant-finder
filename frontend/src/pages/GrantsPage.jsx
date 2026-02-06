@@ -1,6 +1,7 @@
 import { differenceInDays, format, parseISO } from 'date-fns';
 import { useCallback, useEffect, useState } from 'react';
 import { getGrants } from '../api/apiClient';
+import EmptyState from '../components/common/EmptyState';
 import '../styles/swiss-theme.css';
 
 const CATEGORIES = ['All', 'Research', 'Education', 'Community', 'Healthcare', 'Environment', 'Arts', 'Business', 'Energy', 'Other'];
@@ -252,12 +253,13 @@ const GrantsPage = () => {
           </table>
         </div>
       ) : (
-        <div className="empty-state">
-          <p>{fetchError || 'No grants available'}</p>
-          <button className="btn btn-primary mt-3" onClick={handleReset}>
-            Reset Filters
-          </button>
-        </div>
+        <EmptyState
+          title="No grants found yet"
+          subtitle={fetchError || "Your money finder hasn't discovered grants matching these filters. Try adjusting your criteria or run a new search."}
+          action={true}
+          actionLabel="Reset Filters"
+          onAction={handleReset}
+        />
       )}
 
       {/* Grant Detail Modal */}

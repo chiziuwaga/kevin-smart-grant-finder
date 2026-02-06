@@ -3,11 +3,15 @@ fastapi==0.104.1
 uvicorn[standard]==0.23.2
 gunicorn==20.1.0
 
-# Database (Postgres-native, no external vector DB needed)
+# Database (Postgres + pgvector for semantic embeddings)
 SQLAlchemy==2.0.41
 alembic==1.16.1
 psycopg2-binary==2.9.10
 asyncpg==0.30.0
+pgvector==0.3.6  # Vector column types for SQLAlchemy
+
+# Embeddings (local ONNX-based, no PyTorch needed)
+fastembed==0.4.1  # BAAI/bge-small-en-v1.5 (384-dim vectors)
 
 # Authentication (JWT - simple email/password auth)
 python-jose[cryptography]==3.3.0

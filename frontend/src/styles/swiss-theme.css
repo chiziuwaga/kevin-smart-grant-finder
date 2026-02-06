@@ -743,6 +743,93 @@ input[type="radio"] {
   box-shadow: none !important;
 }
 
+/* ============================================================
+   Micro-interaction keyframes
+   ============================================================ */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulseSubtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Landing page - animated entry */
+.landing-hero { animation: fadeInUp 0.5s ease both; }
+.landing-features .card { animation: fadeInUp 0.5s ease both; }
+.landing-features .card:nth-child(1) { animation-delay: 0.1s; }
+.landing-features .card:nth-child(2) { animation-delay: 0.2s; }
+.landing-features .card:nth-child(3) { animation-delay: 0.3s; }
+.landing-features .card:nth-child(4) { animation-delay: 0.4s; }
+
+.landing-step { animation: slideInRight 0.4s ease both; }
+.landing-step:nth-child(1) { animation-delay: 0.1s; }
+.landing-step:nth-child(2) { animation-delay: 0.2s; }
+.landing-step:nth-child(3) { animation-delay: 0.3s; }
+.landing-step:nth-child(4) { animation-delay: 0.4s; }
+
+/* Feature card hover lift */
+.feature-card {
+  transition: transform 200ms ease, border-color 200ms ease;
+}
+.feature-card:hover {
+  transform: translateY(-4px) !important;
+  border-color: var(--color-gray-900) !important;
+}
+
+/* CTA button pulse on idle */
+.cta-pulse {
+  animation: pulseSubtle 3s ease-in-out infinite;
+}
+
+/* Landing subtle dot grid background */
+.landing-bg-dots {
+  background-image: radial-gradient(circle, var(--color-gray-200) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* ============================================================
+   Tablet breakpoint (1024px)
+   ============================================================ */
+@media (max-width: 1024px) {
+  .grid-cols-4, .grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .grid-cols-3, .grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .app-sidebar {
+    width: 200px;
+  }
+  .app-sidebar.closed {
+    margin-left: -200px;
+  }
+  .app-header {
+    left: 200px;
+  }
+  .app-main {
+    margin-left: 200px;
+  }
+  .landing-hero-title {
+    font-size: 40px !important;
+  }
+}
+
+/* ============================================================
+   Mobile breakpoint (768px)
+   ============================================================ */
 @media (max-width: 768px) {
   .app-sidebar {
     position: fixed;
@@ -750,6 +837,7 @@ input[type="radio"] {
     left: 0;
     bottom: 0;
     z-index: 200;
+    width: 240px;
   }
 
   .app-header {
@@ -772,5 +860,48 @@ input[type="radio"] {
 
   .sidebar-overlay.hidden {
     display: none;
+  }
+
+  /* Grid collapses to 1 col */
+  .grid-cols-2, .grid-2,
+  .grid-cols-3, .grid-3,
+  .grid-cols-4, .grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Landing page mobile */
+  .landing-hero-title {
+    font-size: 32px !important;
+  }
+  .landing-hero-subtitle {
+    font-size: 16px !important;
+  }
+  .landing-cta-row {
+    flex-direction: column !important;
+    align-items: center;
+  }
+  .landing-cta-row .btn {
+    width: 100%;
+    max-width: 320px;
+  }
+  .landing-nav {
+    padding: 16px 20px !important;
+  }
+  .landing-section {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
+
+  /* Modal full width on mobile */
+  .modal {
+    max-width: 100%;
+    margin: var(--space-2);
+    max-height: 85vh;
+  }
+
+  /* Table scroll horizontal */
+  .table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }

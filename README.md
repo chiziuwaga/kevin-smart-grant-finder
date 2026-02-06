@@ -1,6 +1,6 @@
 # Smart Grant Finder
 
-AI-powered grant discovery and application generation platform for nonprofits, small businesses, and community organizations.
+Money finder for your business while you sleep. AI-powered grant discovery and application generation for nonprofits, small businesses, and community organizations.
 
 ## Tech Stack
 
@@ -9,11 +9,11 @@ AI-powered grant discovery and application generation platform for nonprofits, s
 | **Backend** | FastAPI (Python 3.12), SQLAlchemy 2.0, Alembic |
 | **Frontend** | React 18, TypeScript, Swiss UI design system |
 | **Database** | PostgreSQL with pgvector for embeddings |
-| **AI Engine** | DeepSeek (reasoning + embeddings) |
-| **Web Scraping** | AgentQL + Playwright |
+| **AI Engine** | DeepSeek (reasoning + analysis) |
+| **Embeddings** | fastembed (BAAI/bge-small-en-v1.5, 384-dim) + pgvector |
 | **Background Jobs** | Celery + Redis |
 | **Email** | Resend API |
-| **Auth** | Email/password JWT (HS256, bcrypt) |
+| **Auth** | Auth0 RS256 JWT |
 | **Deployment** | Render (unified service: API + static frontend) |
 
 ## Features
