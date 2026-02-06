@@ -32,13 +32,13 @@ async def main():
         await init_services()
         
         research_agent = ResearchAgent(
-            perplexity_client=services.perplexity_client,
+            deepseek_client=services.deepseek_client,
             db_session_maker=services.db_sessionmaker
         )
-        
+
         analysis_agent = AnalysisAgent(
-            db_sessionmaker=services.db_sessionmaker, 
-            pinecone_client=services.pinecone_client
+            db_sessionmaker=services.db_sessionmaker,
+            vector_client=services.vector_client
         )
         
         logger.info("Starting grant data retrieval...")

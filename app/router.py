@@ -13,12 +13,12 @@ from app.rate_limit import limiter
 
 from app.dependencies import (
     get_db_session,
-    get_pinecone,
+    get_vector_store,
     get_notifier,
     get_research_agent,
     get_analysis_agent,
     get_deepseek,
-    get_db_sessionmaker # Added for run_full_search_cycle
+    get_db_sessionmaker
 )
 from app import crud
 from app.crud import safe_convert_to_enriched_grant
@@ -508,17 +508,15 @@ async def trigger_search(
     # db: AsyncSession = Depends(get_db_session), # db_sessionmaker is used by run_full_search_cycle
     db_sessionmaker = Depends(get_db_sessionmaker),
     deepseek_client = Depends(get_deepseek),
-    pinecone_client = Depends(get_pinecone)
-    # research_agent = Depends(get_research_agent) # Not needed directly, agents are instantiated in crud
+    vector_client = Depends(get_vector_store)
 ):
     """Manually trigger a full grant search and enrichment cycle. Rate limited to 5 per hour."""
     start_time = datetime.now()
     try:
-        # crud.run_full_search_cycle now takes db_sessionmaker, deepseek_client, pinecone_client
         fully_analyzed_grants = await crud.run_full_search_cycle(
             db_sessionmaker=db_sessionmaker,
-            deepseek_client=deepseek_client, 
-            pinecone_client=pinecone_client
+            deepseek_client=deepseek_client,
+            vector_client=vector_client
         )
         
         notifier_service = get_notifier() # Assuming get_notifier() is correctly set up
@@ -688,30 +686,29 @@ async def health_check():
             logger.warning("DeepSeek client not available")
             health_status["services"]["deepseek"] = {"status": "unhealthy", "error": "No DeepSeek client"}
         
-        # Check Pinecone
-        if services.pinecone_client:
+        # Check pgvector
+        if services.vector_client:
             try:
-                logger.info("Testing Pinecone connection...")
-                # Use the verify_connection method
-                is_connected = await services.pinecone_client.verify_connection()
+                logger.info("Testing pgvector connection...")
+                is_connected = await services.vector_client.verify_connection()
                 if is_connected:
-                    health_status["services"]["pinecone"] = {
+                    health_status["services"]["pgvector"] = {
                         "status": "healthy",
                         "connection": "verified"
                     }
-                    logger.info("Pinecone health check passed")
+                    logger.info("pgvector health check passed")
                 else:
-                    health_status["services"]["pinecone"] = {
+                    health_status["services"]["pgvector"] = {
                         "status": "unhealthy",
                         "error": "Connection verification failed"
                     }
-                    logger.warning("Pinecone connection verification failed")
+                    logger.warning("pgvector connection verification failed")
             except Exception as e:
-                logger.error(f"Pinecone check failed: {str(e)}", exc_info=True)
-                health_status["services"]["pinecone"] = {"status": "unhealthy", "error": str(e)}
+                logger.error(f"pgvector check failed: {str(e)}", exc_info=True)
+                health_status["services"]["pgvector"] = {"status": "unhealthy", "error": str(e)}
         else:
-            logger.warning("Pinecone client not available")
-            health_status["services"]["pinecone"] = {"status": "unhealthy", "error": "No Pinecone client"}
+            logger.warning("pgvector client not available")
+            health_status["services"]["pgvector"] = {"status": "unhealthy", "error": "No pgvector client"}
         
         # Determine overall status
         logger.info("Determining overall health status...")

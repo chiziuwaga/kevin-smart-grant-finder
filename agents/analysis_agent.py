@@ -18,10 +18,10 @@ class AnalysisAgent:
     def __init__(
         self,
         db_sessionmaker: async_sessionmaker,
-        pinecone_client: PgVectorClient = None
+        vector_client: PgVectorClient = None
     ):
         self.db_sessionmaker = db_sessionmaker
-        self.pgvector = pinecone_client
+        self.pgvector = vector_client
         self.FUNDING_MIN = FUNDING_MIN
         logger.info("Analysis Agent initialized")
     

@@ -47,14 +47,11 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 def get_vector_store():
-    """Get vector store client (Postgres-backed, replaces Pinecone)."""
+    """Get pgvector client (Postgres-backed vector store)."""
     if not services.vector_client:
         logger.warning("Vector client not available, using mock")
         return PgVectorClient()
     return services.vector_client
-
-# Backward-compat alias
-get_pinecone = get_vector_store
 
 def get_deepseek():
     """Get DeepSeek client with fallback handling."""
@@ -133,7 +130,7 @@ def get_analysis_agent(
     try:
         return AnalysisAgent(
             db_sessionmaker=services.db_sessionmaker,
-            pinecone_client=vector_store
+            vector_client=vector_store
         )
     except Exception as e:
         logger.error(f"Failed to create analysis agent: {e}")

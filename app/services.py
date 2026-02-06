@@ -20,11 +20,6 @@ class Services:
     notifier: Optional[Any] = None  # ResendEmailClient or FallbackNotificationManager
     start_time: Optional[float] = None
 
-    # Backward-compat alias so existing code referencing services.pinecone_client still works
-    @property
-    def pinecone_client(self):
-        return self.vector_client
-
 services = Services()
 
 async def init_services():
@@ -68,7 +63,7 @@ async def init_services():
         services.db_engine = None
         services.db_sessionmaker = None
 
-    # Initialize PgVector client (Postgres-native vector store, replaces Pinecone)
+    # Initialize PgVector client (Postgres-native vector store)
     try:
         logger.info("Initializing PgVector client...")
         services.vector_client = PgVectorClient(db_sessionmaker=services.db_sessionmaker)

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from database.models import Grant as DBGrant, Analysis, SearchRun, UserSettings, ApplicationHistory # Added ApplicationHistory
-from utils.pgvector_client import PgVectorClient as PineconeClient  # Compat alias
+from utils.pgvector_client import PgVectorClient
 from app.schemas import EnrichedGrant, ResearchContextScores, ComplianceScores, GrantSourceDetails, ApplicationHistoryCreate # Added ApplicationHistoryCreate
 from app.duplicate_detection import check_duplicate_grant, update_duplicate_grant # Added duplicate detection
 # It's generally better to import specific classes if you're not using the whole module via alias.
@@ -26,7 +26,7 @@ settings = get_settings() # Initialize settings
 
 async def fetch_grants(
     db: AsyncSession,
-    pinecone: PineconeClient,
+    vector_client: PgVectorClient,
     min_score: float = 0.0,
     category: Optional[str] = None,
     deadline_before: Optional[str] = None,
@@ -239,9 +239,9 @@ async def load_user_settings(db: AsyncSession) -> Dict[str, Any]:
 #    ...
 
 async def run_full_search_cycle(
-    db_sessionmaker: async_sessionmaker, 
-    deepseek_client: DeepSeekClient, 
-    pinecone_client: PineconeClient 
+    db_sessionmaker: async_sessionmaker,
+    deepseek_client: DeepSeekClient,
+    vector_client: PgVectorClient
 ) -> List[EnrichedGrant]:
     """Run a complete grant search cycle, including research and compliance analysis."""
     logger.info("Starting full search cycle...")

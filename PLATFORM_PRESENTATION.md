@@ -1,4 +1,6 @@
-# Smart Grant Finder - Platform Presentation
+# Smart Grant Finder
+
+## Money finder for your business while you sleep
 
 **Prepared for:** Kevin Carter
 **Prepared by:** Chizi U
@@ -6,185 +8,195 @@
 
 ---
 
-## Executive Summary
+## What Is This?
 
-Smart Grant Finder is a production-ready, AI-powered SaaS platform that automates grant discovery, scoring, and application generation for nonprofits, small businesses, and community organizations. It runs 24/7, searching for grants every 6 hours and notifying users of high-relevance matches via email.
+Smart Grant Finder is a ready-to-launch online platform that finds grants for your users automatically. It works around the clock -- searching for grants every 6 hours, scoring them for relevance, and sending email alerts when it finds strong matches. Your users sign up, enter their business details, and the system does the rest.
+
+Think of it as a personal grant researcher that never sleeps, built for nonprofits, small businesses, and community organizations.
 
 ---
 
-## Platform Capabilities
+## What the Platform Does
 
-### 1. AI Grant Discovery
+### 1. Finds Grants Automatically
 
-- **DeepSeek Reasoning Engine** generates targeted search strategies based on each user's business profile
-- **Recursive Chunked Search** breaks discovery into focused queries across federal, state, and foundation databases
-- **URL-validated results** - only grants with verifiable application links are surfaced
-- **Automatic deduplication** prevents the same grant from appearing twice
+- Uses AI to build smart search strategies based on each user's business profile
+- Searches across federal, state, and foundation grant databases
+- Only surfaces grants with real, verified application links
+- Prevents duplicate results so users never see the same grant twice
 
-### 2. Multi-Dimensional Scoring
+### 2. Scores Every Grant on Six Factors
 
-Every grant is scored across six dimensions:
+Each grant gets a relevance score so users can focus on the best opportunities first:
 
-| Dimension | What It Measures |
+| Factor | What It Tells the User |
 | --- | --- |
-| Sector Relevance | How closely the grant matches the user's target sectors |
-| Geographic Relevance | Local > state > regional > federal priority |
-| Operational Alignment | Team size, revenue range, years in operation |
-| Business Logic | Prohibited keywords, ethical red flags, org-type match |
-| Feasibility | Budget fit, reporting requirements, technical expertise |
-| Strategic Synergy | Alignment with stated organizational objectives |
+| Sector Match | Does this grant fit my industry? |
+| Location Match | Is this local, state, or national? (local ranks higher) |
+| Organization Fit | Does my team size, revenue, and experience qualify? |
+| Red Flag Check | Any disqualifying terms, ethical concerns, or org-type mismatches? |
+| Feasibility | Can my organization realistically manage this grant? |
+| Strategic Fit | Does this align with my stated goals? |
 
-### 3. Application Generation (RAG-Powered)
+### 3. Writes Grant Applications
 
-- Generates complete grant applications from the user's business profile narrative
-- Structured sections: Executive Summary, Needs Statement, Project Description, Budget Narrative, Organizational Capacity, Impact Statement
-- Users can review, edit, and track each application through its lifecycle
+- Generates full draft applications from the user's business profile
+- Covers all standard sections: Summary, Needs Statement, Project Plan, Budget, Capacity, and Impact
+- Users can review, edit, and track each application
 
-### 4. Automated Monitoring
+### 4. Runs on Autopilot
 
-- Celery Beat runs grant searches every 6 hours for all active users
-- Email notifications sent after every search run (summary + high-priority alerts)
-- Weekly digest emails summarize grant activity and upcoming deadlines
-- Usage warnings sent when approaching monthly limits
+- Searches for new grants every 6 hours for every active user
+- Sends email alerts after each search (summary + high-priority matches)
+- Sends weekly digest emails with upcoming deadlines
+- Warns users when they're approaching their monthly search limits
 
-### 5. User Dashboard
+### 5. Clean, Easy-to-Use Dashboard
 
-- Clean Swiss design with Inter font, minimal color palette
-- Filterable grants grid with scoring, deadlines, and bulk actions
-- Saved grants, application tracking, search history
-- Business profile editor with sector targeting and geographic focus
+- Modern, professional design that works on desktop, tablet, and mobile
+- Filter and sort grants by score, deadline, or status
+- Save grants, track applications, and review search history
+- Edit business profile with industry targeting and geographic focus
 
 ---
 
-## Technical Architecture
+## How It Works (The Simple Version)
 
 ```text
-React SPA (Swiss UI)  -->  FastAPI Backend  -->  PostgreSQL + pgvector
-                                |
-                          Celery + Redis  -->  DeepSeek AI
-                                |
-                          Resend (Email)
+ User signs up & enters business profile
+              |
+              v
+   AI builds custom search strategy
+              |
+              v
+   System searches grant databases every 6 hours
+              |
+              v
+   Grants are scored & ranked for relevance
+              |
+              v
+   User gets email alerts + sees results on dashboard
+              |
+              v
+   User clicks "Generate Application" -> AI drafts it
 ```
 
-- **Single deployment** on Render (API + frontend in one service)
-- **PostgreSQL** for all data storage including vector embeddings (pgvector)
-- **Redis** for Celery task queue and result backend
-- **DeepSeek** for AI reasoning and grant analysis
-- **fastembed** (BAAI/bge-small-en-v1.5) for real 384-dim vector embeddings via pgvector
-- **Resend** for transactional email (welcome, alerts, reports)
+Behind the scenes, the platform runs on reliable cloud infrastructure (hosted on Render) with a secure database, background task processing, and AI-powered analysis. Everything is deployed as a single service for simplicity.
 
 ---
 
-## Cost Analysis
+## What It Costs to Run
 
-### Infrastructure Costs (Render)
+### Hosting Costs
 
 | Component | 100 Users | 500 Users |
 | --- | --- | --- |
-| Web Service (Starter) | $7/mo | $25/mo (Standard) |
-| PostgreSQL (Starter) | $7/mo | $25/mo (Standard) |
-| Redis (Starter) | $10/mo | $10/mo |
-| **Render Total** | **$24/mo** | **$60/mo** |
+| Web Hosting | $7/mo | $25/mo |
+| Database | $7/mo | $25/mo |
+| Background Tasks | $10/mo | $10/mo |
+| **Hosting Total** | **$24/mo** | **$60/mo** |
 
-### AI Costs (DeepSeek)
+### AI Search Costs
 
-DeepSeek pricing: $0.14/M input tokens, $0.28/M output tokens
+The AI engine that powers grant discovery is extremely affordable:
 
-| Metric | 100 Users | 500 Users |
+| | 100 Users | 500 Users |
 | --- | --- | --- |
-| Searches/day (4x/user) | 400 | 2,000 |
-| Avg tokens/search | ~5,000 | ~5,000 |
-| Monthly token volume | ~60M | ~300M |
-| **DeepSeek Cost** | **~$15/mo** | **~$75/mo** |
+| Searches per day | 400 | 2,000 |
+| **AI Cost** | **~$15/mo** | **~$75/mo** |
 
-### Email Costs (Resend)
+### Email Costs
 
-| Tier | Emails/mo | Cost |
+| Tier | Emails per Month | Cost |
 | --- | --- | --- |
 | Free tier | 3,000 | $0 |
-| Pro tier | 50,000 | $20/mo |
+| Paid tier | 50,000 | $20/mo |
 
-### Total Monthly Cost
+### Total Monthly Operating Cost
 
-| Scale | Infrastructure | AI | Email | Total |
+| Scale | Hosting | AI | Email | Total |
 | --- | --- | --- | --- | --- |
 | **100 users** | $24 | $15 | $0 | **~$39/mo** |
 | **500 users** | $60 | $75 | $20 | **~$155/mo** |
 
-### Revenue Potential
+---
 
-At $15/mo per user (Basic plan):
+## Revenue Potential
 
-| Scale | Monthly Revenue | Monthly Cost | Margin |
-| --- | --- | --- | --- |
-| 100 users | $1,500 | $39 | **$1,461 (97%)** |
-| 500 users | $7,500 | $155 | **$7,345 (98%)** |
+At just $15/mo per user on the Basic plan:
+
+| Scale | Monthly Revenue | Monthly Cost | Profit | Margin |
+| --- | --- | --- | --- | --- |
+| **100 users** | $1,500 | $39 | **$1,461** | **97%** |
+| **500 users** | $7,500 | $155 | **$7,345** | **98%** |
+
+Even a modest user base generates strong recurring revenue with extremely low operating costs.
 
 ---
 
-## Subscription Tiers (Proposed)
+## Subscription Tiers
 
 | Feature | Trial (Free) | Basic ($15/mo) | Pro ($75/mo) |
 | --- | --- | --- | --- |
 | Grant Searches | 5 total | 50/month | Unlimited |
-| AI Applications | 0 | 20/month | Unlimited |
-| Automated Monitoring | No | Yes | Yes |
+| AI-Written Applications | 0 | 20/month | Unlimited |
+| Automatic Grant Monitoring | No | Yes | Yes |
 | Email Alerts | Limited | Full | Full + Weekly Reports |
 | Business Profiles | 1 | 1 | 3 |
 | Priority Support | No | Email | Phone + Email |
 
 ---
 
-## Stripe Integration Notes
+## Turning On Payments (Stripe)
 
-Stripe integration is scaffolded but not yet configured. To activate:
+The payment system is built into the platform and ready to activate. Here is what you need to do:
 
-1. **Create Stripe account** at stripe.com
-2. **Create Products & Prices** for Basic ($15/mo) and Pro ($75/mo)
-3. **Set environment variables:**
-   - `STRIPE_SECRET_KEY` - from Stripe dashboard
-   - `STRIPE_PUBLISHABLE_KEY` - for frontend
-   - `STRIPE_WEBHOOK_SECRET` - for payment event handling
-4. **Webhook endpoint** is already at `POST /api/webhooks/stripe`
-5. **Payment service** at `app/payments.py` handles subscription lifecycle
-6. Frontend subscription UI at Settings page shows "Stripe billing coming soon"
-
-The platform is designed so that once Stripe keys are added, billing activates without code changes.
+1. **Create a free Stripe account** at [stripe.com](https://stripe.com)
+2. **Set up two subscription products** in your Stripe dashboard:
+   - Basic plan at $15/month
+   - Pro plan at $75/month
+3. **Copy three keys** from your Stripe dashboard into the platform settings:
+   - Secret Key
+   - Publishable Key
+   - Webhook Secret
+4. **That's it.** The platform is already wired up to handle subscriptions, payments, and billing events. Once the keys are added, billing goes live -- no code changes needed.
 
 ---
 
 ## What's Included in This Build
 
-- Full-stack deployed application (Render-ready, unified service)
-- Auth0 RS256 JWT authentication
-- Complete grant search pipeline (DeepSeek + recursive agents + progressive geographic widening)
-- Real semantic matching via pgvector + fastembed (384-dim embeddings, HNSW indexes)
-- 60-day grant freshness scoring (stale grants auto-marked)
-- Email notification system (Resend: welcome, search complete, grant alerts, weekly reports, trial warnings, payment failure)
-- React frontend with Swiss design, responsive layout (1024px tablet + 768px mobile breakpoints)
-- "Money finder" branded landing page with SVG icons, micro-interactions, and subtle dot-grid background
-- Onboarding tooltip system (per-user, replayable, contextual per page)
-- Business profile management with vector embeddings for semantic retrieval
-- AI application generation (RAG-powered)
-- Automated background tasks (Celery Beat: 6-hour search, daily warnings, weekly reports)
-- Pre-deploy validation script (checks DB, pgvector, Redis, env vars)
-- Database migrations (Alembic)
-- Comprehensive README with setup instructions
+Here is everything that has been built and is ready to go:
+
+- **Live, deployed web application** -- ready for users to sign up today
+- **Secure login system** -- users sign in safely with industry-standard authentication
+- **Full grant search engine** -- AI-powered discovery that widens its search if local results are limited
+- **Smart matching** -- grants are matched to each user's profile using intelligent relevance scoring
+- **Freshness tracking** -- grants older than 60 days are automatically flagged as potentially stale
+- **Email notifications** -- welcome emails, search results, grant alerts, weekly reports, trial warnings, and payment failure notices
+- **Professional frontend** -- clean, modern design that works on desktop, tablet, and mobile
+- **"Money Finder" landing page** -- branded homepage with icons, animations, and a professional look
+- **Guided onboarding** -- tooltip walkthrough that helps new users get set up (can be replayed anytime)
+- **Business profile management** -- users describe their organization and the AI tailors searches to them
+- **AI application writer** -- generates full grant application drafts from the user's profile
+- **Automated background searches** -- the system searches for grants every 6 hours, sends daily and weekly summaries
+- **Health checks** -- pre-launch script verifies the database, services, and settings are all working
+- **Database migration system** -- updates to the database structure are handled automatically on deploy
+- **Setup documentation** -- step-by-step instructions for anyone who needs to manage the platform
 
 ---
 
 ## Partnership & Support
 
-This platform was architected and built by **Chizi U** with a focus on production reliability, graceful degradation, and clean code organization.
+This platform was designed and built by **Chizi U** with a focus on reliability, clean design, and real-world usability.
 
-**Ongoing support options:**
+**Ongoing support is available for:**
 
-- Bug fixes and maintenance
-- Feature development (new scoring models, additional grant sources)
-- Stripe integration activation and testing
-- Scaling consultation as user base grows
-- Custom integrations (CRM, accounting software)
+- Bug fixes and general maintenance
+- New features (additional grant sources, improved scoring, new tools)
+- Stripe activation and payment testing
+- Scaling guidance as your user base grows
+- Custom integrations (CRM systems, accounting software, etc.)
 
 ---
 
-*Smart Grant Finder - Money finder for your business while you sleep.*
+*Smart Grant Finder -- Money finder for your business while you sleep.*

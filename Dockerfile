@@ -29,14 +29,14 @@ COPY requirements.txt .
 # Install Python dependencies with version pinning and no cache
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers for AgentQL web scraping
-RUN pip install playwright && playwright install chromium --with-deps
-
 # Copy application code
 COPY . .
 
 # Build frontend
 RUN cd frontend && npm install && npm run build
+
+# Make entrypoint executable
+RUN chmod +x scripts/entrypoint.sh
 
 # Set ownership to appuser for security
 RUN chown -R appuser:appuser /app
@@ -47,9 +47,9 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Healthcheck for FastAPI
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+# Healthcheck for FastAPI (longer start period to allow migrations)
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Command to run FastAPI
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run entrypoint (pre-deploy checks + migrations + app start)
+CMD ["bash", "scripts/entrypoint.sh"]

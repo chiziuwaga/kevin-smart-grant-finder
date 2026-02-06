@@ -55,39 +55,38 @@ class HealthChecker:
             }
     
     @staticmethod
-    async def check_pinecone() -> Dict[str, Any]:
-        """Check Pinecone service health"""
+    async def check_pgvector() -> Dict[str, Any]:
+        """Check pgvector service health"""
         try:
-            if not services.pinecone_client:
+            if not services.vector_client:
                 return {
                     "status": "unavailable",
-                    "message": "Pinecone client not initialized",
+                    "message": "pgvector client not initialized",
                     "details": None
                 }
-            
-            is_mock = getattr(services.pinecone_client, 'is_mock', False)
-            
+
+            is_mock = getattr(services.vector_client, 'is_mock', False)
+
             if is_mock:
                 return {
                     "status": "degraded",
-                    "message": "Using mock Pinecone client",
+                    "message": "Using mock pgvector client",
                     "details": {"mock_mode": True}
                 }
-            
-            # Test real Pinecone connection
-            connection_ok = services.pinecone_client.verify_connection()
-            
+
+            connection_ok = await services.vector_client.verify_connection()
+
             return {
                 "status": "healthy" if connection_ok else "unhealthy",
-                "message": "Pinecone connection verified" if connection_ok else "Pinecone connection failed",
+                "message": "pgvector connection verified" if connection_ok else "pgvector connection failed",
                 "details": {"connection_verified": connection_ok}
             }
-            
+
         except Exception as e:
-            logger.error(f"Pinecone health check failed: {e}")
+            logger.error(f"pgvector health check failed: {e}")
             return {
                 "status": "unhealthy",
-                "message": f"Pinecone error: {str(e)}",
+                "message": f"pgvector error: {str(e)}",
                 "details": {"error_type": type(e).__name__}
             }
     
@@ -155,7 +154,7 @@ class HealthChecker:
             "timestamp": datetime.utcnow().isoformat(),
             "services": {
                 "database": await HealthChecker.check_database(),
-                "pinecone": await HealthChecker.check_pinecone(),
+                "pgvector": await HealthChecker.check_pgvector(),
                 "deepseek": await HealthChecker.check_deepseek(),
                 "notifications": await HealthChecker.check_notifications()
             }
