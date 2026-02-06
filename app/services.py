@@ -58,6 +58,23 @@ async def init_services():
 
         logger.info("Database connection established successfully")
 
+        # Ensure pgvector extension exists
+        try:
+            async with services.db_engine.begin() as conn:
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            logger.info("pgvector extension ensured")
+        except Exception as ext_err:
+            logger.warning(f"Could not create pgvector extension: {ext_err}")
+
+        # Fallback table creation if alembic migrations haven't run
+        try:
+            from database.models import Base
+            async with services.db_engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database tables ensured (create_all fallback)")
+        except Exception as table_err:
+            logger.error(f"Fallback table creation failed: {table_err}")
+
     except Exception as e:
         logger.error(f"Database initialization failed: {e}")
         services.db_engine = None

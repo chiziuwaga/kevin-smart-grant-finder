@@ -142,7 +142,7 @@ class BusinessProfile(Base):
     documents_total_size_bytes = Column(Integer, default=0)  # Track total size (10MB limit)
 
     # Vector embeddings reference
-    vector_embeddings_id = Column(String, nullable=True)  # Pinecone namespace/ID
+    vector_embeddings_id = Column(String, nullable=True)  # pgvector embedding reference
     embeddings_generated_at = Column(DateTime, nullable=True)
 
     # Timestamps
