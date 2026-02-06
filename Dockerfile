@@ -35,8 +35,8 @@ COPY . .
 # Build frontend
 RUN cd frontend && npm install && npm run build
 
-# Make entrypoint executable
-RUN chmod +x scripts/entrypoint.sh
+# Fix line endings (Windows CRLF -> Unix LF) and make entrypoint executable
+RUN sed -i 's/\r$//' scripts/entrypoint.sh && chmod +x scripts/entrypoint.sh
 
 # Set ownership to appuser for security
 RUN chown -R appuser:appuser /app
