@@ -1,5 +1,5 @@
-# Use Python 3.11 as base image for stability and performance
-FROM python:3.11-slim
+# Use Python 3.12 as base image (required for Pydantic 2.11+ TypedDict support)
+FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ca-certificates \
+    nodejs \
+    npm \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -29,6 +31,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
+
+# Build frontend
+RUN cd frontend && npm install && npm run build
 
 # Set ownership to appuser for security
 RUN chown -R appuser:appuser /app

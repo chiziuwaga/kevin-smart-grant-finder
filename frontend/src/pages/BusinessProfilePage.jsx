@@ -42,9 +42,21 @@ const BusinessProfilePage = () => {
 
   const fetchProfile = async () => {
     try {
-      // TODO: Replace with actual API call
-      // const data = await API.getBusinessProfile();
-      // setProfile(data);
+      const data = await API.getBusinessProfile();
+      if (data) {
+        setProfile(prev => ({
+          ...prev,
+          businessName: data.business_name || data.businessName || '',
+          industry: data.industry || '',
+          location: data.location || '',
+          websiteUrl: data.website_url || data.websiteUrl || '',
+          description: data.description || '',
+          yearsInBusiness: data.years_in_business || data.yearsInBusiness || '',
+          employeeCount: data.employee_count || data.employeeCount || '',
+          annualRevenue: data.annual_revenue || data.annualRevenue || '',
+        }));
+        setCharacterCount((data.description || '').length);
+      }
     } catch (error) {
       console.error('Failed to fetch profile:', error);
     }
@@ -52,10 +64,10 @@ const BusinessProfilePage = () => {
 
   const fetchDocuments = async () => {
     try {
-      // TODO: Replace with actual API call
-      // const data = await API.getDocuments();
-      // setDocuments(data);
-      // calculateTotalSize(data);
+      const data = await API.getDocuments();
+      const docs = data.items || data || [];
+      setDocuments(Array.isArray(docs) ? docs : []);
+      calculateTotalSize(Array.isArray(docs) ? docs : []);
     } catch (error) {
       console.error('Failed to fetch documents:', error);
     }
@@ -79,8 +91,16 @@ const BusinessProfilePage = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // TODO: Replace with actual API call
-      // await API.updateBusinessProfile(profile);
+      await API.updateBusinessProfile({
+        business_name: profile.businessName,
+        industry: profile.industry,
+        location: profile.location,
+        website_url: profile.websiteUrl,
+        description: profile.description,
+        years_in_business: profile.yearsInBusiness ? parseInt(profile.yearsInBusiness) : null,
+        employee_count: profile.employeeCount ? parseInt(profile.employeeCount) : null,
+        annual_revenue: profile.annualRevenue,
+      });
       showMessage('Profile saved successfully!', 'success');
       setHasChanges(false);
     } catch (error) {
@@ -117,9 +137,9 @@ const BusinessProfilePage = () => {
         });
       }, 200);
 
-      // TODO: Replace with actual API call
-      // await API.uploadDocuments(validFiles);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      for (const file of validFiles) {
+        await API.uploadDocuments([file]);
+      }
       clearInterval(interval);
       setUploadProgress(100);
 
@@ -142,8 +162,7 @@ const BusinessProfilePage = () => {
 
   const handleDeleteDocument = async (docId) => {
     try {
-      // TODO: Replace with actual API call
-      // await API.deleteDocument(docId);
+      await API.deleteDocument(docId);
       setDocuments(prev => prev.filter(doc => doc.id !== docId));
       showMessage('Document deleted successfully', 'success');
     } catch (error) {

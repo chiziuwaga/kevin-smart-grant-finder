@@ -273,9 +273,9 @@ async def run_full_search_cycle(
     
     try:
         compliance_agent_instance = ComplianceAnalysisAgent(
-            compliance_config_path=settings.COMPLIANCE_RULES_CONFIG_PATH, 
-            profile_config_path=settings.KEVIN_PROFILE_CONFIG_PATH,       
-            perplexity_client=perplexity_client 
+            compliance_config_path=settings.COMPLIANCE_RULES_CONFIG_PATH,
+            profile_config_path=settings.KEVIN_PROFILE_CONFIG_PATH,
+            deepseek_client=deepseek_client
         )
     except Exception as e:
         logger.error(f"Failed to initialize ComplianceAnalysisAgent: {e}", exc_info=True)

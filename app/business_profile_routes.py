@@ -8,7 +8,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import magic  # For file content type validation
+import mimetypes  # For file type validation by extension
 import bleach  # For HTML sanitization (XSS prevention)
 
 from app.auth import get_current_user
@@ -43,7 +43,7 @@ def sanitize_text_input(text: Optional[str], max_length: Optional[int] = None) -
 
     return sanitized
 
-router = APIRouter(prefix="/business-profile", tags=["Business Profile"])
+router = APIRouter(tags=["Business Profile"])
 
 
 @router.get("/")
@@ -240,32 +240,10 @@ async def upload_document(
         contents = await file.read()
         file_size = len(contents)
 
-        # Validate file type using python-magic (checks actual content, not headers)
-        allowed_mime_types = [
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "text/plain"
-        ]
+        # Validate file type by extension
         allowed_extensions = [".pdf", ".docx", ".txt"]
 
-        # Verify actual file content type (prevents spoofing)
-        try:
-            actual_mime = magic.from_buffer(contents, mime=True)
-            if actual_mime not in allowed_mime_types:
-                # Allow text/* for .txt files
-                if not (actual_mime.startswith("text/") and file.filename.lower().endswith(".txt")):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Invalid file type. Detected: {actual_mime}. Only PDF, DOCX, and TXT files are allowed."
-                    )
-        except Exception as e:
-            logger.error(f"File validation error: {e}")
-            raise HTTPException(
-                status_code=400,
-                detail="Could not validate file type"
-            )
-
-        # Also check file extension as secondary validation
+        # Check file extension
         if file.filename:
             ext = f".{file.filename.split('.')[-1].lower()}"
             if ext not in allowed_extensions:

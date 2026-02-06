@@ -26,23 +26,9 @@ const ApplicationsPage = () => {
   const fetchApplications = async () => {
     try {
       setLoading(true);
-      // Mock data - replace with actual API call
-      setApplications([
-        {
-          id: 1,
-          grantTitle: 'Small Business Innovation Grant',
-          createdAt: '2024-01-15',
-          status: 'Draft',
-          sections: ['Executive Summary', 'Project Description', 'Budget'],
-        },
-        {
-          id: 2,
-          grantTitle: 'Community Development Fund',
-          createdAt: '2024-01-10',
-          status: 'Completed',
-          sections: ['Executive Summary', 'Impact Statement', 'Timeline'],
-        },
-      ]);
+      const response = await API.getApplications();
+      const items = response.items || response.data || response || [];
+      setApplications(Array.isArray(items) ? items : []);
     } catch (error) {
       console.error('Failed to fetch applications:', error);
       showMessage('Failed to fetch applications', 'error');
@@ -82,7 +68,7 @@ const ApplicationsPage = () => {
     setGenerationProgress(0);
 
     try {
-      // Simulate progress
+      // Show progress indicator
       const interval = setInterval(() => {
         setGenerationProgress(prev => {
           if (prev >= 90) {
@@ -91,10 +77,9 @@ const ApplicationsPage = () => {
           }
           return prev + 10;
         });
-      }, 500);
+      }, 1000);
 
-      // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await API.generateApplication(selectedGrant);
       clearInterval(interval);
       setGenerationProgress(100);
 
@@ -153,14 +138,14 @@ const ApplicationsPage = () => {
             <tbody>
               {applications.map(app => (
                 <tr key={app.id}>
-                  <td style={{ fontWeight: '600' }}>{app.grantTitle}</td>
-                  <td>{new Date(app.createdAt).toLocaleDateString()}</td>
+                  <td style={{ fontWeight: '600' }}>{app.grant_title || app.grantTitle}</td>
+                  <td>{new Date(app.created_at || app.createdAt).toLocaleDateString()}</td>
                   <td>
-                    <span className={`chip chip-${app.status === 'Completed' ? 'success' : 'warning'}`}>
+                    <span className={`chip chip-${(app.status || '').toLowerCase() === 'completed' ? 'success' : 'warning'}`}>
                       {app.status}
                     </span>
                   </td>
-                  <td>{app.sections.length} sections</td>
+                  <td>{(app.sections || []).length} sections</td>
                   <td>
                     <button className="btn btn-sm btn-text" onClick={() => handleView(app)}>
                       👁️ View
@@ -235,7 +220,7 @@ const ApplicationsPage = () => {
         <div className="modal-backdrop" onClick={() => setViewModalOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">{selectedApplication.grantTitle}</h3>
+              <h3 className="modal-title">{selectedApplication.grant_title || selectedApplication.grantTitle}</h3>
               <button className="modal-close" onClick={() => setViewModalOpen(false)}>✕</button>
             </div>
             <div className="modal-body">
@@ -245,12 +230,12 @@ const ApplicationsPage = () => {
                 </span>
               </div>
               <div className="mb-3">
-                <strong>Created:</strong> {new Date(selectedApplication.createdAt).toLocaleDateString()}
+                <strong>Created:</strong> {new Date(selectedApplication.created_at || selectedApplication.createdAt).toLocaleDateString()}
               </div>
               <div>
                 <strong>Sections:</strong>
                 <ul style={{ marginTop: 'var(--space-1)', paddingLeft: 'var(--space-3)' }}>
-                  {selectedApplication.sections.map((section, idx) => (
+                  {(selectedApplication.sections || []).map((section, idx) => (
                     <li key={idx}>{section}</li>
                   ))}
                 </ul>

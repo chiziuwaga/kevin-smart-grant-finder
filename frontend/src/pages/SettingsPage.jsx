@@ -31,9 +31,9 @@ const SettingsPage = () => {
     plan: 'free',
     status: 'active',
     usage: {
-      searches: 5,
+      searches: 0,
       maxSearches: 10,
-      applications: 2,
+      applications: 0,
       maxApplications: 5,
     },
   });
@@ -55,7 +55,27 @@ const SettingsPage = () => {
         setLoading(false);
       }
     };
+    const fetchSubscription = async () => {
+      try {
+        const data = await API.getCurrentSubscription();
+        if (data) {
+          setSubscription({
+            plan: data.plan || data.plan_name || 'free',
+            status: data.status || 'active',
+            usage: {
+              searches: data.usage?.searches ?? data.searches_used ?? 0,
+              maxSearches: data.usage?.maxSearches ?? data.searches_limit ?? 10,
+              applications: data.usage?.applications ?? data.applications_used ?? 0,
+              maxApplications: data.usage?.maxApplications ?? data.applications_limit ?? 5,
+            },
+          });
+        }
+      } catch (e) {
+        console.error('Subscription not available:', e);
+      }
+    };
     fetchSettings();
+    fetchSubscription();
   }, []);
 
   const handleChange = (section, key) => (event) => {
@@ -176,7 +196,10 @@ const SettingsPage = () => {
             </div>
           </div>
 
-          <button className="btn btn-primary">
+          <button
+            className="btn btn-primary"
+            onClick={() => showMessage('Stripe billing coming soon. Contact support to upgrade.', 'info')}
+          >
             💳 Upgrade Plan
           </button>
         </div>

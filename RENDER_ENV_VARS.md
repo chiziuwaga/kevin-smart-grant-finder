@@ -53,12 +53,6 @@ DEEPSEEK_API_BASE=https://api.deepseek.com  # Already set in render.yaml
 ```
 Get from: https://platform.deepseek.com
 
-**AgentQL (Web Scraping)**
-```bash
-AGENTQL_API_KEY=agentql_...
-```
-Get from: https://www.agentql.com
-
 **Pinecone (Vector Database)**
 ```bash
 PINECONE_API_KEY=pcsk_your_pinecone_key_here
@@ -74,8 +68,8 @@ OPENAI_API_KEY=sk-proj-your_openai_key_here
 
 ### 🌐 CORS & Frontend
 ```bash
-FRONTEND_URL=https://your-vercel-app.vercel.app  # Update with actual frontend URL
-ALLOWED_ORIGINS=https://your-vercel-app.vercel.app,http://localhost:3000
+# Frontend is served from same origin in unified deployment - no separate URL needed
+ALLOWED_ORIGINS=http://localhost:3000  # Only needed for local development
 ```
 
 ### ⚙️ Application Settings
@@ -98,10 +92,8 @@ These are **already configured** in render.yaml:
 | **Stripe** | All 4 keys (SECRET, PUBLISHABLE, WEBHOOK_SECRET, PRICE_ID) | 🔴 Critical |
 | **Resend** | RESEND_API_KEY | 🔴 Critical |
 | **DeepSeek** | DEEPSEEK_API_KEY | 🔴 Critical |
-| **AgentQL** | AGENTQL_API_KEY | 🔴 Critical |
 | **Pinecone** | Already configured ✅ | ✅ Done |
 | **OpenAI** | Already configured ✅ | ✅ Done |
-| **Frontend URL** | Update FRONTEND_URL, ALLOWED_ORIGINS | 🟡 Before frontend deploy |
 
 ---
 

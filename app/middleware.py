@@ -43,7 +43,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com; "
             "img-src 'self' data: https:; "
-            "connect-src 'self' https://*.vercel.app https://api.stripe.com https://*.auth0.com; "
+            "connect-src 'self' https://api.stripe.com https://*.auth0.com; "
             "frame-src https://js.stripe.com https://*.auth0.com; "
             "frame-ancestors 'none';"
         )

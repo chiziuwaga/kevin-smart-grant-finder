@@ -32,7 +32,7 @@ const AppLayout = () => {
   useEffect(() => {
     const fetchLastRun = async () => {
       try {
-        const { getLastRun } = await import('api/apiClient');
+        const { getLastRun } = await import('../../api/apiClient');
         const data = await getLastRun();
         if (data.status !== 'none') {
           setLastRunTime(new Date(data.end || data.start).toLocaleString());

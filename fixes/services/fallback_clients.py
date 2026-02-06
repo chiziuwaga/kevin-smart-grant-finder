@@ -279,58 +279,44 @@ class FallbackDeepSeekClient(FallbackService):
         return mock_response
 
 class FallbackNotificationManager(FallbackService):
-    """Fallback implementation for email notification manager"""
+    """Fallback implementation for email notification manager.
+    Matches the ResendEmailClient interface for graceful degradation."""
 
     def __init__(self, config: Optional[FallbackConfig] = None):
         super().__init__("NotificationManager", config)
         self.mock_notifications = []
         self.is_mock = True
-        
-    async def send_notification(self, message: str, priority: str = "normal", 
-                              notification_type: str = "info") -> Dict[str, Any]:
-        """Mock notification sending"""
-        self._log_fallback_usage("send_notification")
+
+    async def _mock_send(self, method: str, **kwargs) -> Dict[str, Any]:
+        """Generic mock email send"""
+        self._log_fallback_usage(method)
         await self._simulate_delay()
-        
-        notification = {
-            "id": f"mock_notification_{len(self.mock_notifications)}",
-            "message": message,
-            "priority": priority,
-            "type": notification_type,
-            "timestamp": datetime.utcnow().isoformat(),
-            "status": "sent",
-            "fallback": True
-        }
-        
-        self.mock_notifications.append(notification)
-        logger.info(f"Mock notification sent: {message}")
-        
-        return {
-            "success": True,
-            "notification_id": notification["id"],
-            "fallback": True
-        }
-    
-    async def send_batch_notifications(self, notifications: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Mock batch notification sending"""
-        self._log_fallback_usage("send_batch_notifications")
-        await self._simulate_delay()
-        
-        results = []
-        for notification in notifications:
-            result = await self.send_notification(
-                notification.get("message", ""),
-                notification.get("priority", "normal"),
-                notification.get("type", "info")
-            )
-            results.append(result)
-        
-        return {
-            "success": True,
-            "sent_count": len(results),
-            "results": results,
-            "fallback": True
-        }
+        self.mock_notifications.append({"method": method, "kwargs": kwargs, "timestamp": datetime.utcnow().isoformat()})
+        return {"success": True, "fallback": True, "id": f"mock_{len(self.mock_notifications)}"}
+
+    async def send_email(self, to: str, subject: str, html: str, text: str = "") -> Dict[str, Any]:
+        return await self._mock_send("send_email", to=to, subject=subject)
+
+    async def send_grant_alert(self, user_email: str, user_name: str, grants: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return await self._mock_send("send_grant_alert", user_email=user_email, grants_count=len(grants))
+
+    async def send_welcome_email(self, user_email: str, user_name: str, trial_info: dict) -> Dict[str, Any]:
+        return await self._mock_send("send_welcome_email", user_email=user_email)
+
+    async def send_subscription_welcome(self, user_email: str, user_name: str, plan_name: str, searches_limit: int, applications_limit: int) -> Dict[str, Any]:
+        return await self._mock_send("send_subscription_welcome", user_email=user_email)
+
+    async def send_usage_warning(self, user_email: str, user_name: str, resource_type: str, used: int, limit: int, percentage: int) -> Dict[str, Any]:
+        return await self._mock_send("send_usage_warning", user_email=user_email)
+
+    async def send_limit_reached_email(self, user_email: str, user_name: str, resource_type: str, limit: int) -> Dict[str, Any]:
+        return await self._mock_send("send_limit_reached_email", user_email=user_email)
+
+    async def send_application_complete_email(self, user_email: str, user_name: str, grant_title: str, application_id: int) -> Dict[str, Any]:
+        return await self._mock_send("send_application_complete_email", user_email=user_email)
+
+    async def send_subscription_confirmation_email(self, user_email: str, user_name: str, plan_name: str) -> Dict[str, Any]:
+        return await self._mock_send("send_subscription_confirmation_email", user_email=user_email)
 
 class FallbackResearchAgent(FallbackService):
     """Fallback implementation for research agent"""

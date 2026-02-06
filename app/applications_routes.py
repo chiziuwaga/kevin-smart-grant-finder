@@ -16,7 +16,7 @@ from tasks.application_generator import generate_grant_application
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/applications", tags=["Applications"])
+router = APIRouter(tags=["Applications"])
 
 
 @router.get("/")

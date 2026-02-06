@@ -5,7 +5,7 @@ import './CronJobStatus.css';
 
 /**
  * Cron Job Status Widget
- * Monitors Heroku Scheduler health and automated search runs
+ * Monitors Celery Beat health and automated search runs
  */
 const CronJobStatus = () => {
   const { enqueueSnackbar } = useSnackbar();

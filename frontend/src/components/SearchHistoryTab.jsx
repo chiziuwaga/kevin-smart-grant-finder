@@ -1,7 +1,7 @@
 import { useSnackbar } from 'notistack';
 import { useCallback, useEffect, useState } from 'react';
-import apiClient from 'api/apiClient';
-import LoaderOverlay from 'components/common/LoaderOverlay';
+import apiClient from '../api/apiClient';
+import LoaderOverlay from './common/LoaderOverlay';
 import './SearchHistoryTab.css';
 
 const SearchHistoryTab = () => {

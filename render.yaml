@@ -8,6 +8,7 @@ services:
     plan: starter  # Can upgrade to standard/pro as needed
     region: oregon  # Choose your preferred region
     buildCommand: pip install -r requirements.txt && cd frontend && npm install && npm run build && cd ..
+    preDeployCommand: alembic upgrade head
     startCommand: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
     healthCheckPath: /health
 
@@ -15,6 +16,9 @@ services:
       # Python
       - key: PYTHON_VERSION
         value: 3.12
+
+      - key: NODE_VERSION
+        value: 20
 
       # Application
       - key: ENVIRONMENT
@@ -87,9 +91,6 @@ services:
 
       - key: DEEPSEEK_API_BASE
         value: https://api.deepseek.com
-
-      - key: AGENTQL_API_KEY
-        sync: false
 
       - key: PINECONE_API_KEY
         sync: false
@@ -191,12 +192,6 @@ services:
           name: grant-finder-api
           envVarKey: DEEPSEEK_API_KEY
 
-      - key: AGENTQL_API_KEY
-        fromService:
-          type: web
-          name: grant-finder-api
-          envVarKey: AGENTQL_API_KEY
-
       - key: PINECONE_API_KEY
         fromService:
           type: web
@@ -273,7 +268,6 @@ databases:
     region: oregon
     ipAllowList: []  # Allow all Render services
 
-  - name: grant-finder-redis
-    plan: starter  # 25MB, can upgrade
-    region: oregon
-    ipAllowList: []  # Allow all Render services
+# NOTE: Redis must be created manually in Render dashboard (not supported in render.yaml databases section)
+# Create a Redis instance named "grant-finder-redis" in the Render dashboard
+# Then link its connection string to REDIS_URL, CELERY_BROKER_URL, and CELERY_RESULT_BACKEND

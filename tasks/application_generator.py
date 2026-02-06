@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from tasks import celery_app
+from celery_app import celery_app
 from config.settings import Settings
 from database.models import (
     User,

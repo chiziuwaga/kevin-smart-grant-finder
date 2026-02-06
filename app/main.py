@@ -19,9 +19,6 @@ from config.logging_config import setup_logging
 from sqlalchemy import text
 from database.session import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
-from database.session import get_db
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # Setup logging
 setup_logging()
@@ -131,7 +128,7 @@ async def detailed_health_check():
 from app.middleware import SecurityHeadersMiddleware
 app.add_middleware(SecurityHeadersMiddleware)
 
-# CORS middleware - configured for Vercel frontend
+# CORS middleware - configured for unified deployment
 allowed_origins = get_allowed_origins()
 
 app.add_middleware(

@@ -75,7 +75,6 @@ class Settings(BaseSettings):
     # AI API Keys
     DEEPSEEK_API_KEY: str = Field(default="", env="DEEPSEEK_API_KEY")
     DEEPSEEK_API_BASE: str = Field(default="https://api.deepseek.com", env="DEEPSEEK_API_BASE")
-    AGENTQL_API_KEY: str = Field(default="", env="AGENTQL_API_KEY")
     pinecone_api_key: str = Field(default="", env="PINECONE_API_KEY")
     pinecone_index_name: str = Field(default="grantcluster", env="PINECONE_INDEX_NAME")
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")  # For embeddings fallback
@@ -123,8 +122,8 @@ class Settings(BaseSettings):
                     f"DATABASE_URL ('{url}') is not in a recognized format to be converted to asyncpg. "
                     "Expected 'postgres://', 'postgresql://', or already async 'postgresql+asyncpg://'."
                 )
-              # Handle SSL parameters for asyncpg - remove ALL SSL params since Heroku handles this automatically
-            # asyncpg will use SSL by default for Heroku Postgres
+              # Handle SSL parameters for asyncpg - remove SSL params that asyncpg doesn't support
+            # asyncpg will use SSL by default for Render Postgres
             # Remove all possible SSL-related parameters
             import re
             from urllib.parse import urlparse, parse_qs, urlencode, urlunparse

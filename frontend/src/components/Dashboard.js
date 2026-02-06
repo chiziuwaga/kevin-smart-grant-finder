@@ -539,6 +539,7 @@ const Dashboard = () => {
       {detailsModalOpen && currentGrantForDetails && (
         <GrantDetailsModal
           grant={currentGrantForDetails}
+          open={detailsModalOpen}
           onClose={handleCloseDetails}
           onSave={handleSaveGrant}
           isSaved={savedGrants.has(currentGrantForDetails.id)}

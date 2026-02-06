@@ -34,6 +34,7 @@ class ResendEmailClient:
         """
         self.api_key = api_key or settings.RESEND_API_KEY
         self.from_email = settings.FROM_EMAIL
+        self.frontend_url = settings.FRONTEND_URL.rstrip('/')
 
         if not self.api_key:
             logger.warning("Resend API key not configured")
@@ -136,7 +137,7 @@ class ResendEmailClient:
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 30px;">
                 <h1 style="color: #1e293b; margin-bottom: 10px;">New Grants Found!</h1>
-                <p style="color: #64748b; margin: 0;">We found {len(grants)} grant opportunity{'ies' if len(grants) > 1 else 'y'} matching your profile</p>
+                <p style="color: #64748b; margin: 0;">We found {len(grants)} grant opportunit{'ies' if len(grants) > 1 else 'y'} matching your profile</p>
             </div>
 
             <p>Hi {user_name},</p>
@@ -145,12 +146,12 @@ class ResendEmailClient:
 
             {grants_html}
 
-            {f'<p style="margin-top: 20px; color: #64748b; font-size: 14px;"><em>Showing {min(10, len(grants))} of {len(grants)} grants found. <a href="https://app.grantfinder.com/grants" style="color: #2563eb;">View all in your dashboard →</a></em></p>' if len(grants) > 10 else ''}
+            {f'<p style="margin-top: 20px; color: #64748b; font-size: 14px;"><em>Showing {min(10, len(grants))} of {len(grants)} grants found. <a href="{self.frontend_url}/grants" style="color: #2563eb;">View all in your dashboard →</a></em></p>' if len(grants) > 10 else ''}
 
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
                 <p style="margin: 0; color: #64748b; font-size: 14px;">
                     You're receiving this email because you have grant alerts enabled.<br>
-                    <a href="https://app.grantfinder.com/settings" style="color: #2563eb;">Manage email preferences</a>
+                    <a href="{self.frontend_url}/settings" style="color: #2563eb;">Manage email preferences</a>
                 </p>
             </div>
         </body>
@@ -162,7 +163,7 @@ class ResendEmailClient:
 
         Hi {user_name},
 
-        We found {len(grants)} grant opportunity{'ies' if len(grants) > 1 else 'y'} matching your profile:
+        We found {len(grants)} grant opportunit{'ies' if len(grants) > 1 else 'y'} matching your profile:
 
         """
 
@@ -174,87 +175,6 @@ class ResendEmailClient:
             Relevance: {int(grant.get('overall_composite_score', 0) * 100)}%
 
             """
-
-        return await self.send_email(user_email, subject, html, text)
-
-    async def send_application_generated(
-        self,
-        user_email: str,
-        user_name: str,
-        grant_title: str,
-        application_id: int
-    ) -> Dict[str, Any]:
-        """
-        Send notification that grant application was generated.
-
-        Args:
-            user_email: User's email
-            user_name: User's name
-            grant_title: Grant title
-            application_id: ID of generated application
-
-        Returns:
-            Email send response
-        """
-        subject = f"✅ Your Grant Application for \"{grant_title}\" is Ready!"
-
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        </head>
-        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; line-height: 1.6; color: #334155; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #1e293b; margin-bottom: 10px;">Application Generated!</h1>
-            </div>
-
-            <p>Hi {user_name},</p>
-
-            <p>Great news! Your AI-generated grant application is ready for review.</p>
-
-            <div style="margin: 25px 0; padding: 20px; background: #f0fdf4; border-left: 4px solid #10b981; border-radius: 4px;">
-                <h3 style="margin: 0 0 10px 0; color: #065f46;">Grant: {grant_title}</h3>
-                <p style="margin: 0; color: #047857;">The application includes all required sections and is tailored to your business profile.</p>
-            </div>
-
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="https://app.grantfinder.com/applications/{application_id}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">Review Application</a>
-            </div>
-
-            <p><strong>Next Steps:</strong></p>
-            <ol style="color: #475569;">
-                <li>Review the generated application carefully</li>
-                <li>Edit any sections as needed</li>
-                <li>Download as PDF or DOCX</li>
-                <li>Submit to the funder</li>
-            </ol>
-
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-                <p style="margin: 0; color: #64748b; font-size: 14px;">
-                    Need help? <a href="https://app.grantfinder.com/support" style="color: #2563eb;">Contact support</a>
-                </p>
-            </div>
-        </body>
-        </html>
-        """
-
-        text = f"""
-        Application Generated!
-
-        Hi {user_name},
-
-        Your AI-generated grant application is ready for "{grant_title}".
-
-        View and edit your application at:
-        https://app.grantfinder.com/applications/{application_id}
-
-        Next Steps:
-        1. Review the application
-        2. Make any necessary edits
-        3. Download and submit
-        """
 
         return await self.send_email(user_email, subject, html, text)
 
@@ -308,7 +228,7 @@ class ResendEmailClient:
             </div>
 
             <div style="text-align: center; margin: 30px 0;">
-                <a href="https://app.grantfinder.com/dashboard" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">Start Finding Grants</a>
+                <a href="{self.frontend_url}/dashboard" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">Start Finding Grants</a>
             </div>
 
             <p><strong>Getting Started:</strong></p>
@@ -321,8 +241,8 @@ class ResendEmailClient:
 
             <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
                 <p style="margin: 0; color: #64748b; font-size: 14px;">
-                    Questions? <a href="https://app.grantfinder.com/support" style="color: #2563eb;">Contact support</a> |
-                    <a href="https://app.grantfinder.com/docs" style="color: #2563eb;">View documentation</a>
+                    Questions? <a href="{self.frontend_url}/support" style="color: #2563eb;">Contact support</a> |
+                    <a href="{self.frontend_url}/docs" style="color: #2563eb;">View documentation</a>
                 </p>
             </div>
         </body>
@@ -342,7 +262,7 @@ class ResendEmailClient:
         - Automated monitoring
         - Email notifications
 
-        Get started: https://app.grantfinder.com/dashboard
+        Get started: {self.frontend_url}/dashboard
         """
 
         return await self.send_email(user_email, subject, html, text)
@@ -391,7 +311,7 @@ class ResendEmailClient:
             <p>Your usage will reset at the start of your next billing cycle.</p>
 
             <div style="text-align: center; margin: 30px 0;">
-                <a href="https://app.grantfinder.com/settings/billing" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">View Usage & Billing</a>
+                <a href="{self.frontend_url}/settings/billing" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 6px; font-weight: 600;">View Usage & Billing</a>
             </div>
         </body>
         </html>
@@ -404,7 +324,7 @@ class ResendEmailClient:
 
         You've used {used} of {limit} {resource_type} this month ({percentage}%).
 
-        View your usage: https://app.grantfinder.com/settings/billing
+        View your usage: {self.frontend_url}/settings/billing
         """
 
         return await self.send_email(user_email, subject, html, text)
@@ -547,7 +467,7 @@ class ResendEmailClient:
                     <li>Priority support</li>
                 </ul>
                 <div class="footer">
-                    <p>Questions? Contact us at support@grantfinder.com</p>
+                    <p>Questions? Contact us at {self.from_email}</p>
                 </div>
             </div>
         </body>
@@ -635,7 +555,7 @@ class ResendEmailClient:
                     <a href="{settings.FRONTEND_URL}/applications/{application_id}" class="button">View Application</a>
                 </div>
                 <div class="footer">
-                    <p>Need help? Contact support at support@grantfinder.com</p>
+                    <p>Need help? Contact support at {self.from_email}</p>
                 </div>
             </div>
         </body>
@@ -728,7 +648,7 @@ class ResendEmailClient:
                 </ul>
                 <p>Manage your subscription in <a href="{settings.FRONTEND_URL}/settings">Settings</a></p>
                 <div class="footer">
-                    <p>Questions? Contact us at support@grantfinder.com</p>
+                    <p>Questions? Contact us at {self.from_email}</p>
                 </div>
             </div>
         </body>

@@ -147,21 +147,18 @@ async def list_grants(
 async def get_saved_grants(
     page: int = 1,
     page_size: int = 20,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session)
 ):
     """Get user's saved grants"""
     try:
-        logger.info(f"Getting saved grants for page {page}, page_size {page_size}")
-        
-        # For now, we'll use a default user_settings_id = 1
-        # In a real application, this would come from authentication
-        default_user_id = 1
-        
+        logger.info(f"Getting saved grants for user {current_user.id}, page {page}, page_size {page_size}")
+
         # Query saved grants with join to get full grant data
         query = (
             select(DBGrant)
             .join(SavedGrants, DBGrant.id == SavedGrants.grant_id)
-            .where(SavedGrants.user_settings_id == default_user_id)
+            .where(SavedGrants.user_settings_id == current_user.id)
             .options(selectinload(DBGrant.analyses))
         )
         
@@ -199,6 +196,7 @@ async def get_saved_grants(
 @api_router.post("/grants/{grant_id}/save")
 async def save_grant(
     grant_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session)
 ):
     """Save a grant for the user"""
@@ -207,16 +205,13 @@ async def save_grant(
         grant_query = select(DBGrant).where(DBGrant.id == grant_id)
         grant_result = await db.execute(grant_query)
         grant = grant_result.scalar_one_or_none()
-        
+
         if not grant:
             raise HTTPException(status_code=404, detail="Grant not found")
-        
-        # For now, use default user_settings_id = 1
-        default_user_id = 1
-        
+
         # Check if already saved
         existing_query = select(SavedGrants).where(
-            SavedGrants.user_settings_id == default_user_id,
+            SavedGrants.user_settings_id == current_user.id,
             SavedGrants.grant_id == grant_id
         )
         existing_result = await db.execute(existing_query)
@@ -227,13 +222,13 @@ async def save_grant(
         
         # Save the grant
         saved_grant = SavedGrants(
-            user_settings_id=default_user_id,
+            user_settings_id=current_user.id,
             grant_id=grant_id
         )
         db.add(saved_grant)
         await db.commit()
-        
-        logger.info(f"Grant {grant_id} saved for user {default_user_id}")
+
+        logger.info(f"Grant {grant_id} saved for user {current_user.id}")
         return {"message": "Grant saved successfully", "saved": True}
         
     except HTTPException:
@@ -246,28 +241,26 @@ async def save_grant(
 @api_router.delete("/grants/{grant_id}/save")
 async def unsave_grant(
     grant_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session)
 ):
     """Remove a grant from user's saved grants"""
     try:
-        # For now, use default user_settings_id = 1
-        default_user_id = 1
-        
         # Find and delete the saved grant record
         delete_query = select(SavedGrants).where(
-            SavedGrants.user_settings_id == default_user_id,
+            SavedGrants.user_settings_id == current_user.id,
             SavedGrants.grant_id == grant_id
         )
         result = await db.execute(delete_query)
         saved_grant = result.scalar_one_or_none()
-        
+
         if not saved_grant:
             raise HTTPException(status_code=404, detail="Grant not found in saved grants")
-        
+
         await db.delete(saved_grant)
         await db.commit()
-        
-        logger.info(f"Grant {grant_id} removed from saved grants for user {default_user_id}")
+
+        logger.info(f"Grant {grant_id} removed from saved grants for user {current_user.id}")
         return {"message": "Grant removed from saved grants", "saved": False}
         
     except HTTPException:
@@ -430,7 +423,12 @@ async def trigger_search(
             if high_priority_to_notify:
                 # Convert EnrichedGrant objects to dictionaries for the notification service
                 grants_dict = [g.model_dump() for g in high_priority_to_notify]
-                await notifier_service.notify_new_grants(grants_dict)
+                # TODO: Need user email/name context for per-user notifications
+                await notifier_service.send_grant_alert(
+                    user_email="admin@grantfinder.com",
+                    user_name="Admin",
+                    grants=grants_dict
+                )
                 notified_count = len(high_priority_to_notify)
             result_message = f"Search completed. {len(fully_analyzed_grants)} grants processed. {notified_count} high-priority grants notified."
         elif not fully_analyzed_grants:
@@ -1015,7 +1013,7 @@ async def get_search_analytics(
 
 @api_router.get("/system/scheduler-status", response_model=Dict[str, Any])
 async def get_scheduler_status(db: AsyncSession = Depends(get_db_session)):
-    """Check Heroku scheduler status and automated run health."""
+    """Check scheduler status and automated run health."""
     start_time = time.time()
     
     try:
@@ -1103,7 +1101,7 @@ async def get_scheduler_status(db: AsyncSession = Depends(get_db_session)):
                 },
                 "configuration": {
                     "schedule": "Twice weekly (Monday & Thursday at 10 AM)",
-                    "type": "Heroku Scheduler",
+                    "type": "Celery Beat",
                     "command": "python run_grant_search.py"
                 }
             }
@@ -1121,7 +1119,7 @@ async def get_scheduler_status(db: AsyncSession = Depends(get_db_session)):
 # STRIPE SUBSCRIPTION ENDPOINTS
 # ============================================================================
 
-@api_router.post("/api/subscriptions/create-checkout")
+@api_router.post("/subscriptions/create-checkout")
 @limiter.limit("3/hour")
 async def create_checkout_session(
     request: Request,
@@ -1174,7 +1172,7 @@ async def create_checkout_session(
         )
 
 
-@api_router.get("/api/subscriptions/current")
+@api_router.get("/subscriptions/current")
 async def get_current_subscription(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -1233,7 +1231,7 @@ async def get_current_subscription(
         )
 
 
-@api_router.post("/api/subscriptions/cancel")
+@api_router.post("/subscriptions/cancel")
 async def cancel_subscription(
     cancel_immediately: bool = False,
     current_user: User = Depends(get_current_user),
@@ -1284,7 +1282,7 @@ async def cancel_subscription(
         )
 
 
-@api_router.post("/api/subscriptions/reactivate")
+@api_router.post("/subscriptions/reactivate")
 async def reactivate_subscription(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -1330,7 +1328,7 @@ async def reactivate_subscription(
         )
 
 
-@api_router.post("/api/subscriptions/portal")
+@api_router.post("/subscriptions/portal")
 async def create_customer_portal_session(
     return_url: Optional[str] = None,
     current_user: User = Depends(get_current_user),
@@ -1372,7 +1370,7 @@ async def create_customer_portal_session(
         )
 
 
-@api_router.post("/api/webhooks/stripe")
+@api_router.post("/webhooks/stripe")
 async def stripe_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db)
@@ -1436,7 +1434,7 @@ async def stripe_webhook(
         )
 
 
-@api_router.get("/api/subscriptions/usage")
+@api_router.get("/subscriptions/usage")
 async def get_subscription_usage(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)

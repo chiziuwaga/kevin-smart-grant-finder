@@ -2,7 +2,7 @@
 """
 Grant Search Execution Script for Kevin's Smart Grant Finder
 
-This script is executed by the Heroku scheduler to search for grants and send notifications.
+This script is executed by Celery Beat to search for grants and send notifications.
 """
 
 import os

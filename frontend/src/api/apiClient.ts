@@ -562,6 +562,94 @@ export const getSearchRunDetails = async (
   }
 };
 
+// Business Profile endpoints
+export const getBusinessProfile = async (): Promise<any> => {
+  try {
+    const response = await API.get('/business-profile');
+    return response.data;
+  } catch (error) {
+    throw categorizeError(error);
+  }
+};
+
+export const updateBusinessProfile = async (profile: any): Promise<any> => {
+  try {
+    const response = await API.put('/business-profile', profile);
+    return response.data;
+  } catch (error) {
+    throw categorizeError(error);
+  }
+};
+
+export const getDocuments = async (): Promise<any> => {
+  try {
+    const response = await API.get('/business-profile/documents');
+    return response.data;
+  } catch (error) {
+    throw categorizeError(error);
+  }
+};
+
+export const uploadDocuments = async (files: File[]): Promise<any> => {
+  try {
+    const formData = new FormData();
+    files.forEach(file => formData.append('file', file));
+    const response = await API.post('/business-profile/documents', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  } catch (error) {
+    throw categorizeError(error);
+  }
+};
+
+export const deleteDocument = async (docId: string): Promise<any> => {
+  try {
+    const response = await API.delete(`/business-profile/documents/${docId}`);
+    return response.data;
+  } catch (error) {
+    throw categorizeError(error);
+  }
+};
+
+// Application endpoints
+export const getApplications = async (params: any = {}): Promise<any> => {
+  try {
+    const response = await API.get('/applications', { params });
+    return response.data;
+  } catch (error) {
+    throw categorizeError(error);
+  }
+};
+
+export const generateApplication = async (grantId: string): Promise<any> => {
+  try {
+    const response = await API.post('/applications/generate', { grant_id: grantId });
+    return response.data;
+  } catch (error) {
+    throw categorizeError(error);
+  }
+};
+
+export const getApplicationById = async (id: string): Promise<any> => {
+  try {
+    const response = await API.get(`/applications/${id}`);
+    return response.data;
+  } catch (error) {
+    throw categorizeError(error);
+  }
+};
+
+// Subscription endpoints
+export const getCurrentSubscription = async (): Promise<any> => {
+  try {
+    const response = await API.get('/subscriptions/current');
+    return response.data;
+  } catch (error) {
+    throw categorizeError(error);
+  }
+};
+
 // Add named exports to default export to support both import styles
 const APIWithMethods = {
   ...API,
@@ -586,6 +674,15 @@ const APIWithMethods = {
   getSearchRunStatistics, // Added new method
   createManualSearchRun, // Added new method
   getSearchRunDetails, // Added new method
+  getBusinessProfile,
+  updateBusinessProfile,
+  getDocuments,
+  uploadDocuments,
+  deleteDocument,
+  getApplications,
+  generateApplication,
+  getApplicationById,
+  getCurrentSubscription,
 };
 
 export default APIWithMethods;

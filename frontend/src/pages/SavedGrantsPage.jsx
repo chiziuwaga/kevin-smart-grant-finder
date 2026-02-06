@@ -17,7 +17,7 @@ const SavedGrantsPage = () => {
     setLoading(true);
     try {
       const data = await getSavedGrants();
-      setGrants(data);
+      setGrants(data.items || data);
     } catch(e) {
       console.error(e);
       showMessage('Failed to fetch saved grants', 'error');
